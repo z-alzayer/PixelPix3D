@@ -72,16 +72,20 @@ static void print_params(FilterParams p) {
     printf(" GameBoy Camera\n");
     printf(" --------------\n");
     if (p.palette >= 0 && p.palette < PALETTE_COUNT)
-        printf(" Palette: [%d] %s      \n", p.palette, palettes[p.palette].name);
+        printf(" Palette:  [%d] %s      \n", p.palette, palettes[p.palette].name);
     else
-        printf(" Palette: colour (%d lvl)   \n", p.color_levels);
-    printf(" Px size: %d    \n", p.pixel_size);
-    printf(" Camera:  %s    \n", hud_selfie ? "selfie" : "outer");
+        printf(" Palette:  colour (%d lvl)   \n", p.color_levels);
+    printf(" Px size:  %d    \n", p.pixel_size);
+    printf(" Brightness: %.1f  \n", p.contrast);
+    printf(" Saturation: %.1f  \n", p.saturation);
+    printf(" Camera:   %s    \n", hud_selfie ? "selfie" : "outer");
     printf("\n");
-    printf(" L/R  palette\n");
-    printf(" U/D  px size\n");
-    printf(" Y    camera\n");
-    printf(" A    save\n");
+    printf(" L/R   palette\n");
+    printf(" B     px size\n");
+    printf(" U/D   brightness\n");
+    printf(" </> saturation\n");
+    printf(" Y     camera\n");
+    printf(" A     save\n");
     printf(" START exit\n");
 }
 
@@ -145,9 +149,8 @@ int main(void) {
 
     // Filter params
     FilterParams params = FILTER_DEFAULTS;
-    params.pixel_size = 1;  // start fast; user can increase with D-pad up
     const int pixel_sizes[] = {1, 2, 4, 8};
-    int ps_idx = 0;
+    int ps_idx = 0;  // index into pixel_sizes; B cycles through
 
     u32 bufSize;
     printf("GetMaxBytes: 0x%08X\n",      (unsigned int)CAMU_GetMaxBytes(&bufSize, WIDTH, HEIGHT));
@@ -179,21 +182,48 @@ int main(void) {
 
             if (kDown & KEY_START) break;
 
-            // Palette left/right
-            if (kDown & KEY_DLEFT) {
+            // L/R bumpers: cycle palette
+            if (kDown & KEY_L) {
                 params.palette = (params.palette <= PALETTE_NONE)
                                ? PALETTE_COUNT - 1 : params.palette - 1;
                 print_params(params);
             }
-            if (kDown & KEY_DRIGHT) {
+            if (kDown & KEY_R) {
                 params.palette = (params.palette >= PALETTE_COUNT - 1)
                                ? PALETTE_NONE : params.palette + 1;
                 print_params(params);
             }
 
-            // Pixel size up/down
-            if (kDown & KEY_DUP   && ps_idx < 3) { params.pixel_size = pixel_sizes[++ps_idx]; print_params(params); }
-            if (kDown & KEY_DDOWN && ps_idx > 0) { params.pixel_size = pixel_sizes[--ps_idx]; print_params(params); }
+            // B: cycle pixel size 1→2→4→8→1
+            if (kDown & KEY_B) {
+                ps_idx = (ps_idx + 1) % 4;
+                params.pixel_size = pixel_sizes[ps_idx];
+                print_params(params);
+            }
+
+            // D-pad up/down: brightness (contrast)
+            if (kDown & KEY_DUP) {
+                params.contrast += 0.1f;
+                if (params.contrast > 3.0f) params.contrast = 3.0f;
+                print_params(params);
+            }
+            if (kDown & KEY_DDOWN) {
+                params.contrast -= 0.1f;
+                if (params.contrast < 0.1f) params.contrast = 0.1f;
+                print_params(params);
+            }
+
+            // D-pad left/right: saturation
+            if (kDown & KEY_DLEFT) {
+                params.saturation -= 0.1f;
+                if (params.saturation < 0.0f) params.saturation = 0.0f;
+                print_params(params);
+            }
+            if (kDown & KEY_DRIGHT) {
+                params.saturation += 0.1f;
+                if (params.saturation > 3.0f) params.saturation = 3.0f;
+                print_params(params);
+            }
 
             // Y: toggle outer/selfie camera
             if (kDown & KEY_Y) {
