@@ -30,20 +30,22 @@ static jmp_buf exitJmp;
 // Colour conversion helpers
 // ---------------------------------------------------------------------------
 
-static void bgr565_to_rgb888(uint8_t *dst, const uint16_t *src, int count) {
+// Camera outputs RGB565: bits 15-11 = R, bits 10-5 = G, bits 4-0 = B
+static void rgb565_to_rgb888(uint8_t *dst, const uint16_t *src, int count) {
     for (int i = 0; i < count; i++) {
         uint16_t p  = src[i];
-        dst[i*3+0]  =  (p        & 0x1F) << 3;  // R
+        dst[i*3+0]  = ((p >> 11) & 0x1F) << 3;  // R
         dst[i*3+1]  = ((p >>  5) & 0x3F) << 2;  // G
-        dst[i*3+2]  = ((p >> 11) & 0x1F) << 3;  // B
+        dst[i*3+2]  =  (p        & 0x1F) << 3;  // B
     }
 }
 
-static void rgb888_to_bgr565(uint16_t *dst, const uint8_t *src, int count) {
+// Pack RGB888 back to RGB565 for the filtered_buf intermediate
+static void rgb888_to_rgb565(uint16_t *dst, const uint8_t *src, int count) {
     for (int i = 0; i < count; i++) {
-        dst[i] = ((uint16_t)(src[i*3+2] >> 3) << 11)
+        dst[i] = ((uint16_t)(src[i*3+0] >> 3) << 11)
                | ((uint16_t)(src[i*3+1] >> 2) <<  5)
-               |  (uint16_t)(src[i*3+0] >> 3);
+               |  (uint16_t)(src[i*3+2] >> 3);
     }
 }
 
@@ -59,9 +61,11 @@ static void writePictureToFramebufferRGB565(void *fb, void *img,
         for (int i = 0; i < w; i++) {
             u32 v    = (y + h - j + (x + i) * h) * 3;
             u16 data = img_16[j * w + i];
-            fb_8[v+0] = ((data >> 11) & 0x1F) << 3;  // B (framebuffer is BGR8)
+            // filtered_buf is RGB565 (R=bits15-11, G=bits10-5, B=bits4-0)
+            // framebuffer is BGR8 (B at byte 0, G at byte 1, R at byte 2)
+            fb_8[v+0] =  (data        & 0x1F) << 3;  // B
             fb_8[v+1] = ((data >>  5) & 0x3F) << 2;  // G
-            fb_8[v+2] =  (data        & 0x1F) << 3;  // R
+            fb_8[v+2] = ((data >> 11) & 0x1F) << 3;  // R
         }
     }
 }
@@ -92,18 +96,26 @@ static void writePictureToFramebufferRGB565(void *fb, void *img,
 #define HANDLE_H   20
 
 // Continuous slider row centres (y of the track mid-line)
-#define ROW_BRIGHT  46
-#define ROW_SAT     86
-#define ROW_GAMMA  126
+// 5 sliders + snap + palette need to fit in 240px.
+// Title bar: 0-29. Sliders: 30-172. Palette: 178-240.
+#define ROW_BRIGHT    44
+#define ROW_CONTRAST  72
+#define ROW_SAT      100
+#define ROW_GAMMA    128
 
-// Pixel-size snap stops
-#define ROW_PXSIZE 166
-static const int px_stops[4] = {112, 161, 210, 259};  // x centres of the 4 stops
+// Pixel-size snap stops (values 1-8, evenly spaced across the track)
+#define ROW_PXSIZE   158
+#define PX_STOPS     8
+// px_stop_x[i] = x pixel for value (i+1), mapped onto TRACK_X..TRACK_X+TRACK_W
+static int px_stop_x(int val) {
+    // val in [1..8], map to [TRACK_X .. TRACK_X+TRACK_W]
+    return TRACK_X + (val - 1) * TRACK_W / (PX_STOPS - 1);
+}
 
-// Palette buttons  (y=195..225)
-#define PAL_BTN_Y     192
+// Palette buttons  (y=206..238)
+#define PAL_BTN_Y     206
 #define PAL_BTN_H      30
-#define PAL_BTN_W      40
+#define PAL_BTN_W      42
 #define PAL_BTN_X0      4
 
 // Action buttons top-right
@@ -153,25 +165,23 @@ static void draw_slider(float cx, float cy, float mn, float mx, float val) {
     (void)cx;
 }
 
-static void draw_snap_slider(int active_idx) {
+static void draw_snap_slider(int px_val) {
     float cy = ROW_PXSIZE;
-    // Connecting line
-    C2D_DrawRectSolid(px_stops[0], cy - TRACK_H/2.0f, 0.5f,
-                      px_stops[3] - px_stops[0], TRACK_H, CLR_TRACK);
-    // Stops
-    const char *labels[4] = {"1","2","4","8"};
-    for (int i = 0; i < 4; i++) {
-        u32 clr = (i == active_idx) ? CLR_BTN_SEL : CLR_BTN;
-        float bx = px_stops[i] - 15.0f;
-        float by = cy - 13.0f;
-        C2D_DrawRectSolid(bx, by, 0.5f, 30.0f, 26.0f, clr);
-        (void)labels[i]; // text drawn separately in draw_ui
-    }
+    // Track background
+    C2D_DrawRectSolid(TRACK_X, cy - TRACK_H/2.0f, 0.5f, TRACK_W, TRACK_H, CLR_TRACK);
+    // Filled portion up to current value
+    float hx = px_stop_x(px_val);
+    float fill_w = hx - TRACK_X;
+    if (fill_w > 0)
+        C2D_DrawRectSolid(TRACK_X, cy - TRACK_H/2.0f, 0.5f, fill_w, TRACK_H, CLR_FILL);
+    // Handle
+    C2D_DrawRectSolid(hx - HANDLE_W/2.0f, cy - HANDLE_H/2.0f, 0.5f,
+                      HANDLE_W, HANDLE_H, CLR_HANDLE);
 }
 
 static void draw_ui(C3D_RenderTarget *bot,
                     C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                    FilterParams p, int ps_idx, bool selfie,
+                    FilterParams p, bool selfie,
                     bool save_flash) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
@@ -179,7 +189,7 @@ static void draw_ui(C3D_RenderTarget *bot,
     // Title bar divider
     C2D_DrawRectSolid(0, 29, 0.5f, BOT_W, 1, CLR_DIVIDER);
     // Slider area / palette divider
-    C2D_DrawRectSolid(0, 178, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    C2D_DrawRectSolid(0, 200, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
     // --- Static text labels ---
     float sc = 0.48f;  // scale for system font (~14px glyphs at 0.48)
@@ -190,10 +200,13 @@ static void draw_ui(C3D_RenderTarget *bot,
     C2D_TextParse(&t, staticBuf, "PixelPix3D");
     C2D_DrawText(&t, C2D_WithColor, 4.0f, 6.0f, 0.5f, 0.52f, 0.52f, CLR_TITLE);
 
-    C2D_TextParse(&t, staticBuf, "Brightness");
+    C2D_TextParse(&t, staticBuf, "Bright");
     C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_BRIGHT - 9.0f, 0.5f, sc, sc, CLR_TEXT);
 
-    C2D_TextParse(&t, staticBuf, "Saturation");
+    C2D_TextParse(&t, staticBuf, "Contrast");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_CONTRAST - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+
+    C2D_TextParse(&t, staticBuf, "Saturate");
     C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_SAT - 9.0f, 0.5f, sc, sc, CLR_TEXT);
 
     C2D_TextParse(&t, staticBuf, "Gamma");
@@ -203,17 +216,15 @@ static void draw_ui(C3D_RenderTarget *bot,
     C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_PXSIZE - 9.0f, 0.5f, sc, sc, CLR_TEXT);
 
     C2D_TextParse(&t, staticBuf, "Palette");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, 180.0f, 0.5f, sc, sc, CLR_DIM);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, 202.0f, 0.5f, sc, sc, CLR_DIM);
 
-    // Pixel-size stop labels
-    const char *ps_labels[4] = {"1","2","4","8"};
-    for (int i = 0; i < 4; i++) {
-        C2D_TextParse(&t, staticBuf, ps_labels[i]);
-        C2D_DrawText(&t, C2D_WithColor,
-                     px_stops[i] - 4.0f, (float)ROW_PXSIZE - 9.0f, 0.5f,
-                     0.44f, 0.44f,
-                     (i == ps_idx) ? CLR_TEXT : CLR_DIM);
-    }
+    // Px size tick labels at 1, 4, 8
+    C2D_TextParse(&t, staticBuf, "1");
+    C2D_DrawText(&t, C2D_WithColor, px_stop_x(1) - 2.0f, (float)ROW_PXSIZE + 7.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
+    C2D_TextParse(&t, staticBuf, "4");
+    C2D_DrawText(&t, C2D_WithColor, px_stop_x(4) - 3.0f, (float)ROW_PXSIZE + 7.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
+    C2D_TextParse(&t, staticBuf, "8");
+    C2D_DrawText(&t, C2D_WithColor, px_stop_x(8) - 3.0f, (float)ROW_PXSIZE + 7.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
 
     // Palette button labels
     const char *pal_names[7] = {"GB","Gray","GBC","Shell","GBA","DB","Clr"};
@@ -243,18 +254,23 @@ static void draw_ui(C3D_RenderTarget *bot,
                  0.40f, 0.40f, CLR_TEXT);
 
     // --- Sliders ---
-    draw_slider(0, ROW_BRIGHT, 0.1f, 3.0f, p.contrast);
-    draw_slider(0, ROW_SAT,    0.0f, 3.0f, p.saturation);
-    draw_slider(0, ROW_GAMMA,  0.5f, 3.0f, p.gamma);
-    draw_snap_slider(ps_idx);
+    draw_slider(0, ROW_BRIGHT,   0.0f, 2.0f, p.brightness);
+    draw_slider(0, ROW_CONTRAST, 0.5f, 2.0f, p.contrast);
+    draw_slider(0, ROW_SAT,      0.0f, 2.0f, p.saturation);
+    draw_slider(0, ROW_GAMMA,    0.5f, 2.0f, p.gamma);
+    draw_snap_slider(p.pixel_size);
 
     // --- Dynamic value readouts ---
     char buf[16];
     C2D_TextBufClear(dynBuf);
 
-    snprintf(buf, sizeof(buf), "%.1f", p.contrast);
+    snprintf(buf, sizeof(buf), "%.1f", p.brightness);
     C2D_TextParse(&t, dynBuf, buf);
     C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)ROW_BRIGHT - 9.0f, 0.5f, sc, sc, CLR_DIM);
+
+    snprintf(buf, sizeof(buf), "%.1f", p.contrast);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)ROW_CONTRAST - 9.0f, 0.5f, sc, sc, CLR_DIM);
 
     snprintf(buf, sizeof(buf), "%.1f", p.saturation);
     C2D_TextParse(&t, dynBuf, buf);
@@ -263,6 +279,10 @@ static void draw_ui(C3D_RenderTarget *bot,
     snprintf(buf, sizeof(buf), "%.1f", p.gamma);
     C2D_TextParse(&t, dynBuf, buf);
     C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)ROW_GAMMA - 9.0f, 0.5f, sc, sc, CLR_DIM);
+
+    snprintf(buf, sizeof(buf), "%d", p.pixel_size);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)ROW_PXSIZE - 9.0f, 0.5f, sc, sc, CLR_DIM);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +295,7 @@ static inline bool hit(int px, int py, int rx, int ry, int rw, int rh) {
 }
 
 static bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
-                         FilterParams *p, int *ps_idx,
+                         FilterParams *p,
                          bool *do_cam_toggle, bool *do_save) {
     *do_cam_toggle = false;
     *do_save       = false;
@@ -309,32 +329,35 @@ static bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
     }
 
-    // Pixel-size snap slider (tap only)
-    if (tapped && ty >= ROW_PXSIZE - 18 && ty < ROW_PXSIZE + 18) {
-        // Find nearest stop
-        int best = 0, best_d = 9999;
-        for (int i = 0; i < 4; i++) {
-            int d = tx - px_stops[i]; if (d < 0) d = -d;
-            if (d < best_d) { best_d = d; best = i; }
-        }
-        *ps_idx = best;
-        static const int px_vals[4] = {1, 2, 4, 8};
-        p->pixel_size = px_vals[best];
+    // Pixel-size slider (drag, snaps to integer 1-8)
+    if (ty >= ROW_PXSIZE - 14 && ty < ROW_PXSIZE + 14 &&
+        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        int val = (int)(t_val * (PX_STOPS - 1) + 0.5f) + 1;
+        if (val < 1) val = 1;
+        if (val > PX_STOPS) val = PX_STOPS;
+        p->pixel_size = val;
         return true;
     }
 
     // Continuous sliders (drag)
     if (tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
-        if (ty >= ROW_BRIGHT - 14 && ty < ROW_BRIGHT + 14) {
-            p->contrast = touch_x_to_val(tx, 0.1f, 3.0f);
+        if (ty >= ROW_BRIGHT - 13 && ty < ROW_BRIGHT + 13) {
+            p->brightness = touch_x_to_val(tx, 0.0f, 2.0f);
             return true;
         }
-        if (ty >= ROW_SAT - 14 && ty < ROW_SAT + 14) {
-            p->saturation = touch_x_to_val(tx, 0.0f, 3.0f);
+        if (ty >= ROW_CONTRAST - 13 && ty < ROW_CONTRAST + 13) {
+            p->contrast = touch_x_to_val(tx, 0.5f, 2.0f);
             return true;
         }
-        if (ty >= ROW_GAMMA - 14 && ty < ROW_GAMMA + 14) {
-            p->gamma = touch_x_to_val(tx, 0.5f, 3.0f);
+        if (ty >= ROW_SAT - 13 && ty < ROW_SAT + 13) {
+            p->saturation = touch_x_to_val(tx, 0.0f, 2.0f);
+            return true;
+        }
+        if (ty >= ROW_GAMMA - 13 && ty < ROW_GAMMA + 13) {
+            p->gamma = touch_x_to_val(tx, 0.5f, 2.0f);
             return true;
         }
     }
@@ -401,8 +424,6 @@ int main(void) {
 
     // Filter params
     FilterParams params = FILTER_DEFAULTS;
-    const int pixel_sizes[] = {1, 2, 4, 8};
-    int ps_idx = 0;
 
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, WIDTH, HEIGHT);
@@ -441,20 +462,19 @@ int main(void) {
                                ? PALETTE_NONE : params.palette + 1;
             }
             if (kDown & KEY_B) {
-                ps_idx = (ps_idx + 1) % 4;
-                params.pixel_size = pixel_sizes[ps_idx];
+                params.pixel_size = (params.pixel_size % PX_STOPS) + 1;
             }
-            if (kDown & KEY_DUP)   { params.contrast   += 0.1f; if (params.contrast   > 3.0f) params.contrast   = 3.0f; }
-            if (kDown & KEY_DDOWN) { params.contrast   -= 0.1f; if (params.contrast   < 0.1f) params.contrast   = 0.1f; }
+            if (kDown & KEY_DUP)   { params.brightness += 0.1f; if (params.brightness > 2.0f) params.brightness = 2.0f; }
+            if (kDown & KEY_DDOWN) { params.brightness -= 0.1f; if (params.brightness < 0.0f) params.brightness = 0.0f; }
             if (kDown & KEY_DLEFT) { params.saturation -= 0.1f; if (params.saturation < 0.0f) params.saturation = 0.0f; }
-            if (kDown & KEY_DRIGHT){ params.saturation += 0.1f; if (params.saturation > 3.0f) params.saturation = 3.0f; }
+            if (kDown & KEY_DRIGHT){ params.saturation += 0.1f; if (params.saturation > 2.0f) params.saturation = 2.0f; }
 
             // Touch input
             touchPosition touch;
             hidTouchRead(&touch);
 
             bool do_cam = false, do_save = false;
-            handle_touch(touch, kDown, kHeld, &params, &ps_idx,
+            handle_touch(touch, kDown, kHeld, &params,
                          &do_cam, &do_save);
 
             if (do_cam || (kDown & KEY_Y)) {
@@ -491,7 +511,7 @@ int main(void) {
             if (do_save || (kDown & KEY_A)) {
                 char save_path[64];
                 if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
-                    bgr565_to_rgb888(rgb_buf, (const uint16_t *)filtered_buf, WIDTH * HEIGHT);
+                    rgb565_to_rgb888(rgb_buf, (const uint16_t *)filtered_buf, WIDTH * HEIGHT);
                     if (save_jpeg(save_path, rgb_buf, WIDTH, HEIGHT))
                         save_flash = 20;  // highlight for 20 frames
                 }
@@ -524,9 +544,9 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            bgr565_to_rgb888(rgb_buf, (const uint16_t *)buf, WIDTH * HEIGHT);
+            rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, WIDTH * HEIGHT);
             apply_gameboy_filter(rgb_buf, WIDTH, HEIGHT, params);
-            rgb888_to_bgr565((uint16_t *)filtered_buf, rgb_buf, WIDTH * HEIGHT);
+            rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, WIDTH * HEIGHT);
             break;
         case 3:
             svcCloseHandle(camReceiveEvent[3]); camReceiveEvent[3] = 0;
@@ -551,7 +571,7 @@ int main(void) {
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf, params, ps_idx, selfie, save_flash > 0);
+        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0);
         C3D_FrameEnd(0);
     }
 
