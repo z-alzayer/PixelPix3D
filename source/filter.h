@@ -21,13 +21,15 @@ extern const PaletteDef palettes[PALETTE_COUNT];
 typedef struct {
     int   pixel_size;    // Block size (1 = off, try 2-8)
     int   color_levels;  // Shades per channel — only used when palette == PALETTE_NONE
-    float contrast;      // 1.0 = neutral, 2.0 = punchy
+    float contrast;      // 1.0 = neutral, >1.0 = brighter/punchier
     float gamma;         // 1.0 = neutral, >1.0 = lift midtones
+    float saturation;    // 1.0 = neutral, 0.0 = greyscale, >1.0 = vivid
     int   palette;       // PALETTE_NONE or 0-(PALETTE_COUNT-1)
 } FilterParams;
 
-#define FILTER_DEFAULTS { .pixel_size = 4, .color_levels = 4, \
-                          .contrast = 1.5f, .gamma = 1.2f, .palette = 0 }
+#define FILTER_DEFAULTS { .pixel_size = 1, .color_levels = 4, \
+                          .contrast = 1.5f, .gamma = 1.2f, \
+                          .saturation = 1.0f, .palette = 0 }
 
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p);
 

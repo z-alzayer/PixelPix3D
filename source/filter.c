@@ -123,6 +123,17 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
         pixels[i*3+2] = adjust_lut[pixels[i*3+2]];
     }
 
+    // Step 1b: Saturation — blend each pixel toward its luminance
+    if (p.saturation != 1.0f) {
+        for (int i = 0; i < width * height; i++) {
+            int r = pixels[i*3+0], g = pixels[i*3+1], b = pixels[i*3+2];
+            int lum = (77 * r + 150 * g + 29 * b) >> 8;
+            pixels[i*3+0] = (uint8_t)(lum + (int)(p.saturation * (r - lum)));
+            pixels[i*3+1] = (uint8_t)(lum + (int)(p.saturation * (g - lum)));
+            pixels[i*3+2] = (uint8_t)(lum + (int)(p.saturation * (b - lum)));
+        }
+    }
+
     if (p.pixel_size <= 1) {
         for (int y = 0; y < height; y++)
             for (int x = 0; x < width; x++) {
