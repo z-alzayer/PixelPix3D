@@ -216,7 +216,7 @@ static void draw_ui(C3D_RenderTarget *bot,
     C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_PXSIZE - 9.0f, 0.5f, sc, sc, CLR_TEXT);
 
     C2D_TextParse(&t, staticBuf, "Palette");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, 202.0f, 0.5f, sc, sc, CLR_DIM);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, 185.0f, 0.5f, sc, sc, CLR_DIM);
 
     // Px size tick labels at 1, 4, 8
     C2D_TextParse(&t, staticBuf, "1");
