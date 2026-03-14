@@ -50,6 +50,33 @@ static void rgb888_to_rgb565(uint16_t *dst, const uint8_t *src, int count) {
 }
 
 // ---------------------------------------------------------------------------
+// Nearest-neighbour upscale RGB888
+// ---------------------------------------------------------------------------
+
+#define SAVE_SCALE  2   // change to 3 for 1200x720
+
+// Static buffer: SAVE_SCALE^2 * 400 * 240 * 3 bytes
+static uint8_t upscale_buf[SAVE_SCALE * WIDTH * SAVE_SCALE * HEIGHT * 3];
+
+static void nn_upscale(uint8_t *dst, const uint8_t *src,
+                       int w, int h, int scale) {
+    int dw = w * scale;
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const uint8_t *sp = src + (y * w + x) * 3;
+            for (int dy = 0; dy < scale; dy++) {
+                for (int dx = 0; dx < scale; dx++) {
+                    uint8_t *dp = dst + ((y * scale + dy) * dw + (x * scale + dx)) * 3;
+                    dp[0] = sp[0];
+                    dp[1] = sp[1];
+                    dp[2] = sp[2];
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Framebuffer blit (BGR565 image -> column-major BGR8 top framebuffer)
 // ---------------------------------------------------------------------------
 
@@ -512,7 +539,8 @@ int main(void) {
                 char save_path[64];
                 if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
                     rgb565_to_rgb888(rgb_buf, (const uint16_t *)filtered_buf, WIDTH * HEIGHT);
-                    if (save_jpeg(save_path, rgb_buf, WIDTH, HEIGHT))
+                    nn_upscale(upscale_buf, rgb_buf, WIDTH, HEIGHT, SAVE_SCALE);
+                    if (save_jpeg(save_path, upscale_buf, WIDTH * SAVE_SCALE, HEIGHT * SAVE_SCALE))
                         save_flash = 20;  // highlight for 20 frames
                 }
             }
