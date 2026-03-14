@@ -1,0 +1,9 @@
+build/
+*.elf
+*.3dsx
+*.smdh
+*.lst
+*.o
+*.d
+test_image
+filter/
