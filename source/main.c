@@ -59,9 +59,9 @@ static void writePictureToFramebufferRGB565(void *fb, void *img,
         for (int i = 0; i < w; i++) {
             u32 v    = (y + h - j + (x + i) * h) * 3;
             u16 data = img_16[j * w + i];
-            fb_8[v+0] =  (data        & 0x1F) << 3;  // R
+            fb_8[v+0] = ((data >> 11) & 0x1F) << 3;  // B (framebuffer is BGR8)
             fb_8[v+1] = ((data >>  5) & 0x3F) << 2;  // G
-            fb_8[v+2] = ((data >> 11) & 0x1F) << 3;  // B
+            fb_8[v+2] =  (data        & 0x1F) << 3;  // R
         }
     }
 }
