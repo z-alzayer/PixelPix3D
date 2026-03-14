@@ -44,20 +44,26 @@ const PaletteDef palettes[PALETTE_COUNT] = {
 // of one per pixel. Critical for real-time performance on the 3DS ARM11.
 
 static uint8_t  adjust_lut[256];
-static float    lut_gamma    = -1.0f;
-static float    lut_contrast = -1.0f;
+static float    lut_gamma      = -1.0f;
+static float    lut_brightness = -1.0f;
+static float    lut_contrast   = -1.0f;
 
-static void rebuild_lut(float gamma, float contrast) {
-    if (gamma == lut_gamma && contrast == lut_contrast) return;
+static void rebuild_lut(float gamma, float brightness, float contrast) {
+    if (gamma == lut_gamma && brightness == lut_brightness && contrast == lut_contrast) return;
     for (int i = 0; i < 256; i++) {
+        // 1. Gamma: power curve — >1.0 lifts shadows/midtones
         float f = powf(i / 255.0f, 1.0f / gamma) * 255.0f;
+        // 2. Brightness: simple exposure multiplier — >1.0 = brighter
+        f = f * brightness;
+        // 3. Contrast: pivot around mid-grey — >1.0 = more contrast
         f = (f - 128.0f) * contrast + 128.0f;
         if (f < 0.0f)   f = 0.0f;
         if (f > 255.0f) f = 255.0f;
         adjust_lut[i] = (uint8_t)f;
     }
-    lut_gamma    = gamma;
-    lut_contrast = contrast;
+    lut_gamma      = gamma;
+    lut_brightness = brightness;
+    lut_contrast   = contrast;
 }
 
 // --- Bayer matrix -----------------------------------------------------------
@@ -114,7 +120,7 @@ static void dither_pixel(uint8_t *r, uint8_t *g, uint8_t *b,
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p) {
 
     // Rebuild LUT only when gamma/contrast change — 256 powf calls max
-    rebuild_lut(p.gamma, p.contrast);
+    rebuild_lut(p.gamma, p.brightness, p.contrast);
 
     // Step 1: Gamma + contrast via LUT (one table lookup per channel)
     for (int i = 0; i < width * height; i++) {
@@ -128,9 +134,15 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
         for (int i = 0; i < width * height; i++) {
             int r = pixels[i*3+0], g = pixels[i*3+1], b = pixels[i*3+2];
             int lum = (77 * r + 150 * g + 29 * b) >> 8;
-            pixels[i*3+0] = (uint8_t)(lum + (int)(p.saturation * (r - lum)));
-            pixels[i*3+1] = (uint8_t)(lum + (int)(p.saturation * (g - lum)));
-            pixels[i*3+2] = (uint8_t)(lum + (int)(p.saturation * (b - lum)));
+            int nr = lum + (int)(p.saturation * (r - lum));
+            int ng = lum + (int)(p.saturation * (g - lum));
+            int nb = lum + (int)(p.saturation * (b - lum));
+            if (nr < 0) nr = 0; else if (nr > 255) nr = 255;
+            if (ng < 0) ng = 0; else if (ng > 255) ng = 255;
+            if (nb < 0) nb = 0; else if (nb > 255) nb = 255;
+            pixels[i*3+0] = (uint8_t)nr;
+            pixels[i*3+1] = (uint8_t)ng;
+            pixels[i*3+2] = (uint8_t)nb;
         }
     }
 
