@@ -65,6 +65,8 @@ static void writePictureToFramebufferRGB565(void *fb, void *img,
 // HUD
 // ---------------------------------------------------------------------------
 
+static bool hud_selfie = false;
+
 static void print_params(FilterParams p) {
     printf("\x1b[1;1H");
     printf(" GameBoy Camera\n");
@@ -74,9 +76,11 @@ static void print_params(FilterParams p) {
     else
         printf(" Palette: colour (%d lvl)   \n", p.color_levels);
     printf(" Px size: %d    \n", p.pixel_size);
+    printf(" Camera:  %s    \n", hud_selfie ? "selfie" : "outer");
     printf("\n");
     printf(" L/R  palette\n");
     printf(" U/D  px size\n");
+    printf(" Y    camera\n");
     printf(" A    save\n");
     printf(" START exit\n");
 }
@@ -107,13 +111,17 @@ int main(void) {
     if (setjmp(exitJmp)) { cleanup(); return 0; }
 
     // Camera init
-    printf("camInit: 0x%08X\n",          (unsigned int)camInit());
-    printf("SetSize: 0x%08X\n",          (unsigned int)CAMU_SetSize(SELECT_OUT1_OUT2, SIZE_CTR_TOP_LCD, CONTEXT_A));
-    printf("SetOutputFormat: 0x%08X\n",  (unsigned int)CAMU_SetOutputFormat(SELECT_OUT1_OUT2, OUTPUT_RGB_565, CONTEXT_A));
-    printf("SetFrameRate: 0x%08X\n",     (unsigned int)CAMU_SetFrameRate(SELECT_OUT1_OUT2, FRAME_RATE_30));
-    printf("SetNoiseFilter: 0x%08X\n",   (unsigned int)CAMU_SetNoiseFilter(SELECT_OUT1_OUT2, true));
-    printf("SetAutoExposure: 0x%08X\n",  (unsigned int)CAMU_SetAutoExposure(SELECT_OUT1_OUT2, true));
-    printf("SetAutoWB: 0x%08X\n",        (unsigned int)CAMU_SetAutoWhiteBalance(SELECT_OUT1_OUT2, true));
+    // camSelect: SELECT_OUT1_OUT2 = dual outer, SELECT_IN1_OUT2 = selfie + right outer
+    u32 camSelect = SELECT_OUT1_OUT2;
+    bool selfie = false;
+
+    printf("camInit: 0x%08X\n", (unsigned int)camInit());
+    CAMU_SetSize(camSelect, SIZE_CTR_TOP_LCD, CONTEXT_A);
+    CAMU_SetOutputFormat(camSelect, OUTPUT_RGB_565, CONTEXT_A);
+    CAMU_SetFrameRate(camSelect, FRAME_RATE_30);
+    CAMU_SetNoiseFilter(camSelect, true);
+    CAMU_SetAutoExposure(camSelect, true);
+    CAMU_SetAutoWhiteBalance(camSelect, true);
     CAMU_SetTrimming(PORT_CAM1, false);
     CAMU_SetTrimming(PORT_CAM2, false);
 
@@ -186,6 +194,42 @@ int main(void) {
             // Pixel size up/down
             if (kDown & KEY_DUP   && ps_idx < 3) { params.pixel_size = pixel_sizes[++ps_idx]; print_params(params); }
             if (kDown & KEY_DDOWN && ps_idx > 0) { params.pixel_size = pixel_sizes[--ps_idx]; print_params(params); }
+
+            // Y: toggle outer/selfie camera
+            if (kDown & KEY_Y) {
+                // Tear down current capture
+                CAMU_StopCapture(PORT_BOTH);
+                for (int i = 0; i < 4; i++) {
+                    if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
+                }
+                CAMU_Activate(SELECT_NONE);
+
+                selfie = !selfie;
+                hud_selfie = selfie;
+                camSelect = selfie ? SELECT_IN1_OUT2 : SELECT_OUT1_OUT2;
+
+                CAMU_SetSize(camSelect, SIZE_CTR_TOP_LCD, CONTEXT_A);
+                CAMU_SetOutputFormat(camSelect, OUTPUT_RGB_565, CONTEXT_A);
+                CAMU_SetFrameRate(camSelect, FRAME_RATE_30);
+                CAMU_SetNoiseFilter(camSelect, true);
+                CAMU_SetAutoExposure(camSelect, true);
+                CAMU_SetAutoWhiteBalance(camSelect, true);
+                CAMU_SetTrimming(PORT_CAM1, false);
+                CAMU_SetTrimming(PORT_CAM2, false);
+
+                CAMU_GetMaxBytes(&bufSize, WIDTH, HEIGHT);
+                CAMU_SetTransferBytes(PORT_BOTH, bufSize, WIDTH, HEIGHT);
+                CAMU_Activate(camSelect);
+
+                CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
+                CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
+                CAMU_ClearBuffer(PORT_BOTH);
+                // Only sync vsync timing when both sensors are outer cameras
+                if (!selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+                CAMU_StartCapture(PORT_BOTH);
+                captureInterrupted = false;
+                print_params(params);
+            }
 
             // Save
             if (kDown & KEY_A) {
