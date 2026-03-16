@@ -209,9 +209,19 @@ static void draw_snap_slider(int px_val) {
 static void draw_ui(C3D_RenderTarget *bot,
                     C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     FilterParams p, bool selfie,
-                    bool save_flash) {
+                    bool save_flash, bool warn3d) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
+
+    if (warn3d) {
+        C2D_Text t;
+        C2D_TextBufClear(staticBuf);
+        C2D_TextParse(&t, staticBuf, "3D slider not supported");
+        C2D_DrawText(&t, C2D_WithColor, 34.0f, 108.0f, 0.5f, 0.55f, 0.55f, C2D_Color32(220, 80, 80, 255));
+        C2D_TextParse(&t, staticBuf, "Please set slider to 0");
+        C2D_DrawText(&t, C2D_WithColor, 38.0f, 128.0f, 0.5f, 0.48f, 0.48f, C2D_Color32(180, 60, 60, 255));
+        return;
+    }
 
     // Title bar divider
     C2D_DrawRectSolid(0, 29, 0.5f, BOT_W, 1, CLR_DIVIDER);
@@ -444,8 +454,8 @@ int main(void) {
 
     // Buffers
     u8 *buf = malloc(BUF_SIZE);
-    u8 *filtered_buf = malloc(SCREEN_SIZE);
-    u8 *rgb_buf      = malloc(WIDTH * HEIGHT * 3);
+    u8 *filtered_buf  = malloc(SCREEN_SIZE);
+    u8 *rgb_buf       = malloc(WIDTH * HEIGHT * 3);
     if (!buf || !filtered_buf || !rgb_buf) longjmp(exitJmp, 1);
     memset(filtered_buf, 0, SCREEN_SIZE);
 
@@ -548,7 +558,8 @@ int main(void) {
 
         if (save_flash > 0) save_flash--;
 
-        // Queue camera receive
+        // Queue camera receive — only CAM1 used
+        bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
         if (camReceiveEvent[2] == 0)
             CAMU_SetReceiving(&camReceiveEvent[2], buf,               PORT_CAM1, SCREEN_SIZE, (s16)bufSize);
         if (camReceiveEvent[3] == 0)
@@ -572,9 +583,11 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, WIDTH * HEIGHT);
-            apply_gameboy_filter(rgb_buf, WIDTH, HEIGHT, params);
-            rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, WIDTH * HEIGHT);
+            if (!use3d) {
+                rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, WIDTH * HEIGHT);
+                apply_gameboy_filter(rgb_buf, WIDTH, HEIGHT, params);
+                rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, WIDTH * HEIGHT);
+            }
             break;
         case 3:
             svcCloseHandle(camReceiveEvent[3]); camReceiveEvent[3] = 0;
@@ -584,13 +597,17 @@ int main(void) {
         }
 
         // Blit camera frame to top screen raw framebuffer
-        if (CONFIG_3D_SLIDERSTATE > 0.0f) {
-            gfxSet3D(true);
-            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT,  NULL, NULL), filtered_buf,      0, 0, WIDTH, HEIGHT);
-            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL), buf + SCREEN_SIZE, 0, 0, WIDTH, HEIGHT);
+        gfxSet3D(false);
+        if (use3d) {
+            u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+            // Fill top screen with dark red (BGR8: B=0, G=0, R=180)
+            for (int i = 0; i < WIDTH * HEIGHT; i++) {
+                fb[i*3+0] = 0;    // B
+                fb[i*3+1] = 0;    // G
+                fb[i*3+2] = 180;  // R
+            }
         } else {
-            gfxSet3D(false);
-            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT,  NULL, NULL), filtered_buf,      0, 0, WIDTH, HEIGHT);
+            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), filtered_buf, 0, 0, WIDTH, HEIGHT);
         }
 
         // Flush top screen before C3D takes the GPU
@@ -599,7 +616,7 @@ int main(void) {
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0);
+        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d);
         C3D_FrameEnd(0);
     }
 
