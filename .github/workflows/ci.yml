@@ -38,8 +38,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         with:
-          tag_name: build-${{ github.sha }}
-          name: Build ${{ github.sha }}
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
           files: |
             PixelPix3D.3dsx
             PixelPix3D.smdh
