@@ -92,6 +92,11 @@
 #define STOG_X0       195    // left option button X
 #define STOG_X1       260    // right option button X
 
+// Dither-mode 4-button strip
+#define SDITH_W        30    // each button width
+#define SDITH_GAP       2    // gap between buttons
+#define SDITH_X0      188    // x of first button
+
 // Settings row Y centres
 #define SROW_SAVE_SCALE   55
 #define SROW_DITHER       90

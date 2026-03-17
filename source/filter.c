@@ -169,6 +169,140 @@ static void dither_pixel(uint8_t *r, uint8_t *g, uint8_t *b,
     }
 }
 
+// --- Cluster ordered dithering (2x2 void-and-cluster feel) -----------------
+// Uses a different 4x4 ordered matrix that groups dots into clusters,
+// giving a chunkier, more halftone-like look vs. the dispersed Bayer pattern.
+
+static const uint8_t cluster4[4][4] = {
+    { 12,  5,  6, 13 },
+    {  4,  0,  1,  7 },
+    { 11,  3,  2,  8 },
+    { 15, 10,  9, 14 }
+};
+
+static uint8_t cluster_channel(uint8_t v, int x, int y, int levels) {
+    int step      = 255 / (levels - 1);
+    int threshold = (cluster4[y & 3][x & 3] * step / 15) - (step / 2);
+    int adjusted  = (int)v + threshold;
+    if (adjusted < 0)   adjusted = 0;
+    if (adjusted > 255) adjusted = 255;
+    int level = (adjusted * (levels - 1) + 127) / 255;
+    if (level >= levels) level = levels - 1;
+    return (uint8_t)(level * 255 / (levels - 1));
+}
+
+static void cluster_to_palette(uint8_t *r, uint8_t *g, uint8_t *b,
+                                int x, int y, const PaletteDef *pal) {
+    int gray   = (77 * (int)*r + 150 * (int)*g + 29 * (int)*b) >> 8;
+    int levels = pal->size;
+    int step   = 255 / (levels - 1);
+    int thresh = (cluster4[y & 3][x & 3] * step / 15) - (step / 2);
+    int adj    = gray + thresh;
+    if (adj < 0)   adj = 0;
+    if (adj > 255) adj = 255;
+    int level  = (adj * (levels - 1) + 127) / 255;
+    if (level >= levels) level = levels - 1;
+    *r = pal->colors[level][0];
+    *g = pal->colors[level][1];
+    *b = pal->colors[level][2];
+}
+
+static void cluster_pixel(uint8_t *r, uint8_t *g, uint8_t *b,
+                          int x, int y, const FilterParams *p) {
+    if (p->palette >= 0 && p->palette < PALETTE_COUNT)
+        cluster_to_palette(r, g, b, x, y, &filter_get_active_palettes()[p->palette]);
+    else {
+        *r = cluster_channel(*r, x, y, p->color_levels);
+        *g = cluster_channel(*g, x, y, p->color_levels);
+        *b = cluster_channel(*b, x, y, p->color_levels);
+    }
+}
+
+// --- Shared error-diffusion quantise helper ---------------------------------
+
+static void quant_pixel(int r, int g, int b, const FilterParams *p,
+                        uint8_t *qr, uint8_t *qg, uint8_t *qb) {
+    if (p->palette >= 0 && p->palette < PALETTE_COUNT) {
+        int gray   = (77 * r + 150 * g + 29 * b) >> 8;
+        const PaletteDef *ap = filter_get_active_palettes();
+        int levels = ap[p->palette].size;
+        int level  = (gray * (levels - 1) + 127) / 255;
+        if (level < 0)       level = 0;
+        if (level >= levels) level = levels - 1;
+        *qr = ap[p->palette].colors[level][0];
+        *qg = ap[p->palette].colors[level][1];
+        *qb = ap[p->palette].colors[level][2];
+    } else {
+        int levels = p->color_levels;
+        int lr = (r * (levels - 1) + 127) / 255;
+        int lg = (g * (levels - 1) + 127) / 255;
+        int lb = (b * (levels - 1) + 127) / 255;
+        if (lr >= levels) lr = levels - 1;
+        if (lg >= levels) lg = levels - 1;
+        if (lb >= levels) lb = levels - 1;
+        *qr = (uint8_t)(lr * 255 / (levels - 1));
+        *qg = (uint8_t)(lg * 255 / (levels - 1));
+        *qb = (uint8_t)(lb * 255 / (levels - 1));
+    }
+}
+
+// --- Atkinson dithering -----------------------------------------------------
+// Only propagates 6/8 of the error (1/8 per neighbour, 6 neighbours).
+// The "lost" 2/8 reduces smearing and gives crisper results than FS.
+// Kernel (from current pixel *):
+//   . * 1 1
+//   1 1 1 .
+//   . 1 . .   (each weight = err/8)
+
+void atkinson_dither(uint8_t *pixels, int width, int height,
+                     const FilterParams *p) {
+    int npix = width * height;
+    for (int i = 0; i < npix * 3; i++) fs_err[i] = 0;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = (y * width + x) * 3;
+
+            int r = (int)pixels[idx+0] + (int)fs_err[idx+0];
+            int g = (int)pixels[idx+1] + (int)fs_err[idx+1];
+            int b = (int)pixels[idx+2] + (int)fs_err[idx+2];
+            if (r < 0) r = 0; else if (r > 255) r = 255;
+            if (g < 0) g = 0; else if (g > 255) g = 255;
+            if (b < 0) b = 0; else if (b > 255) b = 255;
+
+            uint8_t qr, qg, qb;
+            quant_pixel(r, g, b, p, &qr, &qg, &qb);
+
+            int er = (r - (int)qr) / 8;
+            int eg = (g - (int)qg) / 8;
+            int eb = (b - (int)qb) / 8;
+
+            pixels[idx+0] = qr;
+            pixels[idx+1] = qg;
+            pixels[idx+2] = qb;
+
+#define ATK_ADD(ox, oy) \
+    do { \
+        int nx = x + (ox), ny = y + (oy); \
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) { \
+            int ni = (ny * width + nx) * 3; \
+            fs_err[ni+0] += (int16_t)er; \
+            fs_err[ni+1] += (int16_t)eg; \
+            fs_err[ni+2] += (int16_t)eb; \
+        } \
+    } while(0)
+
+            ATK_ADD( 1, 0);
+            ATK_ADD( 2, 0);
+            ATK_ADD(-1, 1);
+            ATK_ADD( 0, 1);
+            ATK_ADD( 1, 1);
+            ATK_ADD( 0, 2);
+#undef ATK_ADD
+        }
+    }
+}
+
 // --- Floyd-Steinberg dithering ----------------------------------------------
 
 void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
@@ -189,35 +323,10 @@ void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
             if (b < 0) b = 0; else if (b > 255) b = 255;
 
             uint8_t qr, qg, qb;
-            int er, eg, eb;
-
-            if (p->palette >= 0 && p->palette < PALETTE_COUNT) {
-                // Palette mode: quantise to nearest palette entry via luminance
-                int gray   = (77 * r + 150 * g + 29 * b) >> 8;
-                const PaletteDef *ap = filter_get_active_palettes();
-                int levels = ap[p->palette].size;
-                int level  = (gray * (levels - 1) + 127) / 255;
-                if (level < 0)       level = 0;
-                if (level >= levels) level = levels - 1;
-                qr = ap[p->palette].colors[level][0];
-                qg = ap[p->palette].colors[level][1];
-                qb = ap[p->palette].colors[level][2];
-            } else {
-                // Greyscale levels mode: quantise each channel independently
-                int levels = p->color_levels;
-                int lr = (r * (levels - 1) + 127) / 255;
-                int lg = (g * (levels - 1) + 127) / 255;
-                int lb = (b * (levels - 1) + 127) / 255;
-                if (lr >= levels) lr = levels - 1;
-                if (lg >= levels) lg = levels - 1;
-                if (lb >= levels) lb = levels - 1;
-                qr = (uint8_t)(lr * 255 / (levels - 1));
-                qg = (uint8_t)(lg * 255 / (levels - 1));
-                qb = (uint8_t)(lb * 255 / (levels - 1));
-            }
-            er = r - (int)qr;
-            eg = g - (int)qg;
-            eb = b - (int)qb;
+            quant_pixel(r, g, b, p, &qr, &qg, &qb);
+            int er = r - (int)qr;
+            int eg = g - (int)qg;
+            int eb = b - (int)qb;
 
             pixels[idx+0] = qr;
             pixels[idx+1] = qg;
@@ -296,13 +405,18 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
     }
 
     if (p.pixel_size <= 1) {
-        if (p.dither_mode == 1) {
+        if (p.dither_mode == 3) {
             floyd_steinberg_dither(pixels, width, height, &p);
+        } else if (p.dither_mode == 2) {
+            atkinson_dither(pixels, width, height, &p);
         } else {
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++) {
                     int i = (y * width + x) * 3;
-                    dither_pixel(&pixels[i+0], &pixels[i+1], &pixels[i+2], x, y, &p);
+                    if (p.dither_mode == 1)
+                        cluster_pixel(&pixels[i+0], &pixels[i+1], &pixels[i+2], x, y, &p);
+                    else
+                        dither_pixel(&pixels[i+0], &pixels[i+1], &pixels[i+2], x, y, &p);
                 }
         }
         return;
@@ -334,13 +448,18 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
     }
 
     // Step 3: Dither the small buffer
-    if (p.dither_mode == 1) {
+    if (p.dither_mode == 3) {
         floyd_steinberg_dither(small, sw, sh, &p);
+    } else if (p.dither_mode == 2) {
+        atkinson_dither(small, sw, sh, &p);
     } else {
         for (int y = 0; y < sh; y++)
             for (int x = 0; x < sw; x++) {
                 int i = (y * sw + x) * 3;
-                dither_pixel(&small[i+0], &small[i+1], &small[i+2], x, y, &p);
+                if (p.dither_mode == 1)
+                    cluster_pixel(&small[i+0], &small[i+1], &small[i+2], x, y, &p);
+                else
+                    dither_pixel(&small[i+0], &small[i+1], &small[i+2], x, y, &p);
             }
     }
 
