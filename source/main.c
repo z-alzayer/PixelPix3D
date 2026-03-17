@@ -235,6 +235,9 @@ int main(void) {
         if (save_flash > 0) save_flash--;
         if (settings_flash > 0) settings_flash--;
 
+        // Hold SELECT to bypass the filter and preview the raw camera feed
+        bool comparing = (kHeld & KEY_SELECT) != 0;
+
         // Always drain both camera ports to prevent buffer error interrupts
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
         if (camReceiveEvent[2] == 0)
@@ -260,7 +263,7 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            if (!use3d) {
+            if (!use3d && !comparing) {
                 rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                 apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, params);
                 rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
@@ -283,8 +286,9 @@ int main(void) {
                 fb[i*3+2] = 180;  // R
             }
         } else {
+            void *blit_src = comparing ? buf : filtered_buf;
             writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                            filtered_buf, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+                                            blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
         }
 
         // Flush top screen before C3D takes the GPU
@@ -297,7 +301,7 @@ int main(void) {
                 active_tab, save_scale, settings_flash > 0,
                 settings_row,
                 user_palettes, palette_sel_pal, palette_sel_color,
-                &ranges);
+                &ranges, comparing);
         C3D_FrameEnd(0);
     }
 
