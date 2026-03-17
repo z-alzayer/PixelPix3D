@@ -1,0 +1,22 @@
+BasicInfo:
+    Title           : "PixelPix3D"
+    CompanyCode     : "00"
+    ProductCode     : "CTR-P-PPX3"
+    ContentType     : Application
+    Logo            : Nintendo
+
+TitleInfo:
+    UniqueId        : 0xF8000
+    Category        : Application
+
+Option:
+    UseOnSD         : true
+    EnableCompress  : true
+    FreeProductCode : true
+    EnableCrypt     : false
+    MediaFootPadding: false
+
+SystemControlInfo:
+    SaveDataSize    : 0KB
+    RemasterVersion : 0000
+    StackSize       : 0x00004000

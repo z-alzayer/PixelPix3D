@@ -50,7 +50,7 @@ CFLAGS	:=	-g -Wall -O2 -mword-relocations \
 			-ffunction-sections \
 			$(ARCH)
 
-CFLAGS	+=	$(INCLUDE) -D__3DS__
+CFLAGS	+=	$(INCLUDE) -I$(TOPDIR)/filter -D__3DS__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
 
@@ -180,7 +180,7 @@ endif
 #---------------------------------------------------------------------------------
 cia: all
 	@echo building CIA ...
-	$(CURDIR)/makerom -f cia -o $(TARGET).cia -rsf $(CURDIR)/$(TARGET).rsf -target t -elf $(TARGET).elf -icon $(TARGET).smdh -desc app:4
+	$(or $(shell which makerom 2>/dev/null),$(CURDIR)/makerom) -f cia -o $(TARGET).cia -rsf $(CURDIR)/$(TARGET).rsf -target t -elf $(TARGET).elf -icon $(TARGET).smdh -desc app:4
 
 #---------------------------------------------------------------------------------
 clean:
