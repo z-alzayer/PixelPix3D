@@ -61,4 +61,12 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
 void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
                             const FilterParams *p);
 
+// --- Colour space conversions -----------------------------------------------
+
+// rgb_to_hsv: r/g/b in [0,255] → h in [0,360), s in [0,1], v in [0,1]
+void rgb_to_hsv(uint8_t r, uint8_t g, uint8_t b, float *h, float *s, float *v);
+
+// hsv_to_rgb: h in [0,360), s in [0,1], v in [0,1] → r/g/b in [0,255]
+void hsv_to_rgb(float h, float s, float v, uint8_t *r, uint8_t *g, uint8_t *b);
+
 #endif
