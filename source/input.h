@@ -19,6 +19,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   int *active_tab, int *save_scale,
                   FilterParams *default_params,
+                  FilterRanges *ranges,
                   PaletteDef *user_palettes,
                   int *palette_sel_pal, int *palette_sel_color);
 

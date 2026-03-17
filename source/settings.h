@@ -21,4 +21,11 @@ void settings_save_palettes(const PaletteDef *user_palettes);
 // Silently skips missing or out-of-bounds keys.
 void settings_load_palettes(PaletteDef *user_palettes);
 
+// Appends bright_min/max/def etc. lines to SETTINGS_PATH (call after settings_save).
+void settings_save_ranges(const FilterRanges *r);
+
+// Loads range overrides from SETTINGS_PATH into *r.
+// Silently skips missing keys; enforces min <= def <= max after loading.
+void settings_load_ranges(FilterRanges *r);
+
 #endif
