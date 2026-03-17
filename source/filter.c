@@ -7,6 +7,10 @@
 #define SMALL_BUF_MAX (200 * 120 * 3)
 static uint8_t small_buf[SMALL_BUF_MAX];
 
+// Floyd-Steinberg error diffusion scratch buffer.
+// int16_t per channel, sized for the full 400x240 image (~563 KB in BSS).
+static int16_t fs_err[400 * 240 * 3];
+
 // --- Palette data -----------------------------------------------------------
 
 const PaletteDef palettes[PALETTE_COUNT] = {
@@ -115,6 +119,91 @@ static void dither_pixel(uint8_t *r, uint8_t *g, uint8_t *b,
     }
 }
 
+// --- Floyd-Steinberg dithering ----------------------------------------------
+
+void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
+                            const FilterParams *p) {
+    int npix = width * height;
+    for (int i = 0; i < npix * 3; i++) fs_err[i] = 0;
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = (y * width + x) * 3;
+
+            // Add accumulated error, clamp to [0,255]
+            int r = (int)pixels[idx+0] + (int)fs_err[idx+0];
+            int g = (int)pixels[idx+1] + (int)fs_err[idx+1];
+            int b = (int)pixels[idx+2] + (int)fs_err[idx+2];
+            if (r < 0) r = 0; else if (r > 255) r = 255;
+            if (g < 0) g = 0; else if (g > 255) g = 255;
+            if (b < 0) b = 0; else if (b > 255) b = 255;
+
+            uint8_t qr, qg, qb;
+            int er, eg, eb;
+
+            if (p->palette >= 0 && p->palette < PALETTE_COUNT) {
+                // Palette mode: quantise to nearest palette entry via luminance
+                int gray   = (77 * r + 150 * g + 29 * b) >> 8;
+                int levels = palettes[p->palette].size;
+                int level  = (gray * (levels - 1) + 127) / 255;
+                if (level < 0)       level = 0;
+                if (level >= levels) level = levels - 1;
+                qr = palettes[p->palette].colors[level][0];
+                qg = palettes[p->palette].colors[level][1];
+                qb = palettes[p->palette].colors[level][2];
+            } else {
+                // Greyscale levels mode: quantise each channel independently
+                int levels = p->color_levels;
+                int lr = (r * (levels - 1) + 127) / 255;
+                int lg = (g * (levels - 1) + 127) / 255;
+                int lb = (b * (levels - 1) + 127) / 255;
+                if (lr >= levels) lr = levels - 1;
+                if (lg >= levels) lg = levels - 1;
+                if (lb >= levels) lb = levels - 1;
+                qr = (uint8_t)(lr * 255 / (levels - 1));
+                qg = (uint8_t)(lg * 255 / (levels - 1));
+                qb = (uint8_t)(lb * 255 / (levels - 1));
+            }
+            er = r - (int)qr;
+            eg = g - (int)qg;
+            eb = b - (int)qb;
+
+            pixels[idx+0] = qr;
+            pixels[idx+1] = qg;
+            pixels[idx+2] = qb;
+
+            // Distribute error: right (7/16)
+            if (x + 1 < width) {
+                int ri = idx + 3;
+                fs_err[ri+0] += (int16_t)(er * 7 / 16);
+                fs_err[ri+1] += (int16_t)(eg * 7 / 16);
+                fs_err[ri+2] += (int16_t)(eb * 7 / 16);
+            }
+            // Distribute error: down-left (3/16)
+            if (y + 1 < height && x > 0) {
+                int di = ((y+1) * width + (x-1)) * 3;
+                fs_err[di+0] += (int16_t)(er * 3 / 16);
+                fs_err[di+1] += (int16_t)(eg * 3 / 16);
+                fs_err[di+2] += (int16_t)(eb * 3 / 16);
+            }
+            // Distribute error: down (5/16)
+            if (y + 1 < height) {
+                int di = ((y+1) * width + x) * 3;
+                fs_err[di+0] += (int16_t)(er * 5 / 16);
+                fs_err[di+1] += (int16_t)(eg * 5 / 16);
+                fs_err[di+2] += (int16_t)(eb * 5 / 16);
+            }
+            // Distribute error: down-right (1/16)
+            if (y + 1 < height && x + 1 < width) {
+                int di = ((y+1) * width + (x+1)) * 3;
+                fs_err[di+0] += (int16_t)(er * 1 / 16);
+                fs_err[di+1] += (int16_t)(eg * 1 / 16);
+                fs_err[di+2] += (int16_t)(eb * 1 / 16);
+            }
+        }
+    }
+}
+
 // --- Main pipeline ----------------------------------------------------------
 
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p) {
@@ -146,12 +235,25 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
         }
     }
 
+    // Step 1c: Invert — 255-v per channel before dithering
+    if (p.invert) {
+        for (int i = 0; i < width * height; i++) {
+            pixels[i*3+0] = 255 - pixels[i*3+0];
+            pixels[i*3+1] = 255 - pixels[i*3+1];
+            pixels[i*3+2] = 255 - pixels[i*3+2];
+        }
+    }
+
     if (p.pixel_size <= 1) {
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++) {
-                int i = (y * width + x) * 3;
-                dither_pixel(&pixels[i+0], &pixels[i+1], &pixels[i+2], x, y, &p);
-            }
+        if (p.dither_mode == 1) {
+            floyd_steinberg_dither(pixels, width, height, &p);
+        } else {
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++) {
+                    int i = (y * width + x) * 3;
+                    dither_pixel(&pixels[i+0], &pixels[i+1], &pixels[i+2], x, y, &p);
+                }
+        }
         return;
     }
 
@@ -181,11 +283,15 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
     }
 
     // Step 3: Dither the small buffer
-    for (int y = 0; y < sh; y++)
-        for (int x = 0; x < sw; x++) {
-            int i = (y * sw + x) * 3;
-            dither_pixel(&small[i+0], &small[i+1], &small[i+2], x, y, &p);
-        }
+    if (p.dither_mode == 1) {
+        floyd_steinberg_dither(small, sw, sh, &p);
+    } else {
+        for (int y = 0; y < sh; y++)
+            for (int x = 0; x < sw; x++) {
+                int i = (y * sw + x) * 3;
+                dither_pixel(&small[i+0], &small[i+1], &small[i+2], x, y, &p);
+            }
+    }
 
     // Step 4: Nearest-neighbour upscale — each small pixel fills a solid block
     for (int y = 0; y < height; y++)
