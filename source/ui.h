@@ -175,6 +175,7 @@ void draw_ui(C3D_RenderTarget *bot,
              int settings_row,
              const PaletteDef *user_palettes,
              int palette_sel_pal, int palette_sel_color,
-             const FilterRanges *ranges);
+             const FilterRanges *ranges,
+             bool comparing);
 
 #endif
