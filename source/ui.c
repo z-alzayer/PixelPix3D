@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "filter.h"
 #include <string.h>
 
 // ---------------------------------------------------------------------------
@@ -284,7 +285,7 @@ static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                               int palette_sel_pal, int palette_sel_color) {
     float sc = 0.40f;
     C2D_Text t;
-    char buf[8];
+    (void)dynBuf;
 
     // --- Palette selector strip (y=31..64) ---
     const char *short_names[PALETTE_COUNT] = {"GB","Gray","GBC","Shell","GBA","DB"};
@@ -321,33 +322,59 @@ static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 
     C2D_DrawRectSolid(0, PALTAB_SWATCH_Y + PALTAB_SWATCH_H + 2, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
-    // --- RGB sliders for selected colour ---
-    uint8_t cr = pal->colors[palette_sel_color][0];
-    uint8_t cg = pal->colors[palette_sel_color][1];
-    uint8_t cb = pal->colors[palette_sel_color][2];
+    // --- 2D Hue-Saturation picker + Value strip ---
+    {
+        uint8_t cr = pal->colors[palette_sel_color][0];
+        uint8_t cg = pal->colors[palette_sel_color][1];
+        uint8_t cb = pal->colors[palette_sel_color][2];
+        float cur_h, cur_s, cur_v;
+        rgb_to_hsv(cr, cg, cb, &cur_h, &cur_s, &cur_v);
 
-    C2D_TextBufClear(dynBuf);
+        // HS grid: 32 hue columns x 4 saturation rows
+        #define HS_COLS 32
+        #define HS_ROWS  4
+        float cw = (float)PALTAB_HS_W / HS_COLS;
+        float ch = (float)PALTAB_HS_H / HS_ROWS;
+        for (int col = 0; col < HS_COLS; col++) {
+            float hue = (col + 0.5f) / HS_COLS * 360.0f;
+            for (int row = 0; row < HS_ROWS; row++) {
+                float sat = 1.0f - (float)row / (HS_ROWS - 1);
+                uint8_t pr, pg, pb;
+                hsv_to_rgb(hue, sat, 1.0f, &pr, &pg, &pb);
+                C2D_DrawRectSolid(
+                    PALTAB_HS_X + col * cw, PALTAB_HS_Y + row * ch, 0.5f,
+                    cw + 0.5f, ch + 0.5f,
+                    C2D_Color32(pr, pg, pb, 255));
+            }
+        }
 
-    C2D_TextParse(&t, staticBuf, "R");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_R - 9.0f, 0.5f, sc, sc, CLR_TEXT);
-    draw_slider(0, PALTAB_ROW_R, 0.0f, 255.0f, (float)cr);
-    snprintf(buf, sizeof(buf), "%d", cr);
-    C2D_TextParse(&t, dynBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_R - 9.0f, 0.5f, sc, sc, CLR_DIM);
+        // Crosshair at current H/S
+        float cx = PALTAB_HS_X + cur_h / 360.0f * PALTAB_HS_W;
+        float cy_hs = PALTAB_HS_Y + (1.0f - cur_s) * PALTAB_HS_H;
+        C2D_DrawRectSolid(cx - 0.5f, PALTAB_HS_Y, 0.4f, 1.0f, PALTAB_HS_H, CLR_SWATCH_SEL);
+        C2D_DrawRectSolid(PALTAB_HS_X, cy_hs - 0.5f, 0.4f, PALTAB_HS_W, 1.0f, CLR_SWATCH_SEL);
 
-    C2D_TextParse(&t, staticBuf, "G");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_G - 9.0f, 0.5f, sc, sc, CLR_TEXT);
-    draw_slider(0, PALTAB_ROW_G, 0.0f, 255.0f, (float)cg);
-    snprintf(buf, sizeof(buf), "%d", cg);
-    C2D_TextParse(&t, dynBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_G - 9.0f, 0.5f, sc, sc, CLR_DIM);
+        // Value strip: 32 segments black→full colour
+        #define VAL_SEGS 32
+        float sw = (float)PALTAB_VAL_W / VAL_SEGS;
+        for (int i = 0; i < VAL_SEGS; i++) {
+            float val = (float)i / (VAL_SEGS - 1);
+            uint8_t vr, vg, vb;
+            hsv_to_rgb(cur_h, cur_s, val, &vr, &vg, &vb);
+            C2D_DrawRectSolid(
+                PALTAB_VAL_X + i * sw, PALTAB_VAL_Y, 0.5f,
+                sw + 0.5f, PALTAB_VAL_H,
+                C2D_Color32(vr, vg, vb, 255));
+        }
 
-    C2D_TextParse(&t, staticBuf, "B");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_B - 9.0f, 0.5f, sc, sc, CLR_TEXT);
-    draw_slider(0, PALTAB_ROW_B, 0.0f, 255.0f, (float)cb);
-    snprintf(buf, sizeof(buf), "%d", cb);
-    C2D_TextParse(&t, dynBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_B - 9.0f, 0.5f, sc, sc, CLR_DIM);
+        // Value cursor
+        float vx = PALTAB_VAL_X + cur_v * PALTAB_VAL_W;
+        C2D_DrawRectSolid(vx - 0.5f, PALTAB_VAL_Y, 0.4f, 1.0f, PALTAB_VAL_H, CLR_SWATCH_SEL);
+
+        #undef HS_COLS
+        #undef HS_ROWS
+        #undef VAL_SEGS
+    }
 
     // --- Reset button ---
     C2D_DrawRectSolid(PALTAB_RESET_X, PALTAB_RESET_Y - PALTAB_RESET_H/2, 0.5f,

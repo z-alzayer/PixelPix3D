@@ -117,15 +117,22 @@
 #define PALTAB_SWATCH_H        55
 #define PALTAB_SWATCH_W        36
 
-// RGB slider rows (reuse TRACK_X / TRACK_W)
-#define PALTAB_ROW_R          142
-#define PALTAB_ROW_G          163
-#define PALTAB_ROW_B          184
+// 2D hue-saturation picker rectangle (x:4..315, y:124..205)
+#define PALTAB_HS_X             4
+#define PALTAB_HS_Y           124
+#define PALTAB_HS_W           312
+#define PALTAB_HS_H            82
+
+// Value (brightness) strip (x:4..315, y:207..220)
+#define PALTAB_VAL_X            4
+#define PALTAB_VAL_Y          207
+#define PALTAB_VAL_W          312
+#define PALTAB_VAL_H           14
 
 // Reset button (centred)
-#define PALTAB_RESET_Y        210
+#define PALTAB_RESET_Y        230
 #define PALTAB_RESET_W         80
-#define PALTAB_RESET_H         22
+#define PALTAB_RESET_H         18
 #define PALTAB_RESET_X        ((BOT_W - PALTAB_RESET_W) / 2)
 
 // ---------------------------------------------------------------------------

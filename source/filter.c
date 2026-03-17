@@ -51,6 +51,48 @@ const PaletteDef palettes[PALETTE_COUNT] = {
     }
 };
 
+// --- Colour space conversions -----------------------------------------------
+
+void rgb_to_hsv(uint8_t r, uint8_t g, uint8_t b, float *h, float *s, float *v) {
+    float rf = r / 255.0f, gf = g / 255.0f, bf = b / 255.0f;
+    float mx = rf > gf ? (rf > bf ? rf : bf) : (gf > bf ? gf : bf);
+    float mn = rf < gf ? (rf < bf ? rf : bf) : (gf < bf ? gf : bf);
+    float d  = mx - mn;
+    *v = mx;
+    *s = (mx > 0.0f) ? d / mx : 0.0f;
+    if (d < 1e-6f) { *h = 0.0f; return; }
+    if      (mx == rf) *h = 60.0f * (gf - bf) / d;
+    else if (mx == gf) *h = 60.0f * ((bf - rf) / d + 2.0f);
+    else               *h = 60.0f * ((rf - gf) / d + 4.0f);
+    if (*h < 0.0f) *h += 360.0f;
+}
+
+void hsv_to_rgb(float h, float s, float v, uint8_t *r, uint8_t *g, uint8_t *b) {
+    if (s < 1e-6f) {
+        uint8_t c = (uint8_t)(v * 255.0f + 0.5f);
+        *r = *g = *b = c;
+        return;
+    }
+    float hh = h / 60.0f;
+    int   i  = (int)hh;
+    float f  = hh - i;
+    float p  = v * (1.0f - s);
+    float q  = v * (1.0f - s * f);
+    float t  = v * (1.0f - s * (1.0f - f));
+    float rf, gf, bf;
+    switch (i % 6) {
+        case 0: rf = v; gf = t; bf = p; break;
+        case 1: rf = q; gf = v; bf = p; break;
+        case 2: rf = p; gf = v; bf = t; break;
+        case 3: rf = p; gf = q; bf = v; break;
+        case 4: rf = t; gf = p; bf = v; break;
+        default:rf = v; gf = p; bf = q; break;
+    }
+    *r = (uint8_t)(rf * 255.0f + 0.5f);
+    *g = (uint8_t)(gf * 255.0f + 0.5f);
+    *b = (uint8_t)(bf * 255.0f + 0.5f);
+}
+
 // --- Gamma/contrast lookup table -------------------------------------------
 // Precomputed once per unique (gamma, contrast) pair — 256 powf calls instead
 // of one per pixel. Critical for real-time performance on the 3DS ARM11.
