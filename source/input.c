@@ -10,6 +10,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   int *active_tab, int *save_scale,
                   FilterParams *default_params,
+                  FilterRanges *ranges,
                   PaletteDef *user_palettes,
                   int *palette_sel_pal, int *palette_sel_color) {
     *do_cam_toggle    = false;
@@ -44,13 +45,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
         } else {
-            // Settings/Palette context: Palette sub-tab + Save Defaults
+            // Settings context: Calibrate tab (slot 3) + Palette tab (slot 4)
             if (hit(tx, ty, BTN_CAM_X, BTN_CAM_Y, BTN_CAM_W, BTN_CAM_H)) {
-                *active_tab = (*active_tab == 2) ? 1 : 2;
+                *active_tab = (*active_tab == 3) ? 1 : 3;
                 return true;
             }
             if (hit(tx, ty, BTN_SAVE_X, BTN_SAVE_Y, BTN_SAVE_W, BTN_SAVE_H)) {
-                *do_defaults_save = true;
+                *active_tab = (*active_tab == 2) ? 1 : 2;
                 return true;
             }
         }
@@ -83,22 +84,22 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
 
-        // Continuous sliders (drag)
+        // Continuous sliders (drag) — bounds from calibrated ranges
         if (tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
             if (ty >= ROW_BRIGHT - 13 && ty < ROW_BRIGHT + 13) {
-                p->brightness = touch_x_to_val(tx, 0.0f, 2.0f);
+                p->brightness = touch_x_to_val(tx, ranges->bright_min, ranges->bright_max);
                 return true;
             }
             if (ty >= ROW_CONTRAST - 13 && ty < ROW_CONTRAST + 13) {
-                p->contrast = touch_x_to_val(tx, 0.5f, 2.0f);
+                p->contrast = touch_x_to_val(tx, ranges->contrast_min, ranges->contrast_max);
                 return true;
             }
             if (ty >= ROW_SAT - 13 && ty < ROW_SAT + 13) {
-                p->saturation = touch_x_to_val(tx, 0.0f, 2.0f);
+                p->saturation = touch_x_to_val(tx, ranges->sat_min, ranges->sat_max);
                 return true;
             }
             if (ty >= ROW_GAMMA - 13 && ty < ROW_GAMMA + 13) {
-                p->gamma = touch_x_to_val(tx, 0.5f, 2.0f);
+                p->gamma = touch_x_to_val(tx, ranges->gamma_min, ranges->gamma_max);
                 return true;
             }
         }
@@ -137,6 +138,47 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
 
         // Save as Default — set flag so caller drives the flash and actual save
+        if (hit(tx, ty, SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
+            *do_defaults_save = true;
+            return true;
+        }
+    }
+
+    // --- Calibrate tab inputs ---
+    if (*active_tab == 3 && touched && tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        // Helper: pick closest of three handles (min, def, max) and update it
+        #define CAL_ROW(row_y, abs_mn, abs_mx, fmin, fmax, fdef) \
+            if (ty >= (row_y) - 14 && ty < (row_y) + 14) { \
+                float raw = touch_x_to_val(tx, (abs_mn), (abs_mx)); \
+                float lx = slider_val_to_x((fmin), (abs_mn), (abs_mx)); \
+                float rx = slider_val_to_x((fmax), (abs_mn), (abs_mx)); \
+                float dx = slider_val_to_x((fdef), (abs_mn), (abs_mx)); \
+                float ftx = (float)tx; \
+                float dl = ftx - lx; if (dl < 0) dl = -dl; \
+                float dr = ftx - rx; if (dr < 0) dr = -dr; \
+                float dd = ftx - dx; if (dd < 0) dd = -dd; \
+                if (dl <= dr && dl <= dd) { \
+                    (fmin) = raw; if ((fmin) > (fmax)) (fmin) = (fmax); \
+                    if ((fdef) < (fmin)) (fdef) = (fmin); \
+                } else if (dr <= dl && dr <= dd) { \
+                    (fmax) = raw; if ((fmax) < (fmin)) (fmax) = (fmin); \
+                    if ((fdef) > (fmax)) (fdef) = (fmax); \
+                } else { \
+                    (fdef) = raw; \
+                    if ((fdef) < (fmin)) (fdef) = (fmin); \
+                    if ((fdef) > (fmax)) (fdef) = (fmax); \
+                } \
+                return true; \
+            }
+
+        CAL_ROW(ROW_BRIGHT,   0.0f, 4.0f, ranges->bright_min,   ranges->bright_max,   ranges->bright_def)
+        CAL_ROW(ROW_CONTRAST, 0.1f, 4.0f, ranges->contrast_min, ranges->contrast_max, ranges->contrast_def)
+        CAL_ROW(ROW_SAT,      0.0f, 4.0f, ranges->sat_min,      ranges->sat_max,      ranges->sat_def)
+        CAL_ROW(ROW_GAMMA,    0.1f, 4.0f, ranges->gamma_min,    ranges->gamma_max,    ranges->gamma_def)
+        #undef CAL_ROW
+    }
+    // Save as Default button in Calibrate tab
+    if (*active_tab == 3 && tapped) {
         if (hit(tx, ty, SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
             *do_defaults_save = true;
             return true;
