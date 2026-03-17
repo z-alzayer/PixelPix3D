@@ -216,23 +216,36 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
         }
-        // Drag: RGB sliders for selected colour entry
-        if (touched && tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        // Drag: HS rectangle and Value strip
+        if (touched) {
             PaletteDef *pal = &user_palettes[*palette_sel_pal];
             int ci = *palette_sel_color;
-            if (ty >= PALTAB_ROW_R - 13 && ty < PALTAB_ROW_R + 13) {
-                float v = touch_x_to_val(tx, 0.0f, 255.0f);
-                pal->colors[ci][0] = (uint8_t)(v + 0.5f);
+            float cur_h, cur_s, cur_v;
+            // HS rectangle
+            if (ty >= PALTAB_HS_Y && ty < PALTAB_HS_Y + PALTAB_HS_H) {
+                int cx = tx < PALTAB_HS_X ? PALTAB_HS_X :
+                         (tx > PALTAB_HS_X + PALTAB_HS_W ? PALTAB_HS_X + PALTAB_HS_W : tx);
+                int cy = ty < PALTAB_HS_Y ? PALTAB_HS_Y :
+                         (ty > PALTAB_HS_Y + PALTAB_HS_H ? PALTAB_HS_Y + PALTAB_HS_H : ty);
+                float h = (float)(cx - PALTAB_HS_X) / PALTAB_HS_W * 360.0f;
+                float s = 1.0f - (float)(cy - PALTAB_HS_Y) / PALTAB_HS_H;
+                if (s < 0.0f) s = 0.0f;
+                if (s > 1.0f) s = 1.0f;
+                rgb_to_hsv(pal->colors[ci][0], pal->colors[ci][1], pal->colors[ci][2],
+                           &cur_h, &cur_s, &cur_v);
+                hsv_to_rgb(h, s, cur_v,
+                           &pal->colors[ci][0], &pal->colors[ci][1], &pal->colors[ci][2]);
                 return true;
             }
-            if (ty >= PALTAB_ROW_G - 13 && ty < PALTAB_ROW_G + 13) {
-                float v = touch_x_to_val(tx, 0.0f, 255.0f);
-                pal->colors[ci][1] = (uint8_t)(v + 0.5f);
-                return true;
-            }
-            if (ty >= PALTAB_ROW_B - 13 && ty < PALTAB_ROW_B + 13) {
-                float v = touch_x_to_val(tx, 0.0f, 255.0f);
-                pal->colors[ci][2] = (uint8_t)(v + 0.5f);
+            // Value strip
+            if (ty >= PALTAB_VAL_Y && ty < PALTAB_VAL_Y + PALTAB_VAL_H) {
+                float v = (float)(tx - PALTAB_VAL_X) / PALTAB_VAL_W;
+                if (v < 0.0f) v = 0.0f;
+                if (v > 1.0f) v = 1.0f;
+                rgb_to_hsv(pal->colors[ci][0], pal->colors[ci][1], pal->colors[ci][2],
+                           &cur_h, &cur_s, &cur_v);
+                hsv_to_rgb(cur_h, cur_s, v,
+                           &pal->colors[ci][0], &pal->colors[ci][1], &pal->colors[ci][2]);
                 return true;
             }
         }
