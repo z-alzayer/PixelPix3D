@@ -19,6 +19,7 @@ jobs:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
+      packages: read
     container:
       image: ghcr.io/z-alzayer/pixelpix3d-builder:latest
 
