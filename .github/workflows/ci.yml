@@ -17,6 +17,8 @@ jobs:
     name: Build 3DSX + CIA
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
     container:
       image: ghcr.io/z-alzayer/pixelpix3d-builder:latest
 
@@ -31,12 +33,13 @@ jobs:
       - name: Build CIA
         run: make cia
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         with:
-          name: 3ds_camera-${{ github.event.workflow_run.head_sha || github.sha }}
-          path: |
+          tag_name: build-${{ github.sha }}
+          name: Build ${{ github.sha }}
+          files: |
             PixelPix3D.3dsx
             PixelPix3D.smdh
             PixelPix3D.cia
-          if-no-files-found: error
