@@ -117,14 +117,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
 
-        // Dither mode toggles
-        if (hit(tx, ty, STOG_X0, SROW_DITHER - STOG_H/2, STOG_W, STOG_H)) {
-            p->dither_mode = 0;
-            return true;
-        }
-        if (hit(tx, ty, STOG_X1, SROW_DITHER - STOG_H/2, STOG_W, STOG_H)) {
-            p->dither_mode = 1;
-            return true;
+        // Dither mode buttons (4 narrow buttons)
+        for (int dm = 0; dm < 4; dm++) {
+            if (hit(tx, ty, SDITH_X0 + dm * (SDITH_W + SDITH_GAP), SROW_DITHER - STOG_H/2, SDITH_W, STOG_H)) {
+                p->dither_mode = dm;
+                return true;
+            }
         }
 
         // Invert toggles

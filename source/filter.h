@@ -32,7 +32,7 @@ typedef struct {
     float gamma;         // 1.0 = neutral, >1.0 = lift midtones/shadows
     float saturation;    // 1.0 = neutral, 0.0 = greyscale, >1.0 = vivid
     int   palette;       // PALETTE_NONE or 0-(PALETTE_COUNT-1)
-    int   dither_mode;   // 0 = Bayer (default), 1 = Floyd-Steinberg
+    int   dither_mode;   // 0 = Bayer, 1 = Cluster, 2 = Atkinson, 3 = Floyd-Steinberg
     bool  invert;        // apply 255-v per channel before dithering
 } FilterParams;
 
@@ -58,8 +58,8 @@ typedef struct {
 }
 
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p);
-void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
-                            const FilterParams *p);
+void floyd_steinberg_dither(uint8_t *pixels, int width, int height, const FilterParams *p);
+void atkinson_dither(uint8_t *pixels, int width, int height, const FilterParams *p);
 
 // --- Colour space conversions -----------------------------------------------
 

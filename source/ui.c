@@ -235,20 +235,23 @@ static void draw_settings_tab(C2D_TextBuf staticBuf, const FilterParams *p,
     C2D_DrawText(&t, C2D_WithColor, STOG_X1 + 20.0f, SROW_SAVE_SCALE - 8.0f,
                  0.5f, sc, sc, save_scale == 2 ? CLR_BG : CLR_TEXT);
 
-    // Row 2: Dither mode
-    C2D_TextParse(&t, staticBuf, "Dither");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)SROW_DITHER - 8.0f,
-                 0.5f, sc, sc, CLR_TEXT);
-    C2D_DrawRectSolid(STOG_X0, SROW_DITHER - STOG_H/2, 0.5f, STOG_W, STOG_H,
-                      p->dither_mode == 0 ? CLR_BTN_SEL : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Bayer");
-    C2D_DrawText(&t, C2D_WithColor, STOG_X0 + 10.0f, SROW_DITHER - 8.0f,
-                 0.5f, sc, sc, p->dither_mode == 0 ? CLR_BG : CLR_TEXT);
-    C2D_DrawRectSolid(STOG_X1, SROW_DITHER - STOG_H/2, 0.5f, STOG_W, STOG_H,
-                      p->dither_mode == 1 ? CLR_BTN_SEL : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "F-S");
-    C2D_DrawText(&t, C2D_WithColor, STOG_X1 + 18.0f, SROW_DITHER - 8.0f,
-                 0.5f, sc, sc, p->dither_mode == 1 ? CLR_BG : CLR_TEXT);
+    // Row 2: Dither mode (4 buttons: Bayer / Cluster / Atkinson / Floyd-Steinberg)
+    {
+        static const char *dith_labels[4] = { "Bayr", "Clus", "Atk", "F-S" };
+        static const float dith_off[4]    = { 5.0f,   5.0f,   8.0f,  8.0f };
+        C2D_TextParse(&t, staticBuf, "Dither");
+        C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)SROW_DITHER - 8.0f,
+                     0.5f, sc, sc, CLR_TEXT);
+        for (int dm = 0; dm < 4; dm++) {
+            float bx = (float)(SDITH_X0 + dm * (SDITH_W + SDITH_GAP));
+            bool sel = (p->dither_mode == dm);
+            C2D_DrawRectSolid(bx, SROW_DITHER - STOG_H/2, 0.5f, SDITH_W, STOG_H,
+                              sel ? CLR_BTN_SEL : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, dith_labels[dm]);
+            C2D_DrawText(&t, C2D_WithColor, bx + dith_off[dm], SROW_DITHER - 8.0f,
+                         0.5f, sc, sc, sel ? CLR_BG : CLR_TEXT);
+        }
+    }
 
     // Row 3: Invert
     C2D_TextParse(&t, staticBuf, "Invert");

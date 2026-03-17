@@ -79,7 +79,7 @@ void settings_load(FilterParams *p, int *save_scale) {
     if (p->palette      < PALETTE_NONE)   p->palette      = PALETTE_NONE;
     if (p->palette      >= PALETTE_COUNT) p->palette      = PALETTE_COUNT - 1;
     if (p->dither_mode  < 0)              p->dither_mode  = 0;
-    if (p->dither_mode  > 1)              p->dither_mode  = 1;
+    if (p->dither_mode  > 3)              p->dither_mode  = 3;
     if (*save_scale     < 1)              *save_scale     = 1;
     if (*save_scale     > 2)              *save_scale     = 2;
 }
