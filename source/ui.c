@@ -39,6 +39,25 @@ void draw_slider(float cx, float cy, float mn, float mx, float val) {
     (void)cx;
 }
 
+void draw_range_slider(float cy, float abs_min, float abs_max,
+                       float val_min, float val_max, float val_def) {
+    float lx = slider_val_to_x(val_min, abs_min, abs_max);
+    float rx = slider_val_to_x(val_max, abs_min, abs_max);
+    float dx = slider_val_to_x(val_def, abs_min, abs_max);
+
+    // Same z=0.5f for all — submission order determines front-to-back
+    C2D_DrawRectSolid(TRACK_X, cy - TRACK_H/2.0f, 0.5f, TRACK_W, TRACK_H, CLR_TRACK);
+    if (rx > lx)
+        C2D_DrawRectSolid(lx, cy - TRACK_H/2.0f, 0.5f, rx - lx, TRACK_H, CLR_FILL);
+    C2D_DrawRectSolid(lx - RHANDLE_W/2.0f, cy - RHANDLE_H/2.0f, 0.5f,
+                      RHANDLE_W, RHANDLE_H, CLR_HANDLE);
+    C2D_DrawRectSolid(rx - RHANDLE_W/2.0f, cy - RHANDLE_H/2.0f, 0.5f,
+                      RHANDLE_W, RHANDLE_H, CLR_HANDLE);
+    // Dot submitted last — renders on top
+    C2D_DrawRectSolid(dx - DOT_SZ/2.0f, cy - DOT_SZ/2.0f, 0.5f,
+                      DOT_SZ, DOT_SZ, CLR_TITLE);
+}
+
 void draw_snap_slider(int px_val) {
     float cy = ROW_PXSIZE;
     C2D_DrawRectSolid(TRACK_X, cy - TRACK_H/2.0f, 0.5f, TRACK_W, TRACK_H, CLR_TRACK);
@@ -84,16 +103,18 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
         C2D_TextParse(&t, staticBuf, "Save");
         C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 24.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
     } else {
-        // Settings context: Palette sub-tab + Save Defaults action
+        // Settings context: Calibrate tab + Palette tab
         C2D_DrawRectSolid(BTN_CAM_X, BTN_CAM_Y, 0.5f, BTN_CAM_W, BTN_CAM_H,
+                          active_tab == 3 ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "Calibrate");
+        C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 4.0f, 8.0f, 0.5f, 0.44f, 0.44f,
+                     active_tab == 3 ? CLR_BG : CLR_TEXT);
+
+        C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H,
                           active_tab == 2 ? CLR_BTN_SEL : CLR_BTN);
         C2D_TextParse(&t, staticBuf, "Palette");
-        C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
+        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
                      active_tab == 2 ? CLR_BG : CLR_TEXT);
-
-        C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H, CLR_BTN);
-        C2D_TextParse(&t, staticBuf, "Defaults");
-        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 10.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
     }
 }
 
@@ -102,7 +123,7 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
 // ---------------------------------------------------------------------------
 
 static void draw_camera_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                             FilterParams p) {
+                             FilterParams p, const FilterRanges *ranges) {
     float sc = 0.48f;
     C2D_Text t;
 
@@ -148,11 +169,11 @@ static void draw_camera_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     }
 
 
-    // Sliders
-    draw_slider(0, ROW_BRIGHT,   0.0f, 2.0f, p.brightness);
-    draw_slider(0, ROW_CONTRAST, 0.5f, 2.0f, p.contrast);
-    draw_slider(0, ROW_SAT,      0.0f, 2.0f, p.saturation);
-    draw_slider(0, ROW_GAMMA,    0.5f, 2.0f, p.gamma);
+    // Sliders — bounds driven by calibrated ranges
+    draw_slider(0, ROW_BRIGHT,   ranges->bright_min,   ranges->bright_max,   p.brightness);
+    draw_slider(0, ROW_CONTRAST, ranges->contrast_min, ranges->contrast_max, p.contrast);
+    draw_slider(0, ROW_SAT,      ranges->sat_min,      ranges->sat_max,      p.saturation);
+    draw_slider(0, ROW_GAMMA,    ranges->gamma_min,    ranges->gamma_max,    p.gamma);
     draw_snap_slider(p.pixel_size);
 
     // Dynamic value readouts
@@ -338,6 +359,79 @@ static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 }
 
 // ---------------------------------------------------------------------------
+// Calibrate tab
+// ---------------------------------------------------------------------------
+
+// Absolute bounds used for the calibrate sliders (wider than operational range)
+#define CAL_BRIGHT_ABS_MIN   0.0f
+#define CAL_BRIGHT_ABS_MAX   4.0f
+#define CAL_CONTRAST_ABS_MIN 0.1f
+#define CAL_CONTRAST_ABS_MAX 4.0f
+#define CAL_SAT_ABS_MIN      0.0f
+#define CAL_SAT_ABS_MAX      4.0f
+#define CAL_GAMMA_ABS_MIN    0.1f
+#define CAL_GAMMA_ABS_MAX    4.0f
+
+static void draw_calibrate_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                                const FilterRanges *ranges, bool settings_flash) {
+    float sc = 0.44f;
+    C2D_Text t;
+    char buf[16];
+
+    C2D_TextBufClear(dynBuf);
+
+    // Row: Brightness
+    C2D_TextParse(&t, staticBuf, "Bright");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_BRIGHT - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_range_slider(ROW_BRIGHT, CAL_BRIGHT_ABS_MIN, CAL_BRIGHT_ABS_MAX,
+                      ranges->bright_min, ranges->bright_max, ranges->bright_def);
+    snprintf(buf, sizeof(buf), "%.1f|%.1f|%.1f",
+             (double)ranges->bright_min, (double)ranges->bright_def, (double)ranges->bright_max);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_BRIGHT + 7.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
+
+    // Row: Contrast
+    C2D_TextParse(&t, staticBuf, "Contrast");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_CONTRAST - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_range_slider(ROW_CONTRAST, CAL_CONTRAST_ABS_MIN, CAL_CONTRAST_ABS_MAX,
+                      ranges->contrast_min, ranges->contrast_max, ranges->contrast_def);
+    snprintf(buf, sizeof(buf), "%.1f|%.1f|%.1f",
+             (double)ranges->contrast_min, (double)ranges->contrast_def, (double)ranges->contrast_max);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_CONTRAST + 7.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
+
+    // Row: Saturation
+    C2D_TextParse(&t, staticBuf, "Saturate");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_SAT - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_range_slider(ROW_SAT, CAL_SAT_ABS_MIN, CAL_SAT_ABS_MAX,
+                      ranges->sat_min, ranges->sat_max, ranges->sat_def);
+    snprintf(buf, sizeof(buf), "%.1f|%.1f|%.1f",
+             (double)ranges->sat_min, (double)ranges->sat_def, (double)ranges->sat_max);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_SAT + 7.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
+
+    // Row: Gamma
+    C2D_TextParse(&t, staticBuf, "Gamma");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_GAMMA - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_range_slider(ROW_GAMMA, CAL_GAMMA_ABS_MIN, CAL_GAMMA_ABS_MAX,
+                      ranges->gamma_min, ranges->gamma_max, ranges->gamma_def);
+    snprintf(buf, sizeof(buf), "%.1f|%.1f|%.1f",
+             (double)ranges->gamma_min, (double)ranges->gamma_def, (double)ranges->gamma_max);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)ROW_GAMMA + 7.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
+
+    C2D_DrawRectSolid(0, 148, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // Save as Default button
+    u32 def_clr = settings_flash ? CLR_BTN_SEL : CLR_BTN;
+    u32 def_txt = settings_flash ? CLR_BG      : CLR_TEXT;
+    C2D_DrawRectSolid(SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, 0.5f, SWBTN_W, SWBTN_H, def_clr);
+    C2D_TextParse(&t, staticBuf, "Save as Default");
+    C2D_DrawText(&t, C2D_WithColor, SWBTN_X + 36.0f, SROW_SAVE_DEF - 8.0f,
+                 0.5f, 0.48f, 0.48f, def_txt);
+}
+
+// ---------------------------------------------------------------------------
 // Draw UI (top-level)
 // ---------------------------------------------------------------------------
 
@@ -348,7 +442,8 @@ void draw_ui(C3D_RenderTarget *bot,
              int active_tab, int save_scale, bool settings_flash,
              int settings_row,
              const PaletteDef *user_palettes,
-             int palette_sel_pal, int palette_sel_color) {
+             int palette_sel_pal, int palette_sel_color,
+             const FilterRanges *ranges) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
 
@@ -368,10 +463,12 @@ void draw_ui(C3D_RenderTarget *bot,
     C2D_DrawRectSolid(0, 29, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
     if (active_tab == 0) {
-        draw_camera_tab(staticBuf, dynBuf, p);
+        draw_camera_tab(staticBuf, dynBuf, p, ranges);
     } else if (active_tab == 1) {
         draw_settings_tab(staticBuf, &p, save_scale, settings_flash, settings_row);
     } else if (active_tab == 2) {
         draw_palette_tab(staticBuf, dynBuf, user_palettes, palette_sel_pal, palette_sel_color);
+    } else if (active_tab == 3) {
+        draw_calibrate_tab(staticBuf, dynBuf, ranges, settings_flash);
     }
 }

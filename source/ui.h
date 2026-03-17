@@ -129,6 +129,17 @@
 #define PALTAB_RESET_X        ((BOT_W - PALTAB_RESET_W) / 2)
 
 // ---------------------------------------------------------------------------
+// Calibrate tab geometry
+// ---------------------------------------------------------------------------
+
+// Range slider handles (left=min, right=max) + default-value dot
+#define RHANDLE_W     10
+#define RHANDLE_H     18
+#define DOT_SZ         8    // side of the default-value square dot
+
+// Calibrate rows reuse ROW_BRIGHT / ROW_CONTRAST / ROW_SAT / ROW_GAMMA
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -142,6 +153,8 @@ float touch_x_to_val(int px, float mn, float mx);
 
 void draw_slider(float cx, float cy, float mn, float mx, float val);
 void draw_snap_slider(int px_val);
+void draw_range_slider(float cy, float abs_min, float abs_max,
+                       float val_min, float val_max, float val_def);
 void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
              FilterParams p, bool selfie,
@@ -149,6 +162,7 @@ void draw_ui(C3D_RenderTarget *bot,
              int active_tab, int save_scale, bool settings_flash,
              int settings_row,
              const PaletteDef *user_palettes,
-             int palette_sel_pal, int palette_sel_color);
+             int palette_sel_pal, int palette_sel_color,
+             const FilterRanges *ranges);
 
 #endif
