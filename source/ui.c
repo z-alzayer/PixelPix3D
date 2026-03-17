@@ -473,7 +473,8 @@ void draw_ui(C3D_RenderTarget *bot,
              int settings_row,
              const PaletteDef *user_palettes,
              int palette_sel_pal, int palette_sel_color,
-             const FilterRanges *ranges) {
+             const FilterRanges *ranges,
+             bool comparing) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
 
@@ -491,6 +492,16 @@ void draw_ui(C3D_RenderTarget *bot,
 
     draw_tab_bar(staticBuf, active_tab, selfie, save_flash);
     C2D_DrawRectSolid(0, 29, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    if (comparing) {
+        C2D_Text t;
+        C2D_DrawRectSolid(0, 30, 0.6f, BOT_W, BOT_H - 30, C2D_Color32(0, 0, 0, 120));
+        C2D_TextParse(&t, staticBuf, "RAW");
+        C2D_DrawText(&t, C2D_WithColor, 132.0f, 112.0f, 0.6f, 1.4f, 1.4f, C2D_Color32(255, 220, 50, 255));
+        C2D_TextParse(&t, staticBuf, "hold SELECT to compare");
+        C2D_DrawText(&t, C2D_WithColor, 36.0f, 158.0f, 0.6f, 0.44f, 0.44f, C2D_Color32(200, 200, 180, 200));
+        return;
+    }
 
     if (active_tab == 0) {
         draw_camera_tab(staticBuf, dynBuf, p, ranges);
