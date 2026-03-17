@@ -7,11 +7,14 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
 
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   FilterParams *p,
-                  bool *do_cam_toggle, bool *do_save,
+                  bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   int *active_tab, int *save_scale,
-                  FilterParams *default_params) {
-    *do_cam_toggle = false;
-    *do_save       = false;
+                  FilterParams *default_params,
+                  PaletteDef *user_palettes,
+                  int *palette_sel_pal, int *palette_sel_color) {
+    *do_cam_toggle    = false;
+    *do_save          = false;
+    *do_defaults_save = false;
 
     bool touched = (kHeld & KEY_TOUCH) != 0;
     bool tapped  = (kDown & KEY_TOUCH) != 0;
@@ -29,21 +32,32 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             *active_tab = 1;
             return true;
         }
+        // Context-sensitive slots 3 & 4
+        if (*active_tab == 0) {
+            // Camera context: CAM toggle + Save
+            if (hit(tx, ty, BTN_CAM_X, BTN_CAM_Y, BTN_CAM_W, BTN_CAM_H)) {
+                *do_cam_toggle = true;
+                return true;
+            }
+            if (hit(tx, ty, BTN_SAVE_X, BTN_SAVE_Y, BTN_SAVE_W, BTN_SAVE_H)) {
+                *do_save = true;
+                return true;
+            }
+        } else {
+            // Settings/Palette context: Palette sub-tab + Save Defaults
+            if (hit(tx, ty, BTN_CAM_X, BTN_CAM_Y, BTN_CAM_W, BTN_CAM_H)) {
+                *active_tab = (*active_tab == 2) ? 1 : 2;
+                return true;
+            }
+            if (hit(tx, ty, BTN_SAVE_X, BTN_SAVE_Y, BTN_SAVE_W, BTN_SAVE_H)) {
+                *do_defaults_save = true;
+                return true;
+            }
+        }
     }
 
     // --- Camera tab inputs ---
     if (*active_tab == 0) {
-        // CAM button (tap only)
-        if (tapped && hit(tx, ty, BTN_CAM_X, BTN_CAM_Y, BTN_CAM_W, BTN_CAM_H)) {
-            *do_cam_toggle = true;
-            return true;
-        }
-
-        // SAVE button (tap only)
-        if (tapped && hit(tx, ty, BTN_SAVE_X, BTN_SAVE_Y, BTN_SAVE_W, BTN_SAVE_H)) {
-            *do_save = true;
-            return true;
-        }
 
         // Palette buttons (tap only)
         if (tapped && ty >= PAL_BTN_Y && ty < PAL_BTN_Y + PAL_BTN_H) {
@@ -122,16 +136,63 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
 
-        // Set as Default — copies current params into default_params
-        if (hit(tx, ty, SWBTN_X, SROW_SET_DEF - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
-            *default_params = *p;
+        // Save as Default — set flag so caller drives the flash and actual save
+        if (hit(tx, ty, SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
+            *do_defaults_save = true;
             return true;
         }
+    }
 
-        // Save Defaults — writes default_params + save_scale to SD card
-        if (hit(tx, ty, SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
-            settings_save(default_params, *save_scale);
-            return true;
+    // --- Palette tab inputs ---
+    if (*active_tab == 2) {
+        // Tap-only: palette selector, swatch selection, reset button
+        if (tapped) {
+            // Palette selector strip
+            if (ty >= PALTAB_PALSEL_Y && ty < PALTAB_PALSEL_Y + PALTAB_PALSEL_H) {
+                int i = tx / PALTAB_PALSEL_BTN_W;
+                if (i >= 0 && i < PALETTE_COUNT) {
+                    *palette_sel_pal   = i;
+                    *palette_sel_color = 0;
+                    return true;
+                }
+            }
+            // Colour swatch strip
+            if (ty >= PALTAB_SWATCH_Y && ty < PALTAB_SWATCH_Y + PALTAB_SWATCH_H) {
+                int size = user_palettes[*palette_sel_pal].size;
+                for (int i = 0; i < size; i++) {
+                    int sx = 4 + i * (PALTAB_SWATCH_W + 4);
+                    if (tx >= sx && tx < sx + PALTAB_SWATCH_W) {
+                        *palette_sel_color = i;
+                        return true;
+                    }
+                }
+            }
+            // Reset button
+            if (hit(tx, ty, PALTAB_RESET_X, PALTAB_RESET_Y - PALTAB_RESET_H/2,
+                    PALTAB_RESET_W, PALTAB_RESET_H)) {
+                user_palettes[*palette_sel_pal] = palettes[*palette_sel_pal];
+                return true;
+            }
+        }
+        // Drag: RGB sliders for selected colour entry
+        if (touched && tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            PaletteDef *pal = &user_palettes[*palette_sel_pal];
+            int ci = *palette_sel_color;
+            if (ty >= PALTAB_ROW_R - 13 && ty < PALTAB_ROW_R + 13) {
+                float v = touch_x_to_val(tx, 0.0f, 255.0f);
+                pal->colors[ci][0] = (uint8_t)(v + 0.5f);
+                return true;
+            }
+            if (ty >= PALTAB_ROW_G - 13 && ty < PALTAB_ROW_G + 13) {
+                float v = touch_x_to_val(tx, 0.0f, 255.0f);
+                pal->colors[ci][1] = (uint8_t)(v + 0.5f);
+                return true;
+            }
+            if (ty >= PALTAB_ROW_B - 13 && ty < PALTAB_ROW_B + 13) {
+                float v = touch_x_to_val(tx, 0.0f, 255.0f);
+                pal->colors[ci][2] = (uint8_t)(v + 0.5f);
+                return true;
+            }
         }
     }
 

@@ -16,8 +16,10 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh);
 // Returns true if any touch input was consumed.
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   FilterParams *p,
-                  bool *do_cam_toggle, bool *do_save,
+                  bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   int *active_tab, int *save_scale,
-                  FilterParams *default_params);
+                  FilterParams *default_params,
+                  PaletteDef *user_palettes,
+                  int *palette_sel_pal, int *palette_sel_color);
 
 #endif

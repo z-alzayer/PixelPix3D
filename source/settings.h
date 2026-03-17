@@ -14,4 +14,11 @@ void settings_load(FilterParams *p, int *save_scale);
 // Creates the directory if it does not exist.
 void settings_save(const FilterParams *p, int save_scale);
 
+// Appends palette_N_M=RRGGBB lines to SETTINGS_PATH (call after settings_save).
+void settings_save_palettes(const PaletteDef *user_palettes);
+
+// Loads palette_N_M colour overrides from SETTINGS_PATH into user_palettes[].
+// Silently skips missing or out-of-bounds keys.
+void settings_load_palettes(PaletteDef *user_palettes);
+
 #endif

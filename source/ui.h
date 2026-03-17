@@ -18,16 +18,18 @@
 // UI colours (RGBA)
 // ---------------------------------------------------------------------------
 
-#define CLR_BG       C2D_Color32( 18,  18,  24, 255)
-#define CLR_TRACK    C2D_Color32( 55,  55,  60, 255)
-#define CLR_FILL     C2D_Color32( 68, 148,  68, 255)
-#define CLR_HANDLE   C2D_Color32(168, 224,  88, 255)
-#define CLR_BTN      C2D_Color32( 38,  42,  50, 255)
-#define CLR_BTN_SEL  C2D_Color32( 68, 148,  68, 255)
-#define CLR_TEXT     C2D_Color32(210, 228, 190, 255)
-#define CLR_DIM      C2D_Color32(120, 130, 110, 255)
-#define CLR_DIVIDER  C2D_Color32( 50,  55,  60, 255)
-#define CLR_TITLE    C2D_Color32(168, 224,  88, 255)
+#define CLR_BG          C2D_Color32( 18,  18,  24, 255)
+#define CLR_TRACK       C2D_Color32( 55,  55,  60, 255)
+#define CLR_FILL        C2D_Color32( 68, 148,  68, 255)
+#define CLR_HANDLE      C2D_Color32(168, 224,  88, 255)
+#define CLR_BTN         C2D_Color32( 38,  42,  50, 255)
+#define CLR_BTN_SEL     C2D_Color32( 68, 148,  68, 255)
+#define CLR_TEXT        C2D_Color32(210, 228, 190, 255)
+#define CLR_DIM         C2D_Color32(120, 130, 110, 255)
+#define CLR_DIVIDER     C2D_Color32( 50,  55,  60, 255)
+#define CLR_TITLE       C2D_Color32(168, 224,  88, 255)
+#define CLR_ROW_CURSOR  C2D_Color32( 68, 148,  68,  80)
+#define CLR_SWATCH_SEL  C2D_Color32(255, 220,  50, 255)
 
 // ---------------------------------------------------------------------------
 // Slider + button geometry
@@ -99,8 +101,32 @@
 #define SWBTN_W       200
 #define SWBTN_H        24
 #define SWBTN_X        60
-#define SROW_SET_DEF  165
-#define SROW_SAVE_DEF 200
+#define SROW_SAVE_DEF 185
+
+// ---------------------------------------------------------------------------
+// Palette tab geometry
+// ---------------------------------------------------------------------------
+
+// Palette selector strip (y=31..64)
+#define PALTAB_PALSEL_Y       31
+#define PALTAB_PALSEL_H       34
+#define PALTAB_PALSEL_BTN_W   (BOT_W / PALETTE_COUNT)  // 53px each
+
+// Colour swatch strip (y=66..120): swatch i at x = 4 + i*40
+#define PALTAB_SWATCH_Y        66
+#define PALTAB_SWATCH_H        55
+#define PALTAB_SWATCH_W        36
+
+// RGB slider rows (reuse TRACK_X / TRACK_W)
+#define PALTAB_ROW_R          142
+#define PALTAB_ROW_G          163
+#define PALTAB_ROW_B          184
+
+// Reset button (centred)
+#define PALTAB_RESET_Y        210
+#define PALTAB_RESET_W         80
+#define PALTAB_RESET_H         22
+#define PALTAB_RESET_X        ((BOT_W - PALTAB_RESET_W) / 2)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,6 +146,9 @@ void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
              FilterParams p, bool selfie,
              bool save_flash, bool warn3d,
-             int active_tab, int save_scale);
+             int active_tab, int save_scale, bool settings_flash,
+             int settings_row,
+             const PaletteDef *user_palettes,
+             int palette_sel_pal, int palette_sel_color);
 
 #endif

@@ -83,3 +83,48 @@ void settings_load(FilterParams *p, int *save_scale) {
     if (*save_scale     < 1)              *save_scale     = 1;
     if (*save_scale     > 2)              *save_scale     = 2;
 }
+
+void settings_save_palettes(const PaletteDef *user_palettes) {
+    ensure_settings_dir();
+    FILE *f = fopen(SETTINGS_PATH, "a");
+    if (!f) return;
+    for (int n = 0; n < PALETTE_COUNT; n++)
+        for (int m = 0; m < user_palettes[n].size; m++)
+            fprintf(f, "palette_%d_%d=%02X%02X%02X\n", n, m,
+                    user_palettes[n].colors[m][0],
+                    user_palettes[n].colors[m][1],
+                    user_palettes[n].colors[m][2]);
+    fclose(f);
+}
+
+void settings_load_palettes(PaletteDef *user_palettes) {
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) return;
+
+    char line[64];
+    while (fgets(line, sizeof(line), f)) {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '#' || line[0] == '\0') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = line;
+        const char *val = eq + 1;
+
+        if (strncmp(key, "palette_", 8) != 0) continue;
+        int n = -1, m = -1;
+        if (sscanf(key + 8, "%d_%d", &n, &m) != 2) continue;
+        if (n < 0 || n >= PALETTE_COUNT) continue;
+        if (m < 0 || m >= user_palettes[n].size) continue;
+
+        unsigned int rgb = 0;
+        if (sscanf(val, "%06X", &rgb) != 1) continue;
+        user_palettes[n].colors[m][0] = (uint8_t)((rgb >> 16) & 0xFF);
+        user_palettes[n].colors[m][1] = (uint8_t)((rgb >>  8) & 0xFF);
+        user_palettes[n].colors[m][2] = (uint8_t)( rgb        & 0xFF);
+    }
+    fclose(f);
+}
