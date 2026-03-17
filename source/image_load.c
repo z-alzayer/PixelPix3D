@@ -6,7 +6,9 @@
 
 #include "image_load.h"
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 int load_jpeg_to_bgr565(const char *path, uint16_t *dst, int width, int height) {
     int img_w, img_h, channels;
@@ -40,17 +42,27 @@ int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height) {
 }
 
 // Find the next unused filename GB_XXXX.JPG in dir, write it into out_path.
-// Returns 1 if a free slot was found, 0 if all slots are taken (unlikely).
+// Scans the directory once to find the highest existing GB_NNNN number,
+// then uses max+1 — O(n) in directory entries, not O(n) in fopen calls.
+// Returns 1 if a free slot was found, 0 if all 9999 slots are taken.
 int next_save_path(const char *dir, char *out_path, int out_len) {
-    // Create directories if they don't exist (silently fails if already there)
     mkdir("sdmc:/DCIM", 0777);
     mkdir(dir, 0777);
 
-    for (int n = 1; n <= 9999; n++) {
-        snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, n);
-        FILE *f = fopen(out_path, "r");
-        if (!f) return 1;  // file doesn't exist — this slot is free
-        fclose(f);
+    int max_n = 0;
+    DIR *d = opendir(dir);
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            int n = 0;
+            if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1 && n > max_n)
+                max_n = n;
+        }
+        closedir(d);
     }
-    return 0;
+
+    int next = max_n + 1;
+    if (next > 9999) return 0;
+    snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, next);
+    return 1;
 }
