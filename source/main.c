@@ -157,7 +157,12 @@ int main(void) {
                 if (kDown & KEY_DDOWN) { settings_row++; if (settings_row > 2) settings_row = 0; }
                 if ((kDown & KEY_DLEFT) || (kDown & KEY_DRIGHT)) {
                     if      (settings_row == 0) save_scale         = (save_scale == 1) ? 2 : 1;
-                    else if (settings_row == 1) params.dither_mode = !params.dither_mode;
+                    else if (settings_row == 1) {
+                        if (kDown & KEY_DLEFT)
+                            params.dither_mode = (params.dither_mode + 3) & 3;
+                        else
+                            params.dither_mode = (params.dither_mode + 1) & 3;
+                    }
                     else if (settings_row == 2) params.invert      = !params.invert;
                 }
             } else if (active_tab == 2) {
