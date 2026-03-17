@@ -11,6 +11,14 @@ static uint8_t small_buf[SMALL_BUF_MAX];
 // int16_t per channel, sized for the full 400x240 image (~563 KB in BSS).
 static int16_t fs_err[400 * 240 * 3];
 
+// Mutable user palette pointer — set via filter_set_user_palettes().
+static PaletteDef *s_user_palettes = NULL;
+
+void filter_set_user_palettes(PaletteDef *user_pal) { s_user_palettes = user_pal; }
+const PaletteDef *filter_get_active_palettes(void) {
+    return s_user_palettes ? s_user_palettes : palettes;
+}
+
 // --- Palette data -----------------------------------------------------------
 
 const PaletteDef palettes[PALETTE_COUNT] = {
@@ -111,7 +119,7 @@ static void dither_to_palette(uint8_t *r, uint8_t *g, uint8_t *b,
 static void dither_pixel(uint8_t *r, uint8_t *g, uint8_t *b,
                          int x, int y, const FilterParams *p) {
     if (p->palette >= 0 && p->palette < PALETTE_COUNT)
-        dither_to_palette(r, g, b, x, y, &palettes[p->palette]);
+        dither_to_palette(r, g, b, x, y, &filter_get_active_palettes()[p->palette]);
     else {
         *r = dither_channel(*r, x, y, p->color_levels);
         *g = dither_channel(*g, x, y, p->color_levels);
@@ -144,13 +152,14 @@ void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
             if (p->palette >= 0 && p->palette < PALETTE_COUNT) {
                 // Palette mode: quantise to nearest palette entry via luminance
                 int gray   = (77 * r + 150 * g + 29 * b) >> 8;
-                int levels = palettes[p->palette].size;
+                const PaletteDef *ap = filter_get_active_palettes();
+                int levels = ap[p->palette].size;
                 int level  = (gray * (levels - 1) + 127) / 255;
                 if (level < 0)       level = 0;
                 if (level >= levels) level = levels - 1;
-                qr = palettes[p->palette].colors[level][0];
-                qg = palettes[p->palette].colors[level][1];
-                qb = palettes[p->palette].colors[level][2];
+                qr = ap[p->palette].colors[level][0];
+                qg = ap[p->palette].colors[level][1];
+                qb = ap[p->palette].colors[level][2];
             } else {
                 // Greyscale levels mode: quantise each channel independently
                 int levels = p->color_levels;

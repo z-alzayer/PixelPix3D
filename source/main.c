@@ -79,10 +79,16 @@ int main(void) {
     memset(filtered_buf, 0, CAMERA_SCREEN_SIZE);
 
     // Filter params
-    FilterParams params       = FILTER_DEFAULTS;
+    FilterParams params         = FILTER_DEFAULTS;
     FilterParams default_params = FILTER_DEFAULTS;
-    int          save_scale   = 2;
-    int          active_tab   = 0;
+    int          save_scale     = 2;
+    int          active_tab     = 0;
+
+    // Mutable palette copies + palette tab state
+    PaletteDef user_palettes[PALETTE_COUNT];
+    int        settings_row      = 0;   // 0=Save Scale, 1=Dither, 2=Invert
+    int        palette_sel_pal   = 0;
+    int        palette_sel_color = 0;
 
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -99,10 +105,14 @@ int main(void) {
     CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
     CAMU_StartCapture(PORT_BOTH);
 
-    int save_flash = 0;
+    int save_flash     = 0;
+    int settings_flash = 0;
 
+    for (int i = 0; i < PALETTE_COUNT; i++) user_palettes[i] = palettes[i];
     settings_load(&params, &save_scale);
+    settings_load_palettes(user_palettes);
     default_params = params;
+    filter_set_user_palettes(user_palettes);
 
     while (aptMainLoop()) {
 
@@ -125,18 +135,35 @@ int main(void) {
             if (kDown & KEY_B) {
                 params.pixel_size = (params.pixel_size % PX_STOPS) + 1;
             }
-            if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > 2.0f) params.brightness = 2.0f; }
-            if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < 0.0f) params.brightness = 0.0f; }
-            if (kDown & KEY_DLEFT)  { params.saturation -= 0.1f; if (params.saturation < 0.0f) params.saturation = 0.0f; }
-            if (kDown & KEY_DRIGHT) { params.saturation += 0.1f; if (params.saturation > 2.0f) params.saturation = 2.0f; }
+            // D-pad: context-aware per active_tab
+            if (active_tab == 0) {
+                if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > 2.0f) params.brightness = 2.0f; }
+                if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < 0.0f) params.brightness = 0.0f; }
+                if (kDown & KEY_DLEFT)  { params.saturation -= 0.1f; if (params.saturation < 0.0f) params.saturation = 0.0f; }
+                if (kDown & KEY_DRIGHT) { params.saturation += 0.1f; if (params.saturation > 2.0f) params.saturation = 2.0f; }
+            } else if (active_tab == 1) {
+                if (kDown & KEY_DUP)   { settings_row--; if (settings_row < 0) settings_row = 2; }
+                if (kDown & KEY_DDOWN) { settings_row++; if (settings_row > 2) settings_row = 0; }
+                if ((kDown & KEY_DLEFT) || (kDown & KEY_DRIGHT)) {
+                    if      (settings_row == 0) save_scale         = (save_scale == 1) ? 2 : 1;
+                    else if (settings_row == 1) params.dither_mode = !params.dither_mode;
+                    else if (settings_row == 2) params.invert      = !params.invert;
+                }
+            } else if (active_tab == 2) {
+                if (kDown & KEY_DUP)    { if (--palette_sel_pal   < 0)                                   palette_sel_pal   = PALETTE_COUNT - 1; palette_sel_color = 0; }
+                if (kDown & KEY_DDOWN)  { if (++palette_sel_pal   >= PALETTE_COUNT)                      palette_sel_pal   = 0;                 palette_sel_color = 0; }
+                if (kDown & KEY_DLEFT)  { if (--palette_sel_color < 0)                                   palette_sel_color = user_palettes[palette_sel_pal].size - 1; }
+                if (kDown & KEY_DRIGHT) { if (++palette_sel_color >= user_palettes[palette_sel_pal].size) palette_sel_color = 0; }
+            }
 
             // Touch input
             touchPosition touch;
             hidTouchRead(&touch);
 
-            bool do_cam = false, do_save = false;
-            handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save,
-                         &active_tab, &save_scale, &default_params);
+            bool do_cam = false, do_save = false, do_defaults_save = false;
+            handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save, &do_defaults_save,
+                         &active_tab, &save_scale, &default_params,
+                         user_palettes, &palette_sel_pal, &palette_sel_color);
 
             if (do_cam || (kDown & KEY_Y)) {
                 CAMU_StopCapture(PORT_BOTH);
@@ -179,9 +206,17 @@ int main(void) {
                         save_flash = 20;
                 }
             }
+
+            if (do_defaults_save) {
+                default_params = params;
+                settings_save(&default_params, save_scale);
+                settings_save_palettes(user_palettes);
+                settings_flash = 20;
+            }
         }
 
         if (save_flash > 0) save_flash--;
+        if (settings_flash > 0) settings_flash--;
 
         // Always drain both camera ports to prevent buffer error interrupts
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
@@ -242,7 +277,9 @@ int main(void) {
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
         draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d,
-                active_tab, save_scale);
+                active_tab, save_scale, settings_flash > 0,
+                settings_row,
+                user_palettes, palette_sel_pal, palette_sel_color);
         C3D_FrameEnd(0);
     }
 

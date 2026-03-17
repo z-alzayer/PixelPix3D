@@ -17,6 +17,11 @@ typedef struct {
 
 extern const PaletteDef palettes[PALETTE_COUNT];
 
+// Set a mutable user-editable palette array (call once at startup).
+// Pass NULL to revert to the built-in const palettes[].
+void filter_set_user_palettes(PaletteDef *user_pal);
+const PaletteDef *filter_get_active_palettes(void);
+
 // --- Filter parameters ------------------------------------------------------
 
 typedef struct {
