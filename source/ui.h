@@ -55,16 +55,52 @@
 #define PAL_BTN_W      42
 #define PAL_BTN_X0      4
 
-// Action buttons top-right
-#define BTN_CAM_X     213
-#define BTN_CAM_Y       4
-#define BTN_CAM_W      46
-#define BTN_CAM_H      22
+// ---------------------------------------------------------------------------
+// Tab bar geometry — 4 equal segments across the full 320px width
+// [Camera 0..79] [Settings 80..159] [CAM 160..239] [Save 240..319]
+// ---------------------------------------------------------------------------
 
-#define BTN_SAVE_X    264
-#define BTN_SAVE_Y      4
-#define BTN_SAVE_W     50
-#define BTN_SAVE_H     22
+#define TAB_BAR_Y       0
+#define TAB_BAR_H      30
+#define TAB_SEG_W      80    // each of the 4 segments is 80px wide
+
+#define TAB_0_X         0
+#define TAB_0_W        TAB_SEG_W
+#define TAB_1_X        80
+#define TAB_1_W        TAB_SEG_W
+
+// CAM and SAVE live in the tab bar as action segments
+#define BTN_CAM_X     160
+#define BTN_CAM_Y       0
+#define BTN_CAM_W      80
+#define BTN_CAM_H      30
+
+#define BTN_SAVE_X    240
+#define BTN_SAVE_Y      0
+#define BTN_SAVE_W     80
+#define BTN_SAVE_H     30
+
+// ---------------------------------------------------------------------------
+// Settings tab geometry
+// ---------------------------------------------------------------------------
+
+// Toggle button pairs
+#define STOG_W         60
+#define STOG_H         22
+#define STOG_X0       195    // left option button X
+#define STOG_X1       260    // right option button X
+
+// Settings row Y centres
+#define SROW_SAVE_SCALE   55
+#define SROW_DITHER       90
+#define SROW_INVERT      125
+
+// Wide action buttons (centred: x = (320-200)/2 = 60)
+#define SWBTN_W       200
+#define SWBTN_H        24
+#define SWBTN_X        60
+#define SROW_SET_DEF  165
+#define SROW_SAVE_DEF 200
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,6 +119,7 @@ void draw_snap_slider(int px_val);
 void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
              FilterParams p, bool selfie,
-             bool save_flash, bool warn3d);
+             bool save_flash, bool warn3d,
+             int active_tab, int save_scale);
 
 #endif

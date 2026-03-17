@@ -15,6 +15,7 @@
 #include "input.h"
 #include "filter.h"
 #include "image_load.h"
+#include "settings.h"
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -78,7 +79,10 @@ int main(void) {
     memset(filtered_buf, 0, CAMERA_SCREEN_SIZE);
 
     // Filter params
-    FilterParams params = FILTER_DEFAULTS;
+    FilterParams params       = FILTER_DEFAULTS;
+    FilterParams default_params = FILTER_DEFAULTS;
+    int          save_scale   = 2;
+    int          active_tab   = 0;
 
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -96,6 +100,9 @@ int main(void) {
     CAMU_StartCapture(PORT_BOTH);
 
     int save_flash = 0;
+
+    settings_load(&params, &save_scale);
+    default_params = params;
 
     while (aptMainLoop()) {
 
@@ -128,7 +135,8 @@ int main(void) {
             hidTouchRead(&touch);
 
             bool do_cam = false, do_save = false;
-            handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save);
+            handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save,
+                         &active_tab, &save_scale, &default_params);
 
             if (do_cam || (kDown & KEY_Y)) {
                 CAMU_StopCapture(PORT_BOTH);
@@ -166,8 +174,8 @@ int main(void) {
                 if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
                     uint8_t *upscale_buf = camera_get_upscale_buf();
                     rgb565_to_rgb888(rgb_buf, (const uint16_t *)filtered_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
-                    nn_upscale(upscale_buf, rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, SAVE_SCALE);
-                    if (save_jpeg(save_path, upscale_buf, CAMERA_WIDTH * SAVE_SCALE, CAMERA_HEIGHT * SAVE_SCALE))
+                    nn_upscale(upscale_buf, rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, save_scale);
+                    if (save_jpeg(save_path, upscale_buf, CAMERA_WIDTH * save_scale, CAMERA_HEIGHT * save_scale))
                         save_flash = 20;
                 }
             }
@@ -233,7 +241,8 @@ int main(void) {
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d);
+        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d,
+                active_tab, save_scale);
         C3D_FrameEnd(0);
     }
 
