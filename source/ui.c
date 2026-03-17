@@ -72,17 +72,29 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
     C2D_DrawText(&t, C2D_WithColor, 84.0f, 8.0f, 0.5f, 0.48f, 0.48f,
                  active_tab == 1 ? CLR_BG : CLR_TEXT);
 
-    // CAM action button
-    C2D_DrawRectSolid(BTN_CAM_X, BTN_CAM_Y, 0.5f, BTN_CAM_W, BTN_CAM_H,
-                      selfie ? CLR_BTN_SEL : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, selfie ? "Selfie" : "Outer");
-    C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 14.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
+    if (active_tab == 0) {
+        // Camera context: CAM toggle + Save action
+        C2D_DrawRectSolid(BTN_CAM_X, BTN_CAM_Y, 0.5f, BTN_CAM_W, BTN_CAM_H,
+                          selfie ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, selfie ? "Selfie" : "Outer");
+        C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 14.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
 
-    // SAVE action button
-    u32 save_clr = save_flash ? CLR_HANDLE : CLR_BTN;
-    C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H, save_clr);
-    C2D_TextParse(&t, staticBuf, "Save");
-    C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 24.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
+        u32 save_clr = save_flash ? CLR_HANDLE : CLR_BTN;
+        C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H, save_clr);
+        C2D_TextParse(&t, staticBuf, "Save");
+        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 24.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
+    } else {
+        // Settings context: Palette sub-tab + Save Defaults action
+        C2D_DrawRectSolid(BTN_CAM_X, BTN_CAM_Y, 0.5f, BTN_CAM_W, BTN_CAM_H,
+                          active_tab == 2 ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "Palette");
+        C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
+                     active_tab == 2 ? CLR_BG : CLR_TEXT);
+
+        C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H, CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "Defaults");
+        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 10.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,9 +185,18 @@ static void draw_camera_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 // ---------------------------------------------------------------------------
 
 static void draw_settings_tab(C2D_TextBuf staticBuf, const FilterParams *p,
-                               int save_scale) {
+                               int save_scale, bool settings_flash,
+                               int settings_row) {
     float sc = 0.48f;
     C2D_Text t;
+
+    // Row cursor highlight (drawn at z=0.4f, behind buttons at z=0.5f)
+    if (settings_row == 0)
+        C2D_DrawRectSolid(0, SROW_SAVE_SCALE - STOG_H/2 - 2, 0.4f, 190, STOG_H + 4, CLR_ROW_CURSOR);
+    else if (settings_row == 1)
+        C2D_DrawRectSolid(0, SROW_DITHER - STOG_H/2 - 2, 0.4f, 190, STOG_H + 4, CLR_ROW_CURSOR);
+    else if (settings_row == 2)
+        C2D_DrawRectSolid(0, SROW_INVERT - STOG_H/2 - 2, 0.4f, 190, STOG_H + 4, CLR_ROW_CURSOR);
 
     // Row 1: Save Scale
     C2D_TextParse(&t, staticBuf, "Save Scale");
@@ -224,16 +245,95 @@ static void draw_settings_tab(C2D_TextBuf staticBuf, const FilterParams *p,
 
     C2D_DrawRectSolid(0, 148, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
-    // Row 4: Set as Default
-    C2D_DrawRectSolid(SWBTN_X, SROW_SET_DEF - SWBTN_H/2, 0.5f, SWBTN_W, SWBTN_H, CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Set as Default");
-    C2D_DrawText(&t, C2D_WithColor, SWBTN_X + 40.0f, SROW_SET_DEF - 8.0f,
-                 0.5f, sc, sc, CLR_TEXT);
+    // Single "Save as Default" button — flashes green on tap
+    u32 def_clr = settings_flash ? CLR_BTN_SEL : CLR_BTN;
+    u32 def_txt = settings_flash ? CLR_BG      : CLR_TEXT;
+    C2D_DrawRectSolid(SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, 0.5f, SWBTN_W, SWBTN_H, def_clr);
+    C2D_TextParse(&t, staticBuf, "Save as Default");
+    C2D_DrawText(&t, C2D_WithColor, SWBTN_X + 36.0f, SROW_SAVE_DEF - 8.0f,
+                 0.5f, sc, sc, def_txt);
+}
 
-    // Row 5: Save Defaults
-    C2D_DrawRectSolid(SWBTN_X, SROW_SAVE_DEF - SWBTN_H/2, 0.5f, SWBTN_W, SWBTN_H, CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Save Defaults");
-    C2D_DrawText(&t, C2D_WithColor, SWBTN_X + 44.0f, SROW_SAVE_DEF - 8.0f,
+// ---------------------------------------------------------------------------
+// Palette tab
+// ---------------------------------------------------------------------------
+
+static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                              const PaletteDef *user_palettes,
+                              int palette_sel_pal, int palette_sel_color) {
+    float sc = 0.40f;
+    C2D_Text t;
+    char buf[8];
+
+    // --- Palette selector strip (y=31..64) ---
+    const char *short_names[PALETTE_COUNT] = {"GB","Gray","GBC","Shell","GBA","DB"};
+    for (int i = 0; i < PALETTE_COUNT; i++) {
+        int bx = i * PALTAB_PALSEL_BTN_W;
+        bool sel = (i == palette_sel_pal);
+        C2D_DrawRectSolid(bx, PALTAB_PALSEL_Y, 0.5f,
+                          PALTAB_PALSEL_BTN_W - 1, PALTAB_PALSEL_H,
+                          sel ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, short_names[i]);
+        C2D_DrawText(&t, C2D_WithColor,
+                     bx + 6.0f, PALTAB_PALSEL_Y + 10.0f,
+                     0.5f, sc, sc,
+                     sel ? CLR_BG : CLR_TEXT);
+    }
+
+    C2D_DrawRectSolid(0, PALTAB_PALSEL_Y + PALTAB_PALSEL_H, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // --- Colour swatch strip (y=66..120): swatch i at x = 4 + i*40 ---
+    const PaletteDef *pal = &user_palettes[palette_sel_pal];
+    for (int i = 0; i < pal->size; i++) {
+        int sx = 4 + i * (PALTAB_SWATCH_W + 4);
+        bool sel = (i == palette_sel_color);
+        u32 col = C2D_Color32(pal->colors[i][0], pal->colors[i][1], pal->colors[i][2], 255);
+        C2D_DrawRectSolid(sx, PALTAB_SWATCH_Y, 0.5f, PALTAB_SWATCH_W, PALTAB_SWATCH_H, col);
+        if (sel) {
+            // 2px highlight border
+            C2D_DrawRectSolid(sx - 2, PALTAB_SWATCH_Y - 2,             0.4f, PALTAB_SWATCH_W + 4, 2, CLR_SWATCH_SEL);
+            C2D_DrawRectSolid(sx - 2, PALTAB_SWATCH_Y + PALTAB_SWATCH_H, 0.4f, PALTAB_SWATCH_W + 4, 2, CLR_SWATCH_SEL);
+            C2D_DrawRectSolid(sx - 2, PALTAB_SWATCH_Y - 2,             0.4f, 2, PALTAB_SWATCH_H + 4, CLR_SWATCH_SEL);
+            C2D_DrawRectSolid(sx + PALTAB_SWATCH_W, PALTAB_SWATCH_Y - 2, 0.4f, 2, PALTAB_SWATCH_H + 4, CLR_SWATCH_SEL);
+        }
+    }
+
+    C2D_DrawRectSolid(0, PALTAB_SWATCH_Y + PALTAB_SWATCH_H + 2, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // --- RGB sliders for selected colour ---
+    uint8_t cr = pal->colors[palette_sel_color][0];
+    uint8_t cg = pal->colors[palette_sel_color][1];
+    uint8_t cb = pal->colors[palette_sel_color][2];
+
+    C2D_TextBufClear(dynBuf);
+
+    C2D_TextParse(&t, staticBuf, "R");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_R - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_slider(0, PALTAB_ROW_R, 0.0f, 255.0f, (float)cr);
+    snprintf(buf, sizeof(buf), "%d", cr);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_R - 9.0f, 0.5f, sc, sc, CLR_DIM);
+
+    C2D_TextParse(&t, staticBuf, "G");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_G - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_slider(0, PALTAB_ROW_G, 0.0f, 255.0f, (float)cg);
+    snprintf(buf, sizeof(buf), "%d", cg);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_G - 9.0f, 0.5f, sc, sc, CLR_DIM);
+
+    C2D_TextParse(&t, staticBuf, "B");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)PALTAB_ROW_B - 9.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_slider(0, PALTAB_ROW_B, 0.0f, 255.0f, (float)cb);
+    snprintf(buf, sizeof(buf), "%d", cb);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)PALTAB_ROW_B - 9.0f, 0.5f, sc, sc, CLR_DIM);
+
+    // --- Reset button ---
+    C2D_DrawRectSolid(PALTAB_RESET_X, PALTAB_RESET_Y - PALTAB_RESET_H/2, 0.5f,
+                      PALTAB_RESET_W, PALTAB_RESET_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Reset Pal");
+    C2D_DrawText(&t, C2D_WithColor,
+                 PALTAB_RESET_X + 10.0f, PALTAB_RESET_Y - 8.0f,
                  0.5f, sc, sc, CLR_TEXT);
 }
 
@@ -245,7 +345,10 @@ void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
              FilterParams p, bool selfie,
              bool save_flash, bool warn3d,
-             int active_tab, int save_scale) {
+             int active_tab, int save_scale, bool settings_flash,
+             int settings_row,
+             const PaletteDef *user_palettes,
+             int palette_sel_pal, int palette_sel_color) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
 
@@ -266,7 +369,9 @@ void draw_ui(C3D_RenderTarget *bot,
 
     if (active_tab == 0) {
         draw_camera_tab(staticBuf, dynBuf, p);
-    } else {
-        draw_settings_tab(staticBuf, &p, save_scale);
+    } else if (active_tab == 1) {
+        draw_settings_tab(staticBuf, &p, save_scale, settings_flash, settings_row);
+    } else if (active_tab == 2) {
+        draw_palette_tab(staticBuf, dynBuf, user_palettes, palette_sel_pal, palette_sel_color);
     }
 }
