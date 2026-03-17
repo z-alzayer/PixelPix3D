@@ -85,10 +85,11 @@ int main(void) {
     int          active_tab     = 0;
 
     // Mutable palette copies + palette tab state
-    PaletteDef user_palettes[PALETTE_COUNT];
-    int        settings_row      = 0;   // 0=Save Scale, 1=Dither, 2=Invert
-    int        palette_sel_pal   = 0;
-    int        palette_sel_color = 0;
+    PaletteDef   user_palettes[PALETTE_COUNT];
+    FilterRanges ranges          = FILTER_RANGES_DEFAULTS;
+    int          settings_row    = 0;   // 0=Save Scale, 1=Dither, 2=Invert
+    int          palette_sel_pal   = 0;
+    int          palette_sel_color = 0;
 
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -111,8 +112,18 @@ int main(void) {
     for (int i = 0; i < PALETTE_COUNT; i++) user_palettes[i] = palettes[i];
     settings_load(&params, &save_scale);
     settings_load_palettes(user_palettes);
+    settings_load_ranges(&ranges);
     default_params = params;
     filter_set_user_palettes(user_palettes);
+    // Clamp live params to loaded ranges
+    if (params.brightness  < ranges.bright_min)   params.brightness  = ranges.bright_min;
+    if (params.brightness  > ranges.bright_max)   params.brightness  = ranges.bright_max;
+    if (params.contrast    < ranges.contrast_min) params.contrast    = ranges.contrast_min;
+    if (params.contrast    > ranges.contrast_max) params.contrast    = ranges.contrast_max;
+    if (params.saturation  < ranges.sat_min)      params.saturation  = ranges.sat_min;
+    if (params.saturation  > ranges.sat_max)      params.saturation  = ranges.sat_max;
+    if (params.gamma       < ranges.gamma_min)    params.gamma       = ranges.gamma_min;
+    if (params.gamma       > ranges.gamma_max)    params.gamma       = ranges.gamma_max;
 
     while (aptMainLoop()) {
 
@@ -137,10 +148,10 @@ int main(void) {
             }
             // D-pad: context-aware per active_tab
             if (active_tab == 0) {
-                if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > 2.0f) params.brightness = 2.0f; }
-                if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < 0.0f) params.brightness = 0.0f; }
-                if (kDown & KEY_DLEFT)  { params.saturation -= 0.1f; if (params.saturation < 0.0f) params.saturation = 0.0f; }
-                if (kDown & KEY_DRIGHT) { params.saturation += 0.1f; if (params.saturation > 2.0f) params.saturation = 2.0f; }
+                if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > ranges.bright_max)   params.brightness = ranges.bright_max; }
+                if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < ranges.bright_min)   params.brightness = ranges.bright_min; }
+                if (kDown & KEY_DLEFT)  { params.saturation -= 0.1f; if (params.saturation < ranges.sat_min)      params.saturation = ranges.sat_min; }
+                if (kDown & KEY_DRIGHT) { params.saturation += 0.1f; if (params.saturation > ranges.sat_max)      params.saturation = ranges.sat_max; }
             } else if (active_tab == 1) {
                 if (kDown & KEY_DUP)   { settings_row--; if (settings_row < 0) settings_row = 2; }
                 if (kDown & KEY_DDOWN) { settings_row++; if (settings_row > 2) settings_row = 0; }
@@ -163,7 +174,7 @@ int main(void) {
             bool do_cam = false, do_save = false, do_defaults_save = false;
             handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save, &do_defaults_save,
                          &active_tab, &save_scale, &default_params,
-                         user_palettes, &palette_sel_pal, &palette_sel_color);
+                         &ranges, user_palettes, &palette_sel_pal, &palette_sel_color);
 
             if (do_cam || (kDown & KEY_Y)) {
                 CAMU_StopCapture(PORT_BOTH);
@@ -211,6 +222,7 @@ int main(void) {
                 default_params = params;
                 settings_save(&default_params, save_scale);
                 settings_save_palettes(user_palettes);
+                settings_save_ranges(&ranges);
                 settings_flash = 20;
             }
         }
@@ -279,7 +291,8 @@ int main(void) {
         draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d,
                 active_tab, save_scale, settings_flash > 0,
                 settings_row,
-                user_palettes, palette_sel_pal, palette_sel_color);
+                user_palettes, palette_sel_pal, palette_sel_color,
+                &ranges);
         C3D_FrameEnd(0);
     }
 

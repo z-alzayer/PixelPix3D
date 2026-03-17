@@ -128,3 +128,79 @@ void settings_load_palettes(PaletteDef *user_palettes) {
     }
     fclose(f);
 }
+
+void settings_save_ranges(const FilterRanges *r) {
+    ensure_settings_dir();
+    FILE *f = fopen(SETTINGS_PATH, "a");
+    if (!f) return;
+    fprintf(f, "bright_min=%.2f\n",   (double)r->bright_min);
+    fprintf(f, "bright_max=%.2f\n",   (double)r->bright_max);
+    fprintf(f, "bright_def=%.2f\n",   (double)r->bright_def);
+    fprintf(f, "contrast_min=%.2f\n", (double)r->contrast_min);
+    fprintf(f, "contrast_max=%.2f\n", (double)r->contrast_max);
+    fprintf(f, "contrast_def=%.2f\n", (double)r->contrast_def);
+    fprintf(f, "sat_min=%.2f\n",      (double)r->sat_min);
+    fprintf(f, "sat_max=%.2f\n",      (double)r->sat_max);
+    fprintf(f, "sat_def=%.2f\n",      (double)r->sat_def);
+    fprintf(f, "gamma_min=%.2f\n",    (double)r->gamma_min);
+    fprintf(f, "gamma_max=%.2f\n",    (double)r->gamma_max);
+    fprintf(f, "gamma_def=%.2f\n",    (double)r->gamma_def);
+    fclose(f);
+}
+
+void settings_load_ranges(FilterRanges *r) {
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) return;
+
+    char line[64];
+    while (fgets(line, sizeof(line), f)) {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '#' || line[0] == '\0') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = line;
+        const char *val = eq + 1;
+
+        if      (strcmp(key, "bright_min")   == 0) r->bright_min   = strtof(val, NULL);
+        else if (strcmp(key, "bright_max")   == 0) r->bright_max   = strtof(val, NULL);
+        else if (strcmp(key, "bright_def")   == 0) r->bright_def   = strtof(val, NULL);
+        else if (strcmp(key, "contrast_min") == 0) r->contrast_min = strtof(val, NULL);
+        else if (strcmp(key, "contrast_max") == 0) r->contrast_max = strtof(val, NULL);
+        else if (strcmp(key, "contrast_def") == 0) r->contrast_def = strtof(val, NULL);
+        else if (strcmp(key, "sat_min")      == 0) r->sat_min      = strtof(val, NULL);
+        else if (strcmp(key, "sat_max")      == 0) r->sat_max      = strtof(val, NULL);
+        else if (strcmp(key, "sat_def")      == 0) r->sat_def      = strtof(val, NULL);
+        else if (strcmp(key, "gamma_min")    == 0) r->gamma_min    = strtof(val, NULL);
+        else if (strcmp(key, "gamma_max")    == 0) r->gamma_max    = strtof(val, NULL);
+        else if (strcmp(key, "gamma_def")    == 0) r->gamma_def    = strtof(val, NULL);
+    }
+    fclose(f);
+
+    // Clamp to absolute limits
+    if (r->bright_min   < 0.0f)  r->bright_min   = 0.0f;
+    if (r->bright_max   > 4.0f)  r->bright_max   = 4.0f;
+    if (r->contrast_min < 0.1f)  r->contrast_min = 0.1f;
+    if (r->contrast_max > 4.0f)  r->contrast_max = 4.0f;
+    if (r->sat_min      < 0.0f)  r->sat_min      = 0.0f;
+    if (r->sat_max      > 4.0f)  r->sat_max      = 4.0f;
+    if (r->gamma_min    < 0.1f)  r->gamma_min    = 0.1f;
+    if (r->gamma_max    > 4.0f)  r->gamma_max    = 4.0f;
+
+    // Enforce min <= def <= max
+    if (r->bright_min   > r->bright_max)   r->bright_min   = r->bright_max;
+    if (r->bright_def   < r->bright_min)   r->bright_def   = r->bright_min;
+    if (r->bright_def   > r->bright_max)   r->bright_def   = r->bright_max;
+    if (r->contrast_min > r->contrast_max) r->contrast_min = r->contrast_max;
+    if (r->contrast_def < r->contrast_min) r->contrast_def = r->contrast_min;
+    if (r->contrast_def > r->contrast_max) r->contrast_def = r->contrast_max;
+    if (r->sat_min      > r->sat_max)      r->sat_min      = r->sat_max;
+    if (r->sat_def      < r->sat_min)      r->sat_def      = r->sat_min;
+    if (r->sat_def      > r->sat_max)      r->sat_def      = r->sat_max;
+    if (r->gamma_min    > r->gamma_max)    r->gamma_min    = r->gamma_max;
+    if (r->gamma_def    < r->gamma_min)    r->gamma_def    = r->gamma_min;
+    if (r->gamma_def    > r->gamma_max)    r->gamma_def    = r->gamma_max;
+}

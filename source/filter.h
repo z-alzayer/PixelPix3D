@@ -41,6 +41,22 @@ typedef struct {
                           .gamma = 1.0f, .saturation = 1.0f, .palette = 0, \
                           .dither_mode = 0, .invert = false }
 
+// --- Per-parameter min/max ranges + default startup value -------------------
+
+typedef struct {
+    float bright_min,   bright_max,   bright_def;
+    float contrast_min, contrast_max, contrast_def;
+    float sat_min,      sat_max,      sat_def;
+    float gamma_min,    gamma_max,    gamma_def;
+} FilterRanges;
+
+#define FILTER_RANGES_DEFAULTS { \
+    .bright_min=0.0f,   .bright_max=2.0f,   .bright_def=1.0f, \
+    .contrast_min=0.5f, .contrast_max=2.0f, .contrast_def=1.0f, \
+    .sat_min=0.0f,      .sat_max=2.0f,      .sat_def=1.0f, \
+    .gamma_min=0.5f,    .gamma_max=2.0f,    .gamma_def=1.0f  \
+}
+
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p);
 void floyd_steinberg_dither(uint8_t *pixels, int width, int height,
                             const FilterParams *p);
