@@ -285,7 +285,8 @@ static void draw_settings_tab(C2D_TextBuf staticBuf, const FilterParams *p,
 
 static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                               const PaletteDef *user_palettes,
-                              int palette_sel_pal, int palette_sel_color) {
+                              int palette_sel_pal, int palette_sel_color,
+                              bool settings_flash) {
     float sc = 0.40f;
     C2D_Text t;
     (void)dynBuf;
@@ -379,13 +380,22 @@ static void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         #undef VAL_SEGS
     }
 
-    // --- Reset button ---
-    C2D_DrawRectSolid(PALTAB_RESET_X, PALTAB_RESET_Y - PALTAB_RESET_H/2, 0.5f,
-                      PALTAB_RESET_W, PALTAB_RESET_H, CLR_BTN);
+    // --- Reset button (left half) ---
+    C2D_DrawRectSolid(PALTAB_RESET_X, PALTAB_BTN_Y, 0.5f,
+                      PALTAB_RESET_W, PALTAB_BTN_H, CLR_BTN);
     C2D_TextParse(&t, staticBuf, "Reset Pal");
     C2D_DrawText(&t, C2D_WithColor,
-                 PALTAB_RESET_X + 10.0f, PALTAB_RESET_Y - 8.0f,
+                 PALTAB_RESET_X + 6.0f, PALTAB_BTN_Y + 4.0f,
                  0.5f, sc, sc, CLR_TEXT);
+
+    // --- Save as Default button (right half) ---
+    u32 save_col = settings_flash ? CLR_BTN_SEL : CLR_BTN;
+    C2D_DrawRectSolid(PALTAB_SAVE_DEF_X, PALTAB_BTN_Y, 0.5f,
+                      PALTAB_SAVE_DEF_W, PALTAB_BTN_H, save_col);
+    C2D_TextParse(&t, staticBuf, "Save as Default");
+    C2D_DrawText(&t, C2D_WithColor,
+                 PALTAB_SAVE_DEF_X + 4.0f, PALTAB_BTN_Y + 4.0f,
+                 0.5f, sc, sc, settings_flash ? CLR_BG : CLR_TEXT);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +518,7 @@ void draw_ui(C3D_RenderTarget *bot,
     } else if (active_tab == 1) {
         draw_settings_tab(staticBuf, &p, save_scale, settings_flash, settings_row);
     } else if (active_tab == 2) {
-        draw_palette_tab(staticBuf, dynBuf, user_palettes, palette_sel_pal, palette_sel_color);
+        draw_palette_tab(staticBuf, dynBuf, user_palettes, palette_sel_pal, palette_sel_color, settings_flash);
     } else if (active_tab == 3) {
         draw_calibrate_tab(staticBuf, dynBuf, ranges, settings_flash);
     }

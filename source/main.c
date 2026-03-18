@@ -172,6 +172,10 @@ int main(void) {
                 if (kDown & KEY_DRIGHT) { if (++palette_sel_color >= user_palettes[palette_sel_pal].size) palette_sel_color = 0; }
             }
 
+            // While on palette tab, keep the live filter synced with the selected palette
+            if (active_tab == 2)
+                params.palette = palette_sel_pal;
+
             // Touch input
             touchPosition touch;
             hidTouchRead(&touch);
