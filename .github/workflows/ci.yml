@@ -3,10 +3,23 @@ name: CI
 on:
   push:
     branches: ["**"]
-    paths-ignore:
-      - Dockerfile
+    paths:
+      - "source/**"
+      - "filter/**"
+      - "romfs/**"
+      - "Makefile"
+      - "*.rsf"
+      - "VERSION"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [master]
+    paths:
+      - "source/**"
+      - "filter/**"
+      - "romfs/**"
+      - "Makefile"
+      - "*.rsf"
+      - "VERSION"
   workflow_run:
     workflows: ["Build and push builder image"]
     types: [completed]
@@ -28,6 +41,10 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Read version
+        id: version
+        run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
       - name: Build 3DSX
         run: make
 
@@ -38,8 +55,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Build ${{ github.run_number }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
           files: |
             PixelPix3D.3dsx
             PixelPix3D.smdh
