@@ -122,23 +122,28 @@
 #define PALTAB_SWATCH_H        55
 #define PALTAB_SWATCH_W        36
 
-// 2D hue-saturation picker rectangle (x:4..315, y:124..205)
+// 2D hue-saturation picker rectangle (x:4..315, y:124..193)
 #define PALTAB_HS_X             4
 #define PALTAB_HS_Y           124
 #define PALTAB_HS_W           312
-#define PALTAB_HS_H            82
+#define PALTAB_HS_H            70
 
-// Value (brightness) strip (x:4..315, y:207..220)
+// Value (brightness) strip (x:4..315, y:196..207)
 #define PALTAB_VAL_X            4
-#define PALTAB_VAL_Y          207
+#define PALTAB_VAL_Y          196
 #define PALTAB_VAL_W          312
-#define PALTAB_VAL_H           14
+#define PALTAB_VAL_H           12
 
-// Reset button (centred)
-#define PALTAB_RESET_Y        230
+// Reset + Save-as-Default buttons side-by-side (y=218..237)
+#define PALTAB_BTN_Y          218
+#define PALTAB_BTN_H           20
 #define PALTAB_RESET_W         80
-#define PALTAB_RESET_H         18
-#define PALTAB_RESET_X        ((BOT_W - PALTAB_RESET_W) / 2)
+#define PALTAB_RESET_H         PALTAB_BTN_H
+#define PALTAB_RESET_Y        (PALTAB_BTN_Y + PALTAB_BTN_H / 2)  // kept for legacy hit-test compat
+#define PALTAB_RESET_X        ((BOT_W / 2) - PALTAB_RESET_W - 2)
+#define PALTAB_SAVE_DEF_W     120
+#define PALTAB_SAVE_DEF_H      PALTAB_BTN_H
+#define PALTAB_SAVE_DEF_X     ((BOT_W / 2) + 2)
 
 // ---------------------------------------------------------------------------
 // Gallery tab geometry

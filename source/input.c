@@ -246,9 +246,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
             // Reset button
-            if (hit(tx, ty, PALTAB_RESET_X, PALTAB_RESET_Y - PALTAB_RESET_H/2,
-                    PALTAB_RESET_W, PALTAB_RESET_H)) {
+            if (hit(tx, ty, PALTAB_RESET_X, PALTAB_BTN_Y,
+                    PALTAB_RESET_W, PALTAB_BTN_H)) {
                 user_palettes[*palette_sel_pal] = palettes[*palette_sel_pal];
+                return true;
+            }
+            // Save as Default button
+            if (hit(tx, ty, PALTAB_SAVE_DEF_X, PALTAB_BTN_Y,
+                    PALTAB_SAVE_DEF_W, PALTAB_BTN_H)) {
+                *do_defaults_save = true;
                 return true;
             }
         }
