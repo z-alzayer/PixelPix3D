@@ -21,6 +21,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   FilterParams *default_params,
                   FilterRanges *ranges,
                   PaletteDef *user_palettes,
-                  int *palette_sel_pal, int *palette_sel_color);
+                  int *palette_sel_pal, int *palette_sel_color,
+                  bool *do_gallery_toggle,
+                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll);
 
 #endif

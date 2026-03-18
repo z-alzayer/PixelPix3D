@@ -12,10 +12,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   FilterParams *default_params,
                   FilterRanges *ranges,
                   PaletteDef *user_palettes,
-                  int *palette_sel_pal, int *palette_sel_color) {
+                  int *palette_sel_pal, int *palette_sel_color,
+                  bool *do_gallery_toggle,
+                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
+    *do_gallery_toggle = false;
 
     bool touched = (kHeld & KEY_TOUCH) != 0;
     bool tapped  = (kDown & KEY_TOUCH) != 0;
@@ -26,7 +29,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // --- Tab bar (always active, checked first) ---
     if (tapped && ty < TAB_BAR_H) {
         if (hit(tx, ty, TAB_0_X, TAB_BAR_Y, TAB_0_W, TAB_BAR_H)) {
-            *active_tab = 0;
+            if (*active_tab == 0) {
+                // Camera button toggles gallery when already on camera tab
+                *do_gallery_toggle = true;
+            } else {
+                *active_tab = 0;
+            }
             return true;
         }
         if (hit(tx, ty, TAB_1_X, TAB_BAR_Y, TAB_1_W, TAB_BAR_H)) {
@@ -57,11 +65,41 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
     }
 
+    // --- Gallery grid inputs (when gallery is open) ---
+    if (gallery_mode && *active_tab == 0 && tapped) {
+        int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
+        int max_scroll = total_rows - GALLERY_ROWS;
+        if (max_scroll < 0) max_scroll = 0;
+
+        // Scroll buttons
+        if (hit(tx, ty, BTN_GSCROLL_X, BTN_GSCROLL_UP_Y, BTN_GSCROLL_W, BTN_GSCROLL_H)) {
+            if (*gallery_scroll > 0) (*gallery_scroll)--;
+            return true;
+        }
+        if (hit(tx, ty, BTN_GSCROLL_X, BTN_GSCROLL_DN_Y, BTN_GSCROLL_W, BTN_GSCROLL_H)) {
+            if (*gallery_scroll < max_scroll) (*gallery_scroll)++;
+            return true;
+        }
+
+        // Grid cell taps
+        if (ty >= GALLERY_START_Y) {
+            int col = (tx - GALLERY_GAP) / (GALLERY_CELL_W + GALLERY_GAP);
+            int row = (ty - GALLERY_START_Y) / GALLERY_ROW_H;
+            if (col >= 0 && col < GALLERY_COLS && row >= 0 && row < GALLERY_ROWS) {
+                int idx = (*gallery_scroll * GALLERY_COLS) + row * GALLERY_COLS + col;
+                if (idx >= 0 && idx < gallery_count) {
+                    *gallery_sel = idx;
+                    return true;
+                }
+            }
+        }
+    }
+
     // --- Camera tab inputs ---
     if (*active_tab == 0) {
 
-        // Palette buttons (tap only)
-        if (tapped && ty >= PAL_BTN_Y && ty < PAL_BTN_Y + PAL_BTN_H) {
+        // Palette buttons (tap only, only when not in gallery mode)
+        if (!gallery_mode && tapped && ty >= PAL_BTN_Y && ty < PAL_BTN_Y + PAL_BTN_H) {
             for (int i = 0; i < 7; i++) {
                 int bx = PAL_BTN_X0 + i * (PAL_BTN_W + 2);
                 if (tx >= bx && tx < bx + PAL_BTN_W) {

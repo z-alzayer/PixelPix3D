@@ -75,14 +75,14 @@ void draw_snap_slider(int px_val) {
 // ---------------------------------------------------------------------------
 
 static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
-                         bool selfie, bool save_flash) {
+                         bool selfie, bool save_flash, bool gallery_mode) {
     C2D_Text t;
 
-    // Tab 0: Camera
+    // Tab 0: Camera (highlighted when active; label shows "Gallery" when gallery_mode)
     C2D_DrawRectSolid(TAB_0_X, TAB_BAR_Y, 0.5f, TAB_0_W, TAB_BAR_H,
                       active_tab == 0 ? CLR_BTN_SEL : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Camera");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
+    C2D_TextParse(&t, staticBuf, gallery_mode ? "Gallery" : "Camera");
+    C2D_DrawText(&t, C2D_WithColor, gallery_mode ? 4.0f : 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
                  active_tab == 0 ? CLR_BG : CLR_TEXT);
 
     // Tab 1: Settings
@@ -122,6 +122,71 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
 // ---------------------------------------------------------------------------
 // Camera tab
 // ---------------------------------------------------------------------------
+
+static void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                              int gallery_count, const char gallery_paths[][64],
+                              int gallery_sel, int gallery_scroll) {
+    C2D_Text t;
+    (void)dynBuf;
+
+    if (gallery_count == 0) {
+        C2D_TextParse(&t, staticBuf, "No photos yet");
+        C2D_DrawText(&t, C2D_WithColor, 90.0f, 120.0f, 0.5f, 0.55f, 0.55f, CLR_DIM);
+        return;
+    }
+
+    for (int row = 0; row < GALLERY_ROWS; row++) {
+        for (int col = 0; col < GALLERY_COLS; col++) {
+            int idx = (gallery_scroll * GALLERY_COLS) + row * GALLERY_COLS + col;
+            if (idx >= gallery_count) break;
+
+            float cx = GALLERY_GAP + col * (GALLERY_CELL_W + GALLERY_GAP);
+            float cy = GALLERY_START_Y + row * GALLERY_ROW_H;
+
+            bool sel = (idx == gallery_sel);
+            C2D_DrawRectSolid(cx, cy, 0.5f, GALLERY_CELL_W, GALLERY_CELL_H,
+                              sel ? CLR_BTN_SEL : CLR_BTN);
+
+            if (sel) {
+                C2D_DrawRectSolid(cx - 2, cy - 2, 0.4f, GALLERY_CELL_W + 4, 2, CLR_SWATCH_SEL);
+                C2D_DrawRectSolid(cx - 2, cy + GALLERY_CELL_H, 0.4f, GALLERY_CELL_W + 4, 2, CLR_SWATCH_SEL);
+                C2D_DrawRectSolid(cx - 2, cy - 2, 0.4f, 2, GALLERY_CELL_H + 4, CLR_SWATCH_SEL);
+                C2D_DrawRectSolid(cx + GALLERY_CELL_W, cy - 2, 0.4f, 2, GALLERY_CELL_H + 4, CLR_SWATCH_SEL);
+            }
+
+            // Number label extracted from GB_XXXX.JPG filename
+            const char *path = gallery_paths[idx];
+            const char *slash = path;
+            for (const char *p = path; *p; p++) if (*p == '/') slash = p + 1;
+            char label[10] = {0};
+            int n = 0;
+            if (sscanf(slash, "GB_%d.JPG", &n) == 1)
+                snprintf(label, sizeof(label), "%04d", n);
+            else
+                snprintf(label, sizeof(label), "?");
+            C2D_TextParse(&t, staticBuf, label);
+            C2D_DrawText(&t, C2D_WithColor,
+                         cx + 18.0f, cy + GALLERY_CELL_H / 2.0f - 6.0f,
+                         0.5f, 0.42f, 0.42f,
+                         sel ? CLR_BG : CLR_TEXT);
+        }
+    }
+
+    // Scroll up/down buttons
+    int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
+    int max_scroll = total_rows - GALLERY_ROWS;
+    if (max_scroll < 0) max_scroll = 0;
+
+    u32 up_clr = (gallery_scroll > 0)          ? CLR_BTN : CLR_TRACK;
+    u32 dn_clr = (gallery_scroll < max_scroll)  ? CLR_BTN : CLR_TRACK;
+    C2D_DrawRectSolid(BTN_GSCROLL_X, BTN_GSCROLL_UP_Y, 0.5f, BTN_GSCROLL_W, BTN_GSCROLL_H, up_clr);
+    C2D_TextParse(&t, staticBuf, "^");
+    C2D_DrawText(&t, C2D_WithColor, BTN_GSCROLL_X + 4.0f, BTN_GSCROLL_UP_Y + 6.0f, 0.5f, 0.44f, 0.44f, CLR_TEXT);
+
+    C2D_DrawRectSolid(BTN_GSCROLL_X, BTN_GSCROLL_DN_Y, 0.5f, BTN_GSCROLL_W, BTN_GSCROLL_H, dn_clr);
+    C2D_TextParse(&t, staticBuf, "v");
+    C2D_DrawText(&t, C2D_WithColor, BTN_GSCROLL_X + 5.0f, BTN_GSCROLL_DN_Y + 6.0f, 0.5f, 0.44f, 0.44f, CLR_TEXT);
+}
 
 static void draw_camera_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                              FilterParams p, const FilterRanges *ranges) {
@@ -474,7 +539,9 @@ void draw_ui(C3D_RenderTarget *bot,
              const PaletteDef *user_palettes,
              int palette_sel_pal, int palette_sel_color,
              const FilterRanges *ranges,
-             bool comparing) {
+             bool comparing,
+             bool gallery_mode, int gallery_count,
+             const char gallery_paths[][64], int gallery_sel, int gallery_scroll) {
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
 
@@ -490,7 +557,7 @@ void draw_ui(C3D_RenderTarget *bot,
 
     C2D_TextBufClear(staticBuf);
 
-    draw_tab_bar(staticBuf, active_tab, selfie, save_flash);
+    draw_tab_bar(staticBuf, active_tab, selfie, save_flash, gallery_mode);
     C2D_DrawRectSolid(0, 29, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
     if (comparing) {
@@ -503,7 +570,9 @@ void draw_ui(C3D_RenderTarget *bot,
         return;
     }
 
-    if (active_tab == 0) {
+    if (gallery_mode) {
+        draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths, gallery_sel, gallery_scroll);
+    } else if (active_tab == 0) {
         draw_camera_tab(staticBuf, dynBuf, p, ranges);
     } else if (active_tab == 1) {
         draw_settings_tab(staticBuf, &p, save_scale, settings_flash, settings_row);
