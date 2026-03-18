@@ -141,6 +141,25 @@
 #define PALTAB_RESET_X        ((BOT_W - PALTAB_RESET_W) / 2)
 
 // ---------------------------------------------------------------------------
+// Gallery tab geometry
+// ---------------------------------------------------------------------------
+
+#define GALLERY_COLS      4
+#define GALLERY_CELL_W   74
+#define GALLERY_CELL_H   44
+#define GALLERY_GAP       4
+#define GALLERY_ROW_H    (GALLERY_CELL_H + GALLERY_GAP)
+#define GALLERY_ROWS      4
+#define GALLERY_START_Y  (TAB_BAR_H + GALLERY_GAP)
+
+// Gallery scroll buttons (right edge of gallery grid)
+#define BTN_GSCROLL_X    302
+#define BTN_GSCROLL_W     18
+#define BTN_GSCROLL_H     26
+#define BTN_GSCROLL_UP_Y  (GALLERY_START_Y)
+#define BTN_GSCROLL_DN_Y  (BOT_H - BTN_GSCROLL_H)
+
+// ---------------------------------------------------------------------------
 // Calibrate tab geometry
 // ---------------------------------------------------------------------------
 
@@ -176,6 +195,8 @@ void draw_ui(C3D_RenderTarget *bot,
              const PaletteDef *user_palettes,
              int palette_sel_pal, int palette_sel_color,
              const FilterRanges *ranges,
-             bool comparing);
+             bool comparing,
+             bool gallery_mode, int gallery_count,
+             const char gallery_paths[][64], int gallery_sel, int gallery_scroll);
 
 #endif

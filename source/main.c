@@ -91,6 +91,16 @@ int main(void) {
     int          palette_sel_pal   = 0;
     int          palette_sel_color = 0;
 
+    // Gallery state
+    #define GALLERY_MAX 256
+    bool gallery_mode   = false;
+    int  gallery_sel    = 0;
+    int  gallery_scroll = 0;
+    static char gallery_paths[GALLERY_MAX][64];
+    int  gallery_count  = 0;
+    static uint16_t gallery_thumb[CAMERA_WIDTH * CAMERA_HEIGHT];
+    int  gallery_loaded = -1;
+
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
     CAMU_SetTransferBytes(PORT_BOTH, bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -177,9 +187,41 @@ int main(void) {
             hidTouchRead(&touch);
 
             bool do_cam = false, do_save = false, do_defaults_save = false;
+            bool do_gallery_toggle = false;
             handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save, &do_defaults_save,
                          &active_tab, &save_scale, &default_params,
-                         &ranges, user_palettes, &palette_sel_pal, &palette_sel_color);
+                         &ranges, user_palettes, &palette_sel_pal, &palette_sel_color,
+                         &do_gallery_toggle,
+                         gallery_mode, gallery_count, &gallery_sel, &gallery_scroll);
+
+            if (do_gallery_toggle) {
+                gallery_mode = !gallery_mode;
+                if (gallery_mode) {
+                    gallery_count  = list_saved_photos(SAVE_DIR, gallery_paths, GALLERY_MAX);
+                    gallery_sel    = 0;
+                    gallery_scroll = 0;
+                    gallery_loaded = -1;
+                }
+            }
+
+            // Load selected photo into thumb buffer when selection changes
+            if (gallery_mode && gallery_count > 0 && gallery_loaded != gallery_sel) {
+                load_jpeg_to_rgb565(gallery_paths[gallery_sel], gallery_thumb,
+                                    CAMERA_WIDTH, CAMERA_HEIGHT);
+                gallery_loaded = gallery_sel;
+            }
+
+            // Gallery d-pad scrolling
+            if (gallery_mode) {
+                int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
+                int max_scroll = total_rows - GALLERY_ROWS;
+                if (max_scroll < 0) max_scroll = 0;
+                if (kDown & KEY_DDOWN) { if (gallery_scroll < max_scroll) gallery_scroll++; }
+                if (kDown & KEY_DUP)   { if (gallery_scroll > 0) gallery_scroll--; }
+                if (kDown & KEY_DRIGHT) { gallery_sel++; if (gallery_sel >= gallery_count) gallery_sel = gallery_count - 1; }
+                if (kDown & KEY_DLEFT)  { gallery_sel--; if (gallery_sel < 0) gallery_sel = 0; }
+
+            }
 
             if (do_cam || (kDown & KEY_Y)) {
                 CAMU_StopCapture(PORT_BOTH);
@@ -286,7 +328,11 @@ int main(void) {
                 fb[i*3+2] = 180;  // R
             }
         } else {
-            void *blit_src = comparing ? buf : filtered_buf;
+            void *blit_src;
+            if (gallery_mode && gallery_count > 0)
+                blit_src = gallery_thumb;
+            else
+                blit_src = comparing ? buf : filtered_buf;
             writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
                                             blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
         }
@@ -301,7 +347,9 @@ int main(void) {
                 active_tab, save_scale, settings_flash > 0,
                 settings_row,
                 user_palettes, palette_sel_pal, palette_sel_color,
-                &ranges, comparing);
+                &ranges, comparing,
+                gallery_mode, gallery_count,
+                (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll);
         C3D_FrameEnd(0);
     }
 

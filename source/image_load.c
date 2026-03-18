@@ -10,13 +10,13 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-int load_jpeg_to_bgr565(const char *path, uint16_t *dst, int width, int height) {
+int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height) {
     int img_w, img_h, channels;
     uint8_t *pixels = stbi_load(path, &img_w, &img_h, &channels, 3);
     if (!pixels) return 0;
 
-    // Nearest-neighbour scale to target dimensions and pack as BGR565.
-    // The 3DS camera format has B in the high bits: [B4..B0 G5..G0 R4..R0]
+    // Nearest-neighbour scale to target dimensions and pack as RGB565.
+    // writePictureToFramebufferRGB565 expects R=bits15-11, G=bits10-5, B=bits4-0.
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int sx  = x * img_w / width;
@@ -27,9 +27,9 @@ int load_jpeg_to_bgr565(const char *path, uint16_t *dst, int width, int height) 
             uint8_t g = pixels[idx + 1];
             uint8_t b = pixels[idx + 2];
 
-            dst[y * width + x] = ((uint16_t)(b >> 3) << 11)
+            dst[y * width + x] = ((uint16_t)(r >> 3) << 11)
                                 | ((uint16_t)(g >> 2) <<  5)
-                                |  (uint16_t)(r >> 3);
+                                |  (uint16_t)(b >> 3);
         }
     }
 
@@ -65,4 +65,32 @@ int next_save_path(const char *dir, char *out_path, int out_len) {
     if (next > 9999) return 0;
     snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, next);
     return 1;
+}
+
+// Scan dir for GB_XXXX.JPG files, fill paths[] sorted descending by number.
+int list_saved_photos(const char *dir, char paths[][64], int max) {
+    int nums[256];
+    int count = 0;
+
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL && count < max) {
+        int n = 0;
+        if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1)
+            nums[count++] = n;
+    }
+    closedir(d);
+
+    // Insertion sort descending
+    for (int i = 1; i < count; i++) {
+        int key = nums[i], j = i - 1;
+        while (j >= 0 && nums[j] < key) { nums[j+1] = nums[j]; j--; }
+        nums[j+1] = key;
+    }
+
+    for (int i = 0; i < count; i++)
+        snprintf(paths[i], 64, "%s/GB_%04d.JPG", dir, nums[i]);
+
+    return count;
 }
