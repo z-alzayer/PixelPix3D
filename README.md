@@ -54,6 +54,8 @@ The bottom screen has two tabs: **Camera** and **Settings**. Tap either label to
 
 ### Camera tab
 
+![Camera tab](example_image/main_screen.png)
+
 Four sliders let you adjust the look in real time:
 
 | Slider | What it does |
@@ -68,6 +70,8 @@ Below the sliders are **6 palette buttons** — tap one to apply that colour pal
 
 ### Settings tab
 
+![Settings tab](example_image/dither_settings.png)
+
 | Setting | What it does |
 |---------|-------------|
 | Save Scale | **1×** saves at 400×240, **2×** saves at 800×480 (default) |
@@ -77,11 +81,18 @@ Below the sliders are **6 palette buttons** — tap one to apply that colour pal
 From within the Settings tab, two extra tabs appear in the tab bar:
 
 - **Calibrate** — adjust the min, max, and default value for each filter slider
+
+  ![Calibrate tab](example_image/custom_defaults.png)
+
 - **Palette** — edit each palette's colours with RGB sliders; the top screen shows a live preview
+
+  ![Palette editor](example_image/custom_palettes.png)
 
 When you've set things up the way you like, tap **Save as Default** to write your settings to the SD card. They'll be there the next time you open the app.
 
 ### Gallery
+
+![Gallery](example_image/gallery.png)
 
 Tap **Gallery** in the tab bar to browse photos you've already saved. Use the D-Pad to move between photos. The selected photo shows full-screen on the top screen.
 
