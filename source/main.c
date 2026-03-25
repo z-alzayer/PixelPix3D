@@ -350,7 +350,7 @@ int main(void) {
             }
         }
 
-        if (s_save.busy) save_flash = 3;  // keep indicator alive while thread is working
+        if (s_save.busy) save_flash = 20;  // pin high while thread is working
         else if (save_flash > 0) save_flash--;
         if (settings_flash > 0) settings_flash--;
 
@@ -422,7 +422,7 @@ int main(void) {
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash > 0, use3d,
+        draw_ui(bot, staticBuf, dynBuf, params, selfie, save_flash, use3d,
                 active_tab, save_scale, settings_flash > 0,
                 settings_row,
                 user_palettes, palette_sel_pal, palette_sel_color,

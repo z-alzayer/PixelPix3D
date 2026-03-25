@@ -75,7 +75,7 @@ void draw_snap_slider(int px_val) {
 // ---------------------------------------------------------------------------
 
 static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
-                         bool selfie, bool save_flash, bool gallery_mode) {
+                         bool selfie, int save_flash, bool gallery_mode) {
     C2D_Text t;
 
     // Tab 0: Camera (highlighted when active; label shows "Gallery" when gallery_mode)
@@ -99,10 +99,15 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
         C2D_TextParse(&t, staticBuf, selfie ? "Selfie" : "Outer");
         C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 14.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
 
-        u32 save_clr = save_flash ? CLR_HANDLE : CLR_BTN;
+        u32 save_clr = (save_flash > 0) ? CLR_BTN_SEL : CLR_BTN;
         C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H, save_clr);
-        C2D_TextParse(&t, staticBuf, "Save");
-        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 24.0f, 8.0f, 0.5f, 0.48f, 0.48f, CLR_TEXT);
+        const char *save_label = (save_flash >= 20) ? "Saving..." : (save_flash > 0) ? "Saved!" : "Save";
+        float save_lx = (save_flash > 0 && save_flash < 20) ? BTN_SAVE_X + 12.0f :
+                        (save_flash >= 20)                   ? BTN_SAVE_X + 6.0f  :
+                                                               BTN_SAVE_X + 24.0f;
+        C2D_TextParse(&t, staticBuf, save_label);
+        C2D_DrawText(&t, C2D_WithColor, save_lx, 8.0f, 0.5f, 0.44f, 0.44f,
+                     save_flash > 0 ? CLR_BG : CLR_TEXT);
     } else {
         // Settings context: Calibrate tab + Palette tab
         C2D_DrawRectSolid(BTN_CAM_X, BTN_CAM_Y, 0.5f, BTN_CAM_W, BTN_CAM_H,
@@ -630,7 +635,7 @@ static void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
              FilterParams p, bool selfie,
-             bool save_flash, bool warn3d,
+             int save_flash, bool warn3d,
              int active_tab, int save_scale, bool settings_flash,
              int settings_row,
              const PaletteDef *user_palettes,
