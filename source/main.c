@@ -16,6 +16,7 @@
 #include "filter.h"
 #include "image_load.h"
 #include "settings.h"
+#include "sound.h"
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -75,6 +76,7 @@ static void save_thread_func(void *arg) {
 // ---------------------------------------------------------------------------
 
 void cleanup(void) {
+    sound_exit();
     C2D_Fini();
     C3D_Fini();
     camExit();
@@ -90,6 +92,7 @@ void cleanup(void) {
 int main(void) {
     romfsInit();
     acInit();
+    sound_init();  // gracefully no-ops if csnd unavailable
     gfxInitDefault();
     gfxSetDoubleBuffering(GFX_TOP,    true);
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
@@ -346,6 +349,7 @@ int main(void) {
                 s_save.save_scale = save_scale;
                 s_save.busy = true;
                 save_flash = 20;
+                play_shutter_click();
                 LightEvent_Signal(&s_save.request_event);
             }
         }
