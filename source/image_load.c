@@ -37,15 +37,41 @@ int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height) 
     return 1;
 }
 
-int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height) {
-    return stbi_write_jpg(path, width, height, 3, rgb888, 90);
+// Static output buffer for JPEG encoding.
+// Real output is ~50–150 KB (palette-quantized images compress heavily).
+// 512 KB is a 3× safety margin over the largest observed file.
+// No runtime allocation during save; safe because saves are serialized via busy flag.
+#define JPEG_BUF_CAP (512 * 1024)
+static uint8_t s_jpeg_buf[JPEG_BUF_CAP];
+static int     s_jpeg_len;
+
+static void jpeg_accum(void *ctx, void *data, int size) {
+    (void)ctx;
+    if (s_jpeg_len + size > JPEG_BUF_CAP) return;
+    memcpy(s_jpeg_buf + s_jpeg_len, data, size);
+    s_jpeg_len += size;
 }
 
-// Find the next unused filename GB_XXXX.JPG in dir, write it into out_path.
-// Scans the directory once to find the highest existing GB_NNNN number,
-// then uses max+1 — O(n) in directory entries, not O(n) in fopen calls.
-// Returns 1 if a free slot was found, 0 if all 9999 slots are taken.
-int next_save_path(const char *dir, char *out_path, int out_len) {
+// Encode to a static memory buffer, then write the whole file in one fwrite.
+// Avoids thousands of tiny SD-card writes from stbi's 64-byte internal buffer.
+int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height) {
+    s_jpeg_len = 0;
+    stbi_write_jpg_to_func(jpeg_accum, NULL, width, height, 3, rgb888, 90);
+    if (s_jpeg_len <= 0) return 0;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) return 0;
+    int ok = (fwrite(s_jpeg_buf, 1, s_jpeg_len, f) == (size_t)s_jpeg_len);
+    fclose(f);
+    return ok;
+}
+
+// Persistent counter seeded by save_counter_init(); incremented on each save.
+static int s_next_n = -1;  // -1 = not yet initialised
+
+// Call once at startup: creates the DCIM directories and scans for the
+// highest existing GB_NNNN number so subsequent next_save_path calls are O(1).
+void save_counter_init(const char *dir) {
     mkdir("sdmc:/DCIM", 0777);
     mkdir(dir, 0777);
 
@@ -60,10 +86,17 @@ int next_save_path(const char *dir, char *out_path, int out_len) {
         }
         closedir(d);
     }
+    s_next_n = max_n + 1;
+}
 
-    int next = max_n + 1;
-    if (next > 9999) return 0;
-    snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, next);
+// Returns the next free path without any filesystem I/O (O(1)).
+// Falls back to a full scan if save_counter_init was never called.
+// Returns 1 if a free slot was found, 0 if all 9999 slots are taken.
+int next_save_path(const char *dir, char *out_path, int out_len) {
+    if (s_next_n < 0) save_counter_init(dir);  // lazy fallback
+    if (s_next_n > 9999) return 0;
+    snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, s_next_n);
+    s_next_n++;
     return 1;
 }
 

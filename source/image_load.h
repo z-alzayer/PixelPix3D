@@ -11,7 +11,10 @@ int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height);
 // Returns 1 on success, 0 on failure.
 int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height);
 
-// Find the next free GB_XXXX.JPG slot in dir, write full path into out_path.
+// Scan dir once to seed the save counter. Call at startup before any save.
+void save_counter_init(const char *dir);
+
+// Return the next free GB_XXXX.JPG path (O(1) after save_counter_init).
 // Returns 1 if a slot was found, 0 if not.
 int next_save_path(const char *dir, char *out_path, int out_len);
 

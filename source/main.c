@@ -23,6 +23,54 @@
 static jmp_buf exitJmp;
 
 // ---------------------------------------------------------------------------
+// Background save thread
+// ---------------------------------------------------------------------------
+
+#define SAVE_THREAD_STACK_SIZE (32 * 1024)
+
+typedef struct {
+    uint8_t      *snapshot_buf;    // malloc'd once, CAMERA_SCREEN_SIZE bytes (RGB565)
+    char          save_path[64];
+    int           save_scale;
+    volatile bool busy;            // main sets true on trigger; worker clears on finish
+    volatile bool quit;            // main sets true at shutdown
+    LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start
+    LightEvent    done_event;      // RESET_ONESHOT: worker signals when finished
+} SaveThreadState;
+
+static SaveThreadState s_save;
+
+static void save_thread_func(void *arg) {
+    SaveThreadState *st = (SaveThreadState *)arg;
+    uint8_t *rgb_priv     = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
+    uint8_t *upscale_priv = malloc(SAVE_SCALE * CAMERA_WIDTH * SAVE_SCALE * CAMERA_HEIGHT * 3);
+    if (!rgb_priv || !upscale_priv) {
+        free(rgb_priv);
+        free(upscale_priv);
+        threadExit(1);
+    }
+    while (true) {
+        LightEvent_Wait(&st->request_event);
+        if (st->quit) break;
+
+        int  scale = st->save_scale;
+        char path[64];
+        memcpy(path, st->save_path, sizeof(path));
+
+        rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
+                         CAMERA_WIDTH * CAMERA_HEIGHT);
+        nn_upscale(upscale_priv, rgb_priv, CAMERA_WIDTH, CAMERA_HEIGHT, scale);
+        save_jpeg(path, upscale_priv, CAMERA_WIDTH * scale, CAMERA_HEIGHT * scale);
+
+        st->busy = false;
+        LightEvent_Signal(&st->done_event);
+    }
+    free(rgb_priv);
+    free(upscale_priv);
+    threadExit(0);
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
@@ -75,7 +123,8 @@ int main(void) {
     u8 *buf          = malloc(CAMERA_BUF_SIZE);
     u8 *filtered_buf = malloc(CAMERA_SCREEN_SIZE);
     u8 *rgb_buf      = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
-    if (!buf || !filtered_buf || !rgb_buf) longjmp(exitJmp, 1);
+    s_save.snapshot_buf = malloc(CAMERA_SCREEN_SIZE);
+    if (!buf || !filtered_buf || !rgb_buf || !s_save.snapshot_buf) longjmp(exitJmp, 1);
     memset(filtered_buf, 0, CAMERA_SCREEN_SIZE);
 
     // Filter params
@@ -118,6 +167,7 @@ int main(void) {
 
     int save_flash     = 0;
     int settings_flash = 0;
+    int frame_count    = 0;
 
     for (int i = 0; i < PALETTE_COUNT; i++) user_palettes[i] = palettes[i];
     settings_load(&params, &save_scale);
@@ -135,6 +185,19 @@ int main(void) {
     if (params.gamma       < ranges.gamma_min)    params.gamma       = ranges.gamma_min;
     if (params.gamma       > ranges.gamma_max)    params.gamma       = ranges.gamma_max;
 
+    // Seed the save counter once so next_save_path is O(1) at shutter time
+    save_counter_init(SAVE_DIR);
+
+    // Initialize and launch the background save thread on core 1
+    LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
+    LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
+    s_save.busy = false;
+    s_save.quit = false;
+    APT_SetAppCpuTimeLimit(30);  // unlock core 1; keep low to avoid cache pressure on camera DMA
+    Thread save_thread = threadCreate(save_thread_func, &s_save,
+                                      SAVE_THREAD_STACK_SIZE, 0x3F, 1, false);
+    if (!save_thread) longjmp(exitJmp, 1);
+
     while (aptMainLoop()) {
 
         hidScanInput();
@@ -142,6 +205,8 @@ int main(void) {
         u32 kHeld = hidKeysHeld();
 
         if (kDown & KEY_START) break;
+
+        bool do_save = false;
 
         if (!captureInterrupted) {
             // Physical button fallbacks
@@ -180,6 +245,11 @@ int main(void) {
                 if (kDown & KEY_DDOWN)  { if (++palette_sel_pal   >= PALETTE_COUNT)                      palette_sel_pal   = 0;                 palette_sel_color = 0; }
                 if (kDown & KEY_DLEFT)  { if (--palette_sel_color < 0)                                   palette_sel_color = user_palettes[palette_sel_pal].size - 1; }
                 if (kDown & KEY_DRIGHT) { if (++palette_sel_color >= user_palettes[palette_sel_pal].size) palette_sel_color = 0; }
+            } else if (active_tab == 4) {
+                if (kDown & KEY_DUP)    { params.fx_mode--; if (params.fx_mode < 0)  params.fx_mode = 6; }
+                if (kDown & KEY_DDOWN)  { params.fx_mode++; if (params.fx_mode > 6)  params.fx_mode = 0; }
+                if (kDown & KEY_DLEFT)  { params.fx_intensity--; if (params.fx_intensity < 0)  params.fx_intensity = 0; }
+                if (kDown & KEY_DRIGHT) { params.fx_intensity++; if (params.fx_intensity > 10) params.fx_intensity = 10; }
             }
 
             // While on palette tab, keep the live filter synced with the selected palette
@@ -190,7 +260,7 @@ int main(void) {
             touchPosition touch;
             hidTouchRead(&touch);
 
-            bool do_cam = false, do_save = false, do_defaults_save = false;
+            bool do_cam = false, do_defaults_save = false;
             bool do_gallery_toggle = false;
             handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save, &do_defaults_save,
                          &active_tab, &save_scale, &default_params,
@@ -258,17 +328,6 @@ int main(void) {
                 captureInterrupted = false;
             }
 
-            if (do_save || (kDown & KEY_A)) {
-                char save_path[64];
-                if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
-                    uint8_t *upscale_buf = camera_get_upscale_buf();
-                    rgb565_to_rgb888(rgb_buf, (const uint16_t *)filtered_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
-                    nn_upscale(upscale_buf, rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, save_scale);
-                    if (save_jpeg(save_path, upscale_buf, CAMERA_WIDTH * save_scale, CAMERA_HEIGHT * save_scale))
-                        save_flash = 20;
-                }
-            }
-
             if (do_defaults_save) {
                 default_params = params;
                 settings_save(&default_params, save_scale);
@@ -278,11 +337,22 @@ int main(void) {
             }
         }
 
-        if (save_flash > 0) save_flash--;
-        if (settings_flash > 0) settings_flash--;
+        // Save fires regardless of captureInterrupted; do_save set by touch, KEY_A also checked
+        if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
+            char save_path[64];
+            if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
+                memcpy(s_save.snapshot_buf, filtered_buf, CAMERA_SCREEN_SIZE);
+                memcpy(s_save.save_path, save_path, sizeof(save_path));
+                s_save.save_scale = save_scale;
+                s_save.busy = true;
+                save_flash = 20;
+                LightEvent_Signal(&s_save.request_event);
+            }
+        }
 
-        // Hold SELECT to bypass the filter and preview the raw camera feed
-        bool comparing = (kHeld & KEY_SELECT) != 0;
+        if (s_save.busy) save_flash = 3;  // keep indicator alive while thread is working
+        else if (save_flash > 0) save_flash--;
+        if (settings_flash > 0) settings_flash--;
 
         // Always drain both camera ports to prevent buffer error interrupts
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
@@ -298,6 +368,10 @@ int main(void) {
 
         // Block until any camera event fires
         svcWaitSynchronizationN(&index, camReceiveEvent, 4, false, WAIT_TIMEOUT);
+
+        // Hold SELECT to bypass the filter and preview the raw camera feed
+        bool comparing = (kHeld & KEY_SELECT) != 0;
+
         switch (index) {
         case 0:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
@@ -309,9 +383,10 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            if (!use3d && !comparing) {
+            if (!use3d && !comparing && !s_save.busy) {
                 rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                 apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, params);
+                apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, params, frame_count);
                 rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
             }
             break;
@@ -355,6 +430,7 @@ int main(void) {
                 gallery_mode, gallery_count,
                 (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll);
         C3D_FrameEnd(0);
+        frame_count++;
     }
 
     CAMU_StopCapture(PORT_BOTH);
@@ -362,9 +438,16 @@ int main(void) {
         if (camReceiveEvent[i]) svcCloseHandle(camReceiveEvent[i]);
     CAMU_Activate(SELECT_NONE);
 
+    // Gracefully stop the save thread before freeing its buffers
+    s_save.quit = true;
+    LightEvent_Signal(&s_save.request_event);  // unblock worker if waiting
+    threadJoin(save_thread, U64_MAX);
+    threadFree(save_thread);
+
     free(buf);
     free(filtered_buf);
     free(rgb_buf);
+    free(s_save.snapshot_buf);
     C2D_TextBufDelete(staticBuf);
     C2D_TextBufDelete(dynBuf);
     cleanup();
