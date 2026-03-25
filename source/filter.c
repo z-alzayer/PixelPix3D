@@ -11,6 +11,14 @@ static uint8_t small_buf[SMALL_BUF_MAX];
 // int16_t per channel, sized for the full 400x240 image (~563 KB in BSS).
 static int16_t fs_err[400 * 240 * 3];
 
+// --- FX post-processing scratch buffers -------------------------------------
+// One row buffer for chromatic aberration (400 pixels * 3 channels = 1200 bytes).
+static uint8_t chroma_row[400 * 3];
+// Squared-distance LUT components for vignette — rebuilt when intensity changes.
+static int vig_lut_x[400];
+static int vig_lut_y[240];
+static int vig_last_intensity = -1;
+
 // Mutable user palette pointer — set via filter_set_user_palettes().
 static PaletteDef *s_user_palettes = NULL;
 
@@ -474,4 +482,105 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
         }
 
     (void)small;  // static buffer, no free needed
+}
+
+// --- FX post-processing layer -----------------------------------------------
+
+void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
+    if (p.fx_mode == FX_NONE) return;
+
+    if (p.fx_mode == FX_SCAN_H || p.fx_mode == FX_SCAN_V || p.fx_mode == FX_LCD) {
+        // Darken percentage: 10% at intensity 0, up to 70% at intensity 10
+        int darken_pct = 10 + p.fx_intensity * 6;
+        int factor = (256 * (100 - darken_pct)) / 100;
+
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                bool darken;
+                if (p.fx_mode == FX_SCAN_H) darken = (y & 1);
+                else if (p.fx_mode == FX_SCAN_V) darken = (x & 1);
+                else darken = (x & 1) || (y & 1);  // FX_LCD
+
+                if (darken) {
+                    int i = (y * w + x) * 3;
+                    buf[i+0] = (uint8_t)((buf[i+0] * factor) >> 8);
+                    buf[i+1] = (uint8_t)((buf[i+1] * factor) >> 8);
+                    buf[i+2] = (uint8_t)((buf[i+2] * factor) >> 8);
+                }
+            }
+        }
+        return;
+    }
+
+    if (p.fx_mode == FX_VIGNETTE) {
+        // Rebuild squared-distance LUTs when intensity changes
+        if (vig_last_intensity != p.fx_intensity) {
+            int cx = w / 2, cy = h / 2;
+            for (int x = 0; x < w; x++) { int dx = x - cx; vig_lut_x[x] = dx * dx; }
+            for (int y = 0; y < h; y++) { int dy = y - cy; vig_lut_y[y] = dy * dy; }
+            vig_last_intensity = p.fx_intensity;
+        }
+        int cx = w / 2, cy = h / 2;
+        int max_sq = cx * cx + cy * cy;  // 200^2 + 120^2 = 54400
+        // Precompute lut_scale to avoid per-pixel divide:
+        // dim = d_sq * lut_scale >> 8  where lut_scale = intensity*25*256/max_sq
+        int lut_scale = (p.fx_intensity * 25 * 256) / max_sq;
+
+        for (int y = 0; y < h; y++) {
+            int dy_sq = vig_lut_y[y];
+            for (int x = 0; x < w; x++) {
+                int d_sq = dy_sq + vig_lut_x[x];
+                int dim = (d_sq * lut_scale) >> 8;
+                if (dim > 255) dim = 255;
+                int factor = 256 - dim;
+                int i = (y * w + x) * 3;
+                buf[i+0] = (uint8_t)((buf[i+0] * factor) >> 8);
+                buf[i+1] = (uint8_t)((buf[i+1] * factor) >> 8);
+                buf[i+2] = (uint8_t)((buf[i+2] * factor) >> 8);
+            }
+        }
+        return;
+    }
+
+    if (p.fx_mode == FX_CHROMA) {
+        int offset = p.fx_intensity;
+        if (offset < 1) offset = 1;
+
+        for (int y = 0; y < h; y++) {
+            uint8_t *row = buf + y * w * 3;
+            // Copy current row to scratch
+            for (int x = 0; x < w * 3; x++) chroma_row[x] = row[x];
+            // Write output: R shifted left (src from x-offset), B shifted right (src from x+offset)
+            for (int x = 0; x < w; x++) {
+                int src_r = x - offset;
+                int src_b = x + offset;
+                row[x*3+0] = (src_r >= 0 && src_r < w) ? chroma_row[src_r*3+0] : 0;
+                row[x*3+1] = chroma_row[x*3+1];  // G unchanged
+                row[x*3+2] = (src_b >= 0 && src_b < w) ? chroma_row[src_b*3+2] : 0;
+            }
+        }
+        return;
+    }
+
+    if (p.fx_mode == FX_GRAIN) {
+        int grain_mag = p.fx_intensity * 4;  // 0..40
+        uint32_t rng = (uint32_t)(frame_count * 1664525u + 1013904223u);
+
+        for (int i = 0; i < w * h; i++) {
+            rng = rng * 1664525u + 1013904223u;
+            int noise = (int)(rng >> 24) - 128;  // -128..127
+            noise = (noise * grain_mag) >> 7;     // scale to [-grain_mag, +grain_mag]
+
+            int r = (int)buf[i*3+0] + noise;
+            int g = (int)buf[i*3+1] + noise;
+            int b = (int)buf[i*3+2] + noise;
+            if (r < 0) r = 0; else if (r > 255) r = 255;
+            if (g < 0) g = 0; else if (g > 255) g = 255;
+            if (b < 0) b = 0; else if (b > 255) b = 255;
+            buf[i*3+0] = (uint8_t)r;
+            buf[i*3+1] = (uint8_t)g;
+            buf[i*3+2] = (uint8_t)b;
+        }
+        return;
+    }
 }

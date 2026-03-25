@@ -111,11 +111,17 @@ static void draw_tab_bar(C2D_TextBuf staticBuf, int active_tab,
         C2D_DrawText(&t, C2D_WithColor, BTN_CAM_X + 4.0f, 8.0f, 0.5f, 0.44f, 0.44f,
                      active_tab == 3 ? CLR_BG : CLR_TEXT);
 
+        bool fx_or_pal = (active_tab == 2 || active_tab == 4);
         C2D_DrawRectSolid(BTN_SAVE_X, BTN_SAVE_Y, 0.5f, BTN_SAVE_W, BTN_SAVE_H,
-                          active_tab == 2 ? CLR_BTN_SEL : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, "Palette");
-        C2D_DrawText(&t, C2D_WithColor, BTN_SAVE_X + 8.0f, 8.0f, 0.5f, 0.48f, 0.48f,
-                     active_tab == 2 ? CLR_BG : CLR_TEXT);
+                          fx_or_pal ? CLR_BTN_SEL : CLR_BTN);
+        // Label shows current destination: "FX" when on FX, "Palette" when on Palette, "Pal/FX" otherwise
+        const char *pal_fx_label = (active_tab == 4) ? "FX" :
+                                   (active_tab == 2) ? "Palette" : "Pal/FX";
+        float pal_fx_x = (active_tab == 4) ? BTN_SAVE_X + 28.0f :
+                         (active_tab == 2) ? BTN_SAVE_X + 8.0f  : BTN_SAVE_X + 4.0f;
+        C2D_TextParse(&t, staticBuf, pal_fx_label);
+        C2D_DrawText(&t, C2D_WithColor, pal_fx_x, 8.0f, 0.5f, 0.44f, 0.44f,
+                     fx_or_pal ? CLR_BG : CLR_TEXT);
     }
 }
 
@@ -537,6 +543,87 @@ static void draw_calibrate_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 }
 
 // ---------------------------------------------------------------------------
+// FX tab
+// ---------------------------------------------------------------------------
+
+static void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                        const FilterParams *p, bool settings_flash) {
+    float sc = 0.44f;
+    C2D_Text t;
+    char buf[8];
+
+    // Mode button row 1: None, Scan-H, Scan-V, LCD
+    static const char *mode_labels_r1[4] = { "None", "Scan-H", "Scan-V", "LCD" };
+    for (int i = 0; i < 4; i++) {
+        float bx = (float)(FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP));
+        bool sel = (p->fx_mode == i);
+        C2D_DrawRectSolid(bx, FXTAB_BTN_Y1, 0.5f, FXTAB_R1_W, FXTAB_BTN_H,
+                          sel ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, mode_labels_r1[i]);
+        C2D_DrawText(&t, C2D_WithColor, bx + 6.0f, (float)FXTAB_BTN_Y1 + 6.0f,
+                     0.5f, sc, sc, sel ? CLR_BG : CLR_TEXT);
+    }
+
+    // Mode button row 2: Vignette, Chroma, Grain
+    static const char *mode_labels_r2[3] = { "Vignette", "Chroma", "Grain" };
+    for (int i = 0; i < 3; i++) {
+        float bx = (float)(FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP));
+        bool sel = (p->fx_mode == 4 + i);
+        C2D_DrawRectSolid(bx, FXTAB_BTN_Y2, 0.5f, FXTAB_R2_W, FXTAB_BTN_H,
+                          sel ? CLR_BTN_SEL : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, mode_labels_r2[i]);
+        C2D_DrawText(&t, C2D_WithColor, bx + 6.0f, (float)FXTAB_BTN_Y2 + 6.0f,
+                     0.5f, sc, sc, sel ? CLR_BG : CLR_TEXT);
+    }
+
+    // Divider + Intensity label + slider
+    C2D_DrawRectSolid(0, 112, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    u32 label_clr = (p->fx_mode == FX_NONE) ? CLR_DIM : CLR_TEXT;
+    C2D_TextParse(&t, staticBuf, "Intensity");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)FXTAB_SLIDER_Y - 18.0f,
+                 0.5f, sc, sc, label_clr);
+
+    // Intensity slider (grayed out when fx_mode == None)
+    if (p->fx_mode != FX_NONE) {
+        draw_slider(0, FXTAB_SLIDER_Y, 0.0f, 10.0f, (float)p->fx_intensity);
+    } else {
+        // Draw track only (no handle) to show it exists but is inactive
+        C2D_DrawRectSolid(TRACK_X, FXTAB_SLIDER_Y - TRACK_H/2.0f, 0.5f,
+                          TRACK_W, TRACK_H, CLR_TRACK);
+    }
+
+    // Intensity value readout
+    C2D_TextBufClear(dynBuf);
+    snprintf(buf, sizeof(buf), "%d", p->fx_intensity);
+    C2D_TextParse(&t, dynBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)FXTAB_SLIDER_Y - 18.0f,
+                 0.5f, sc, sc, CLR_DIM);
+
+    // Divider + description text
+    C2D_DrawRectSolid(0, 148, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    static const char *mode_descs[7] = {
+        "No effect applied",
+        "Darken every other row",
+        "Darken every other column",
+        "Dot-matrix grid overlay",
+        "Radial edge darkening",
+        "RGB channel offset",
+        "Per-frame random noise"
+    };
+    C2D_TextParse(&t, staticBuf, mode_descs[p->fx_mode]);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)FXTAB_DESC_Y, 0.5f, 0.42f, 0.42f, CLR_DIM);
+
+    // Save as Default button
+    C2D_DrawRectSolid(0, 200, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    u32 def_clr = settings_flash ? CLR_BTN_SEL : CLR_BTN;
+    u32 def_txt = settings_flash ? CLR_BG      : CLR_TEXT;
+    C2D_DrawRectSolid(SWBTN_X, FXTAB_SAVE_Y - SWBTN_H/2, 0.5f, SWBTN_W, SWBTN_H, def_clr);
+    C2D_TextParse(&t, staticBuf, "Save as Default");
+    C2D_DrawText(&t, C2D_WithColor, SWBTN_X + 36.0f, FXTAB_SAVE_Y - 8.0f,
+                 0.5f, 0.48f, 0.48f, def_txt);
+}
+
+// ---------------------------------------------------------------------------
 // Draw UI (top-level)
 // ---------------------------------------------------------------------------
 
@@ -590,5 +677,7 @@ void draw_ui(C3D_RenderTarget *bot,
         draw_palette_tab(staticBuf, dynBuf, user_palettes, palette_sel_pal, palette_sel_color, settings_flash);
     } else if (active_tab == 3) {
         draw_calibrate_tab(staticBuf, dynBuf, ranges, settings_flash);
+    } else if (active_tab == 4) {
+        draw_fx_tab(staticBuf, dynBuf, &p, settings_flash);
     }
 }

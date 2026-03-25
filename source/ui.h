@@ -165,6 +165,28 @@
 #define BTN_GSCROLL_DN_Y  (BOT_H - BTN_GSCROLL_H)
 
 // ---------------------------------------------------------------------------
+// FX tab geometry
+// ---------------------------------------------------------------------------
+
+// Mode button row 1: None, Scan-H, Scan-V, LCD (4 buttons x 75px, 4px gap, x start=4)
+#define FXTAB_BTN_Y1    53
+#define FXTAB_BTN_Y2    80
+#define FXTAB_BTN_H     24
+#define FXTAB_R1_W      75
+#define FXTAB_R1_GAP     4
+#define FXTAB_R1_X0      4
+// Mode button row 2: Vignette, Chroma, Grain (3 buttons x 101px, 4px gap, x start=4)
+#define FXTAB_R2_W     101
+#define FXTAB_R2_GAP     4
+#define FXTAB_R2_X0      4
+// Intensity slider y-centre (reuses TRACK_X, TRACK_W)
+#define FXTAB_SLIDER_Y 130
+// Description text y
+#define FXTAB_DESC_Y   170
+// Save-as-Default button y-centre (reuses SWBTN_X, SWBTN_W, SWBTN_H)
+#define FXTAB_SAVE_Y   222
+
+// ---------------------------------------------------------------------------
 // Calibrate tab geometry
 // ---------------------------------------------------------------------------
 

@@ -23,6 +23,8 @@ void settings_save(const FilterParams *p, int save_scale) {
     fprintf(f, "dither_mode=%d\n",  p->dither_mode);
     fprintf(f, "invert=%d\n",       p->invert ? 1 : 0);
     fprintf(f, "save_scale=%d\n",   save_scale);
+    fprintf(f, "fx_mode=%d\n",      p->fx_mode);
+    fprintf(f, "fx_intensity=%d\n", p->fx_intensity);
     fclose(f);
 }
 
@@ -60,6 +62,8 @@ void settings_load(FilterParams *p, int *save_scale) {
         else if (strcmp(key, "dither_mode")  == 0) p->dither_mode  = atoi(val);
         else if (strcmp(key, "invert")       == 0) p->invert       = (atoi(val) != 0);
         else if (strcmp(key, "save_scale")   == 0) *save_scale     = atoi(val);
+        else if (strcmp(key, "fx_mode")      == 0) p->fx_mode      = atoi(val);
+        else if (strcmp(key, "fx_intensity") == 0) p->fx_intensity = atoi(val);
     }
     fclose(f);
 
@@ -82,6 +86,10 @@ void settings_load(FilterParams *p, int *save_scale) {
     if (p->dither_mode  > 3)              p->dither_mode  = 3;
     if (*save_scale     < 1)              *save_scale     = 1;
     if (*save_scale     > 2)              *save_scale     = 2;
+    if (p->fx_mode      < 0)              p->fx_mode      = 0;
+    if (p->fx_mode      > 6)              p->fx_mode      = 6;
+    if (p->fx_intensity < 0)              p->fx_intensity = 0;
+    if (p->fx_intensity > 10)             p->fx_intensity = 10;
 }
 
 void settings_save_palettes(const PaletteDef *user_palettes) {

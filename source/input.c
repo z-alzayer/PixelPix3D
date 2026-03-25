@@ -59,7 +59,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
             if (hit(tx, ty, BTN_SAVE_X, BTN_SAVE_Y, BTN_SAVE_W, BTN_SAVE_H)) {
-                *active_tab = (*active_tab == 2) ? 1 : 2;
+                // Cycle through: Palette (2) -> FX (4) -> Palette
+                // From any other settings tab, go to FX directly
+                if (*active_tab == 2) *active_tab = 4;
+                else if (*active_tab == 4) *active_tab = 2;
+                else *active_tab = 4;  // go to FX from Settings/Calibrate
                 return true;
             }
         }
@@ -290,6 +294,47 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                            &pal->colors[ci][0], &pal->colors[ci][1], &pal->colors[ci][2]);
                 return true;
             }
+        }
+    }
+
+    // --- FX tab inputs ---
+    if (*active_tab == 4) {
+        // Mode buttons row 1: None (0), Scan-H (1), Scan-V (2), LCD (3)
+        if (tapped && ty >= FXTAB_BTN_Y1 && ty < FXTAB_BTN_Y1 + FXTAB_BTN_H) {
+            for (int i = 0; i < 4; i++) {
+                int bx = FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP);
+                if (tx >= bx && tx < bx + FXTAB_R1_W) {
+                    p->fx_mode = i;
+                    return true;
+                }
+            }
+        }
+        // Mode buttons row 2: Vignette (4), Chroma (5), Grain (6)
+        if (tapped && ty >= FXTAB_BTN_Y2 && ty < FXTAB_BTN_Y2 + FXTAB_BTN_H) {
+            for (int i = 0; i < 3; i++) {
+                int bx = FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP);
+                if (tx >= bx && tx < bx + FXTAB_R2_W) {
+                    p->fx_mode = 4 + i;
+                    return true;
+                }
+            }
+        }
+        // Save as Default button
+        if (tapped && hit(tx, ty, SWBTN_X, FXTAB_SAVE_Y - SWBTN_H/2, SWBTN_W, SWBTN_H)) {
+            *do_defaults_save = true;
+            return true;
+        }
+        // Intensity slider (drag, only when an effect is active)
+        if (touched && p->fx_mode != FX_NONE &&
+            ty >= FXTAB_SLIDER_Y - 14 && ty < FXTAB_SLIDER_Y + 14 &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
+            if (p->fx_intensity < 0)  p->fx_intensity = 0;
+            if (p->fx_intensity > 10) p->fx_intensity = 10;
+            return true;
         }
     }
 

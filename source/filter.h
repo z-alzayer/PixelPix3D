@@ -34,12 +34,24 @@ typedef struct {
     int   palette;       // PALETTE_NONE or 0-(PALETTE_COUNT-1)
     int   dither_mode;   // 0 = Bayer, 1 = Cluster, 2 = Atkinson, 3 = Floyd-Steinberg
     bool  invert;        // apply 255-v per channel before dithering
+    int   fx_mode;       // 0=None, 1=ScanH, 2=ScanV, 3=LCD, 4=Vignette, 5=Chroma, 6=Grain
+    int   fx_intensity;  // 0-10 (maps to effect-specific strength range)
 } FilterParams;
+
+// FX mode identifiers
+#define FX_NONE     0
+#define FX_SCAN_H   1
+#define FX_SCAN_V   2
+#define FX_LCD      3
+#define FX_VIGNETTE 4
+#define FX_CHROMA   5
+#define FX_GRAIN    6
 
 #define FILTER_DEFAULTS { .pixel_size = 1, .color_levels = 4, \
                           .brightness = 1.0f, .contrast = 1.0f, \
                           .gamma = 1.0f, .saturation = 1.0f, .palette = 0, \
-                          .dither_mode = 0, .invert = false }
+                          .dither_mode = 0, .invert = false, \
+                          .fx_mode = 0, .fx_intensity = 5 }
 
 // --- Per-parameter min/max ranges + default startup value -------------------
 
@@ -58,6 +70,7 @@ typedef struct {
 }
 
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p);
+void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count);
 void floyd_steinberg_dither(uint8_t *pixels, int width, int height, const FilterParams *p);
 void atkinson_dither(uint8_t *pixels, int width, int height, const FilterParams *p);
 
