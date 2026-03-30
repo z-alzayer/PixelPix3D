@@ -184,8 +184,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
                     // Frames slider (row 0) and Delay slider (row 1)
                     float row_ys[2] = {
-                        (float)SHOOT_CONTENT_Y + 18.0f,
-                        (float)SHOOT_CONTENT_Y + 18.0f + HANDLE_H + 10.0f
+                        (float)SHOOT_CONTENT_Y + 22.0f,
+                        (float)SHOOT_CONTENT_Y + 22.0f + HANDLE_H + 18.0f
                     };
                     for (int i = 0; i < 2; i++) {
                         float track_cy = row_ys[i] + TRACK_H * 0.5f + 1.0f;
@@ -199,8 +199,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 if (*wiggle_frames < 2) *wiggle_frames = 2;
                                 if (*wiggle_frames > 8) *wiggle_frames = 8;
                             } else {
-                                *wiggle_delay_ms = 100 + (int)(t_val * 900.0f + 0.5f);  // 100..1000
-                                if (*wiggle_delay_ms < 100)  *wiggle_delay_ms = 100;
+                                *wiggle_delay_ms = 10 + (int)(t_val * 990.0f + 0.5f);  // 10..1000
+                                if (*wiggle_delay_ms < 10)   *wiggle_delay_ms = 10;
                                 if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
                             }
                             return true;

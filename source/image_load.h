@@ -22,6 +22,27 @@ int next_save_path(const char *dir, char *out_path, int out_len);
 // Returns count of photos found (capped at max).
 int list_saved_photos(const char *dir, char paths[][64], int max);
 
+// ---------------------------------------------------------------------------
+// Wiggle APNG functions (full 24-bit true colour, no quantization)
+// ---------------------------------------------------------------------------
+
+// Seed the wiggle save counter. Call at startup alongside save_counter_init.
+void wiggle_counter_init(const char *dir);
+
+// Return the next free GW_XXXX.png path (O(1) after wiggle_counter_init).
+int next_wiggle_path(const char *dir, char *out_path, int out_len);
+
+// Save a true-colour wiggle APNG from two raw RGB565 camera buffers.
+// No filter is applied — full 24-bit RGB output.
+// n_frames: number of animation frames (2..8).
+// delay_ms: milliseconds per frame.
+// Returns 1 on success, 0 on failure.
+int save_wiggle_apng(const char *path,
+                     const uint8_t *left_rgb565,  int w, int h,
+                     const uint8_t *right_rgb565,
+                     int n_frames,
+                     int delay_ms);
+
 #define SAVE_DIR "sdmc:/DCIM/GameboyCamera"
 
 #endif

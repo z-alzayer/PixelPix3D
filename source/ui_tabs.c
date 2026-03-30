@@ -82,9 +82,9 @@ static void draw_panel_hslider(C2D_TextBuf buf, const char *label,
     draw_rounded_rect(hx - HANDLE_W * 0.5f, track_cy - HANDLE_H * 0.5f,
                       HANDLE_W, HANDLE_H, 3.0f, CLR_HANDLE);
 
-    // Value
+    // Value (integer display)
     char vbuf[8];
-    snprintf(vbuf, sizeof(vbuf), "%.2f", (double)val);
+    snprintf(vbuf, sizeof(vbuf), "%d", (int)val);
     C2D_TextParse(&t, buf, vbuf);
     C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
@@ -315,11 +315,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 // Frames slider: 2..8 frames
                 draw_panel_hslider(staticBuf, "Frames",
                                    (float)wiggle_frames, 2.0f, 8.0f,
-                                   cy + 18.0f);
-                // Delay slider: 100..1000ms
+                                   cy + 22.0f);
+                // Delay slider: 10..1000ms
                 draw_panel_hslider(staticBuf, "Delay ms",
-                                   (float)wiggle_delay_ms, 100.0f, 1000.0f,
-                                   cy + 18.0f + HANDLE_H + 10.0f);
+                                   (float)wiggle_delay_ms, 10.0f, 1000.0f,
+                                   cy + 22.0f + HANDLE_H + 18.0f);
 
             } else if (shoot_mode == SHOOT_MODE_LOMO) {
                 C2D_TextParse(&t, staticBuf, "High-contrast film look.");
@@ -387,10 +387,12 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
             const char *path = gallery_paths[idx];
             const char *slash = path;
             for (const char *p = path; *p; p++) if (*p == '/') slash = p + 1;
-            char label[10] = {0};
+            char label[12] = {0};
             int n = 0;
             if (sscanf(slash, "GB_%d.JPG", &n) == 1)
                 snprintf(label, sizeof(label), "%04d", n);
+            else if (sscanf(slash, "GW_%d.png", &n) == 1)
+                snprintf(label, sizeof(label), "GIF%04d", n);
             else
                 snprintf(label, sizeof(label), "?");
             C2D_TextParse(&t, staticBuf, label);
