@@ -143,6 +143,13 @@ int main(void) {
     int          palette_sel_pal   = 0;
     int          palette_sel_color = 0;
 
+    // Shoot mode state
+    int  shoot_mode       = SHOOT_MODE_GBCAM;
+    bool shoot_mode_open  = false;
+    int  shoot_timer_secs = 5;
+    int  wiggle_frames    = 4;
+    int  wiggle_delay_ms  = 250;
+
     // Gallery state
     #define GALLERY_MAX 256
     bool gallery_mode   = false;
@@ -266,7 +273,10 @@ int main(void) {
                          &active_tab, &save_scale, &default_params,
                          &ranges, user_palettes, &palette_sel_pal, &palette_sel_color,
                          &do_gallery_toggle,
-                         gallery_mode, gallery_count, &gallery_sel, &gallery_scroll);
+                         gallery_mode, gallery_count, &gallery_sel, &gallery_scroll,
+                         &shoot_mode, &shoot_mode_open,
+                         &shoot_timer_secs,
+                         &wiggle_frames, &wiggle_delay_ms);
 
             if (do_gallery_toggle) {
                 gallery_mode = !gallery_mode;
@@ -428,7 +438,10 @@ int main(void) {
                 user_palettes, palette_sel_pal, palette_sel_color,
                 &ranges, comparing,
                 gallery_mode, gallery_count,
-                (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll);
+                (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll,
+                shoot_mode, shoot_mode_open,
+                shoot_timer_secs,
+                wiggle_frames, wiggle_delay_ms);
         C3D_FrameEnd(0);
         frame_count++;
     }

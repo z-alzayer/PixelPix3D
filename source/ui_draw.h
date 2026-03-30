@@ -24,7 +24,10 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     const PaletteDef *user_palettes,
                     int active_palette,
                     bool gallery_mode,
-                    const FilterParams *p, const FilterRanges *ranges);
+                    const FilterParams *p, const FilterRanges *ranges,
+                    int shoot_mode, bool shoot_mode_open,
+                    int shoot_timer_secs,
+                    int wiggle_frames, int wiggle_delay_ms);
 void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
                       int gallery_sel, int gallery_scroll);

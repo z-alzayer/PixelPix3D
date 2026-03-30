@@ -23,6 +23,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   PaletteDef *user_palettes,
                   int *palette_sel_pal, int *palette_sel_color,
                   bool *do_gallery_toggle,
-                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll);
+                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
+                  int *shoot_mode, bool *shoot_mode_open,
+                  int *shoot_timer_secs,
+                  int *wiggle_frames, int *wiggle_delay_ms);
 
 #endif

@@ -14,7 +14,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   PaletteDef *user_palettes,
                   int *palette_sel_pal, int *palette_sel_color,
                   bool *do_gallery_toggle,
-                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll) {
+                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
+                  int *shoot_mode, bool *shoot_mode_open,
+                  int *shoot_timer_secs,
+                  int *wiggle_frames, int *wiggle_delay_ms) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
@@ -105,29 +108,112 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             }
         }
 
-        // Vertical image-adjustment sliders (middle area, not in gallery mode)
-        if (!gallery_mode &&
-            ty >= SHOOT_VSLIDER_Y - 8 && ty <= SHOOT_VSLIDER_BOTTOM + 8) {
-            int col = tx / SHOOT_VSLIDER_COL_W;
-            if (col >= 0 && col < 4) {
-                float t_val = 1.0f - (float)(ty - SHOOT_VSLIDER_Y) / SHOOT_VSLIDER_H;
-                if (t_val < 0.0f) t_val = 0.0f;
-                if (t_val > 1.0f) t_val = 1.0f;
-                float mn, mx;
-                float *field = NULL;
-                if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
-                else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
-                else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
-                else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
-                *field = mn + t_val * (mx - mn);
+        if (!gallery_mode) {
+            if (!*shoot_mode_open) {
+                // ---- Mode grid taps: open that mode's panel ----
+                if (tapped) {
+                    static const int row_ys[2] = { SHOOT_MODE_ROW1_Y, SHOOT_MODE_ROW2_Y };
+                    for (int row = 0; row < 2; row++) {
+                        if (ty >= row_ys[row] && ty < row_ys[row] + SHOOT_MODE_ROW_H) {
+                            for (int col = 0; col < 3; col++) {
+                                int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                                if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                                    int new_mode = row * 3 + col;
+                                    *shoot_mode = new_mode;
+                                    *shoot_mode_open = true;
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // ---- Inside a mode panel ----
+
+                // Back button
+                if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
+                    *shoot_mode_open = false;
+                    return true;
+                }
+
+                // Per-mode panel controls
+                if (*shoot_mode == SHOOT_MODE_GBCAM) {
+                    // 4 vertical sliders, each in an 80px wide column
+                    // vtrack_top = SHOOT_CONTENT_Y + 14, vtrack_bot = SHOOT_SAVE_Y - 6
+                    #define VCOL_W   80
+                    #define VHANDLE_W 14
+                    #define VHANDLE_H  8
+                    float vtrack_top = (float)SHOOT_CONTENT_Y + 14.0f;
+                    float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
+                    float vtrack_h   = vtrack_bot - vtrack_top;
+                    if (touched && ty >= (int)(vtrack_top - VHANDLE_H) && ty <= (int)(vtrack_bot + VHANDLE_H)) {
+                        int col = tx / VCOL_W;
+                        if (col >= 0 && col < 4) {
+                            float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
+                            if (t_val < 0.0f) t_val = 0.0f;
+                            if (t_val > 1.0f) t_val = 1.0f;
+                            float mn, mx;
+                            float *field = NULL;
+                            if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
+                            else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
+                            else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
+                            else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
+                            *field = mn + t_val * (mx - mn);
+                            return true;
+                        }
+                    }
+                    #undef VCOL_W
+                    #undef VHANDLE_W
+                    #undef VHANDLE_H
+                } else if (*shoot_mode == SHOOT_MODE_PHOTOBOOTH ||
+                           *shoot_mode == SHOOT_MODE_TIMER) {
+                    // 4 timer buttons: 3s / 5s / 10s / 15s
+                    static const int timer_vals[4] = { 3, 5, 10, 15 };
+                    float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+                    float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
+                    float btn_y = (float)SHOOT_CONTENT_Y + 20.0f;
+                    if (tapped && ty >= (int)btn_y && ty < (int)(btn_y + SHOOT_TIMER_BTN_H)) {
+                        for (int i = 0; i < 4; i++) {
+                            float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
+                            if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
+                                *shoot_timer_secs = timer_vals[i];
+                                return true;
+                            }
+                        }
+                    }
+                } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
+                    // Frames slider (row 0) and Delay slider (row 1)
+                    float row_ys[2] = {
+                        (float)SHOOT_CONTENT_Y + 18.0f,
+                        (float)SHOOT_CONTENT_Y + 18.0f + HANDLE_H + 10.0f
+                    };
+                    for (int i = 0; i < 2; i++) {
+                        float track_cy = row_ys[i] + TRACK_H * 0.5f + 1.0f;
+                        if (touched && ty >= (int)(track_cy - HANDLE_H) && ty <= (int)(track_cy + HANDLE_H) &&
+                            tx >= SHOOT_HSLIDER_X - 8 && tx <= SHOOT_HSLIDER_X + SHOOT_HSLIDER_W + 8) {
+                            float t_val = (float)(tx - SHOOT_HSLIDER_X) / SHOOT_HSLIDER_W;
+                            if (t_val < 0.0f) t_val = 0.0f;
+                            if (t_val > 1.0f) t_val = 1.0f;
+                            if (i == 0) {
+                                *wiggle_frames = 2 + (int)(t_val * 6.0f + 0.5f);  // 2..8
+                                if (*wiggle_frames < 2) *wiggle_frames = 2;
+                                if (*wiggle_frames > 8) *wiggle_frames = 8;
+                            } else {
+                                *wiggle_delay_ms = 100 + (int)(t_val * 900.0f + 0.5f);  // 100..1000
+                                if (*wiggle_delay_ms < 100)  *wiggle_delay_ms = 100;
+                                if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Save button (always at bottom when not in gallery)
+            if (tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
+                *do_save = true;
                 return true;
             }
-        }
-
-        // Save button
-        if (!gallery_mode && tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
-            *do_save = true;
-            return true;
         }
     }
 

@@ -200,7 +200,10 @@ void draw_ui(C3D_RenderTarget *bot,
              const FilterRanges *ranges,
              bool comparing,
              bool gallery_mode, int gallery_count,
-             const char gallery_paths[][64], int gallery_sel, int gallery_scroll) {
+             const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
+             int shoot_mode, bool shoot_mode_open,
+             int shoot_timer_secs,
+             int wiggle_frames, int wiggle_delay_ms) {
     (void)settings_row;
 
     C2D_TargetClear(bot, CLR_BG);
@@ -241,7 +244,10 @@ void draw_ui(C3D_RenderTarget *bot,
     // Content area dispatch
     if (active_tab == TAB_SHOOT) {
         draw_shoot_tab(staticBuf, selfie, save_flash, user_palettes,
-                       p.palette, gallery_mode, &p, ranges);
+                       p.palette, gallery_mode, &p, ranges,
+                       shoot_mode, shoot_mode_open,
+                       shoot_timer_secs,
+                       wiggle_frames, wiggle_delay_ms);
         if (gallery_mode)
             draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
                              gallery_sel, gallery_scroll);

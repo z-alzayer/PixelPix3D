@@ -52,12 +52,56 @@ void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
 // SHOOT tab
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Horizontal slider helper for shoot panel (label left, track, value right)
+// ---------------------------------------------------------------------------
+static void draw_panel_hslider(C2D_TextBuf buf, const char *label,
+                                float val, float mn, float mx,
+                                float row_y) {
+    C2D_Text t;
+    float tw = 0, th = 0;
+
+    // Label
+    C2D_TextParse(&t, buf, label);
+    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, row_y + (TRACK_H * 0.5f) - th * 0.5f + 1.0f,
+                 0.5f, 0.40f, 0.40f, CLR_DIM);
+
+    // Track
+    float track_x = (float)SHOOT_HSLIDER_X;
+    float track_w = (float)SHOOT_HSLIDER_W;
+    float track_cy = row_y + TRACK_H * 0.5f + 1.0f;
+    C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f, track_w, TRACK_H, CLR_TRACK);
+    float t_val = (val - mn) / (mx - mn);
+    if (t_val < 0.0f) t_val = 0.0f;
+    if (t_val > 1.0f) t_val = 1.0f;
+    float hx = track_x + t_val * track_w;
+    if (hx - track_x > 0)
+        C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f,
+                          hx - track_x, TRACK_H, CLR_FILL);
+    draw_rounded_rect(hx - HANDLE_W * 0.5f, track_cy - HANDLE_H * 0.5f,
+                      HANDLE_W, HANDLE_H, 3.0f, CLR_HANDLE);
+
+    // Value
+    char vbuf[8];
+    snprintf(vbuf, sizeof(vbuf), "%.2f", (double)val);
+    C2D_TextParse(&t, buf, vbuf);
+    C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 BOT_W - SHOOT_HSLIDER_VAL_W - 4 + (SHOOT_HSLIDER_VAL_W - tw) * 0.5f,
+                 row_y + (TRACK_H * 0.5f) - th * 0.5f + 1.0f,
+                 0.5f, 0.36f, 0.36f, CLR_DIM);
+}
+
 void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool selfie, int save_flash,
                     const PaletteDef *user_palettes,
                     int active_palette,
                     bool gallery_mode,
-                    const FilterParams *p, const FilterRanges *ranges) {
+                    const FilterParams *p, const FilterRanges *ranges,
+                    int shoot_mode, bool shoot_mode_open,
+                    int shoot_timer_secs,
+                    int wiggle_frames, int wiggle_delay_ms) {
     C2D_Text t;
 
     // Background for strip area
@@ -113,67 +157,180 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
     C2D_DrawText(&t, C2D_WithColor, glx, SHOOT_GAL_Y + 14.0f, 0.5f, 0.42f, 0.42f,
                  gallery_mode ? CLR_WHITE : CLR_TEXT);
 
-    // --- Vertical image-adjustment sliders (middle area, shown when not in gallery mode) ---
+    // Thin divider below strip
+    C2D_DrawRectSolid(0, (float)SHOOT_STRIP_H, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // -----------------------------------------------------------------------
+    // Middle area: mode grid OR full contextual panel
+    // -----------------------------------------------------------------------
     if (!gallery_mode) {
-        static const char *vslider_labels[4] = { "Brt", "Con", "Sat", "Gam" };
-        float vslider_vals[4]  = { p->brightness, p->contrast, p->saturation, p->gamma };
-        float vslider_mins[4]  = { ranges->bright_min,   ranges->contrast_min,
-                                   ranges->sat_min,       ranges->gamma_min   };
-        float vslider_maxs[4]  = { ranges->bright_max,   ranges->contrast_max,
-                                   ranges->sat_max,       ranges->gamma_max   };
-        float vslider_defs[4]  = { ranges->bright_def,   ranges->contrast_def,
-                                   ranges->sat_def,       ranges->gamma_def   };
+        if (!shoot_mode_open) {
+            // ---- Mode grid ----
+            static const char *mode_labels[SHOOT_MODE_COUNT] = {
+                "GB Cam", "Random", "Photobooth", "Timer", "Wiggle", "Lomo"
+            };
+            static const int mode_row_ys[2] = { SHOOT_MODE_ROW1_Y, SHOOT_MODE_ROW2_Y };
 
-        for (int i = 0; i < 4; i++) {
-            float cx      = i * SHOOT_VSLIDER_COL_W + SHOOT_VSLIDER_COL_W / 2.0f;
-            float tx_left = cx - SHOOT_VSLIDER_TRACK_W / 2.0f;
+            for (int i = 0; i < SHOOT_MODE_COUNT; i++) {
+                int row  = i / 3;
+                int col  = i % 3;
+                float bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                float by = (float)mode_row_ys[row];
+                bool sel = (shoot_mode == i);
 
-            // Track background
-            C2D_DrawRectSolid(tx_left, SHOOT_VSLIDER_Y, 0.5f,
-                              SHOOT_VSLIDER_TRACK_W, SHOOT_VSLIDER_H, CLR_TRACK);
+                draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
+                          sel ? CLR_ACCENT : CLR_BTN);
 
-            float mn = vslider_mins[i], mx = vslider_maxs[i], df = vslider_defs[i];
-            float t_val = (vslider_vals[i] - mn) / (mx - mn);
-            float t_def = (df - mn) / (mx - mn);
-            if (t_val < 0.0f) t_val = 0.0f;
-            if (t_val > 1.0f) t_val = 1.0f;
-            // t=0 → bottom, t=1 → top
-            float hy = SHOOT_VSLIDER_Y + (1.0f - t_val) * SHOOT_VSLIDER_H;
-            float dy = SHOOT_VSLIDER_Y + (1.0f - t_def) * SHOOT_VSLIDER_H;
-            float fill_top = (hy < dy) ? hy : dy;
-            float fill_bot = (hy > dy) ? hy : dy;
-            C2D_DrawRectSolid(tx_left, fill_top, 0.4f,
-                              SHOOT_VSLIDER_TRACK_W, fill_bot - fill_top, CLR_FILL);
+                C2D_TextParse(&t, staticBuf, mode_labels[i]);
+                float tw2 = 0, th2 = 0;
+                C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw2, &th2);
+                C2D_DrawText(&t, C2D_WithColor,
+                             bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
+                             by + (SHOOT_MODE_ROW_H - th2) / 2.0f - 1.0f,
+                             0.5f, 0.42f, 0.42f,
+                             sel ? CLR_WHITE : CLR_TEXT);
+            }
+        } else {
+            // ---- Full contextual panel ----
 
-            // Default tick
-            C2D_DrawRectSolid(cx - 5.0f, dy - 0.5f, 0.4f, 10.0f, 1.0f, CLR_DIM);
-
-            // Handle
-            draw_rounded_rect_on_panel(cx - SHOOT_VSLIDER_HANDLE_W / 2.0f,
-                                       hy - SHOOT_VSLIDER_HANDLE_H / 2.0f,
-                                       SHOOT_VSLIDER_HANDLE_W, SHOOT_VSLIDER_HANDLE_H,
-                                       2.0f, CLR_HANDLE);
-
-            // Label above
-            float tw2 = 0, th2 = 0;
-            C2D_TextParse(&t, staticBuf, vslider_labels[i]);
-            C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
+            // Back button (top-left)
+            draw_pill(4.0f, (float)SHOOT_BACK_Y + 2, (float)SHOOT_BACK_W, (float)SHOOT_BACK_H - 4, CLR_BTN);
+            C2D_TextParse(&t, staticBuf, "< Back");
+            C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
             C2D_DrawText(&t, C2D_WithColor,
-                         cx - tw2 / 2.0f, (float)SHOOT_VSLIDER_Y - 13.0f,
-                         0.5f, 0.38f, 0.38f, CLR_DIM);
+                         4.0f + ((float)SHOOT_BACK_W - tw) * 0.5f,
+                         (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                         0.5f, 0.40f, 0.40f, CLR_TEXT);
 
-            // Value readout below
-            char vbuf[6];
-            snprintf(vbuf, sizeof(vbuf), "%.2f", (double)vslider_vals[i]);
-            C2D_TextParse(&t, staticBuf, vbuf);
-            C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw2, &th2);
+            // Mode title (right of back button)
+            static const char *mode_titles[SHOOT_MODE_COUNT] = {
+                "GB Cam", "Random", "Photobooth", "Timer", "Wiggle", "Lomo"
+            };
+            C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
+            C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
             C2D_DrawText(&t, C2D_WithColor,
-                         cx - tw2 / 2.0f, (float)SHOOT_VSLIDER_BOTTOM + 3.0f,
-                         0.5f, 0.34f, 0.34f, CLR_DIM);
+                         (float)SHOOT_BACK_W + 8.0f + ((BOT_W - SHOOT_BACK_W - 12.0f) - tw) * 0.5f,
+                         (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                         0.5f, 0.46f, 0.46f, CLR_ACCENT);
+
+            // Divider
+            C2D_DrawRectSolid(0, (float)(SHOOT_BACK_Y + SHOOT_BACK_H + 2), 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+            // ----- Per-mode content -----
+            float cy = (float)SHOOT_CONTENT_Y;
+
+            if (shoot_mode == SHOOT_MODE_GBCAM) {
+                // 4 vertical sliders: Brt / Con / Sat / Gam
+                // Each column centred in a 80px wide lane, track spans SHOOT_CONTENT_Y..SHOOT_SAVE_Y-4
+                float vals[4]  = { p->brightness,  p->contrast,    p->saturation,   p->gamma };
+                float mins[4]  = { ranges->bright_min,  ranges->contrast_min, ranges->sat_min,  ranges->gamma_min };
+                float maxs[4]  = { ranges->bright_max,  ranges->contrast_max, ranges->sat_max,  ranges->gamma_max };
+                float defs[4]  = { ranges->bright_def,  ranges->contrast_def, ranges->sat_def,  ranges->gamma_def };
+                static const char *vlbls[4] = { "Brt", "Con", "Sat", "Gam" };
+                #define VCOL_W   80
+                #define VTRACK_W  4
+                #define VHANDLE_W 14
+                #define VHANDLE_H  8
+                float vtrack_top = cy + 14.0f;  // leave room for label above
+                float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
+                float vtrack_h   = vtrack_bot - vtrack_top;
+                for (int i = 0; i < 4; i++) {
+                    float col_cx = i * VCOL_W + VCOL_W / 2.0f;
+                    float tx_left = col_cx - VTRACK_W / 2.0f;
+                    // Label
+                    C2D_TextParse(&t, staticBuf, vlbls[i]);
+                    float tw2 = 0, th2 = 0;
+                    C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw2, &th2);
+                    C2D_DrawText(&t, C2D_WithColor,
+                                 col_cx - tw2 / 2.0f, cy,
+                                 0.5f, 0.36f, 0.36f, CLR_DIM);
+                    // Track
+                    C2D_DrawRectSolid(tx_left, vtrack_top, 0.5f, VTRACK_W, vtrack_h, CLR_TRACK);
+                    float mn = mins[i], mx = maxs[i], df = defs[i], v = vals[i];
+                    float t_val = (v  - mn) / (mx - mn);
+                    float t_def = (df - mn) / (mx - mn);
+                    if (t_val < 0.0f) t_val = 0.0f;
+                    if (t_val > 1.0f) t_val = 1.0f;
+                    float hy = vtrack_top + (1.0f - t_val) * vtrack_h;
+                    float dy = vtrack_top + (1.0f - t_def) * vtrack_h;
+                    float fill_top = hy < dy ? hy : dy;
+                    float fill_bot = hy > dy ? hy : dy;
+                    if (fill_bot > fill_top)
+                        C2D_DrawRectSolid(tx_left, fill_top, 0.4f, VTRACK_W, fill_bot - fill_top, CLR_FILL);
+                    // Default tick
+                    C2D_DrawRectSolid(col_cx - 4.0f, dy - 0.5f, 0.4f, 8.0f, 1.0f, CLR_DIM);
+                    // Handle
+                    draw_rounded_rect_on_panel(col_cx - VHANDLE_W / 2.0f, hy - VHANDLE_H / 2.0f,
+                                               VHANDLE_W, VHANDLE_H, 2.0f, CLR_HANDLE);
+                }
+                #undef VCOL_W
+                #undef VTRACK_W
+                #undef VHANDLE_W
+                #undef VHANDLE_H
+
+            } else if (shoot_mode == SHOOT_MODE_RANDOM) {
+                C2D_TextParse(&t, staticBuf, "Applies a random palette each save.");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 8.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+                C2D_TextParse(&t, staticBuf, "Current palette used as fallback.");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 26.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+
+            } else if (shoot_mode == SHOOT_MODE_PHOTOBOOTH ||
+                       shoot_mode == SHOOT_MODE_TIMER) {
+                // Timer selector: 3s / 5s / 10s / 15s
+                static const int timer_vals[4] = { 3, 5, 10, 15 };
+                static const char *timer_lbls[4] = { "3s", "5s", "10s", "15s" };
+                float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+                float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
+
+                C2D_TextParse(&t, staticBuf,
+                    shoot_mode == SHOOT_MODE_PHOTOBOOTH
+                        ? "Timer delay between 4 shots:"
+                        : "Countdown before capture:");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.40f, 0.40f, CLR_DIM);
+
+                for (int i = 0; i < 4; i++) {
+                    float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
+                    bool sel = (shoot_timer_secs == timer_vals[i]);
+                    draw_pill(bx, cy + 20.0f, (float)SHOOT_TIMER_BTN_W, (float)SHOOT_TIMER_BTN_H,
+                              sel ? CLR_ACCENT : CLR_BTN);
+                    C2D_TextParse(&t, staticBuf, timer_lbls[i]);
+                    C2D_TextGetDimensions(&t, 0.50f, 0.50f, &tw, &th);
+                    C2D_DrawText(&t, C2D_WithColor,
+                                 bx + ((float)SHOOT_TIMER_BTN_W - tw) * 0.5f,
+                                 cy + 20.0f + ((float)SHOOT_TIMER_BTN_H - th) * 0.5f - 1.0f,
+                                 0.5f, 0.50f, 0.50f,
+                                 sel ? CLR_WHITE : CLR_TEXT);
+                }
+
+                if (shoot_mode == SHOOT_MODE_PHOTOBOOTH) {
+                    C2D_TextParse(&t, staticBuf, "4 shots with countdown each");
+                    C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 60.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
+                }
+
+            } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
+                // Wiggle: Frames slider + Delay slider
+                C2D_TextParse(&t, staticBuf, "Stereo GIF — adjust capture:");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.40f, 0.40f, CLR_DIM);
+
+                // Frames slider: 2..8 frames
+                draw_panel_hslider(staticBuf, "Frames",
+                                   (float)wiggle_frames, 2.0f, 8.0f,
+                                   cy + 18.0f);
+                // Delay slider: 100..1000ms
+                draw_panel_hslider(staticBuf, "Delay ms",
+                                   (float)wiggle_delay_ms, 100.0f, 1000.0f,
+                                   cy + 18.0f + HANDLE_H + 10.0f);
+
+            } else if (shoot_mode == SHOOT_MODE_LOMO) {
+                C2D_TextParse(&t, staticBuf, "High-contrast film look.");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 8.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+                C2D_TextParse(&t, staticBuf, "Auto-boosts contrast + vignette");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 26.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+                C2D_TextParse(&t, staticBuf, "on each saved photo.");
+                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 44.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+            }
         }
-    }
 
-    if (!gallery_mode) {
         // --- Save button ---
         u32 save_bg, save_txt;
         const char *save_label;
