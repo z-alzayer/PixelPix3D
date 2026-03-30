@@ -56,7 +56,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool selfie, int save_flash,
                     const PaletteDef *user_palettes,
                     int active_palette,
-                    bool gallery_mode) {
+                    bool gallery_mode,
+                    const FilterParams *p, const FilterRanges *ranges) {
     C2D_Text t;
 
     // Background for strip area
@@ -112,10 +113,64 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
     C2D_DrawText(&t, C2D_WithColor, glx, SHOOT_GAL_Y + 14.0f, 0.5f, 0.42f, 0.42f,
                  gallery_mode ? CLR_WHITE : CLR_TEXT);
 
-    // --- Future area hint (shown only when not in gallery mode) ---
+    // --- Vertical image-adjustment sliders (middle area, shown when not in gallery mode) ---
     if (!gallery_mode) {
-        C2D_TextParse(&t, staticBuf, "More features coming soon");
-        C2D_DrawText(&t, C2D_WithColor, 74.0f, 98.0f, 0.5f, 0.40f, 0.40f, CLR_DIVIDER);
+        static const char *vslider_labels[4] = { "Brt", "Con", "Sat", "Gam" };
+        float vslider_vals[4]  = { p->brightness, p->contrast, p->saturation, p->gamma };
+        float vslider_mins[4]  = { ranges->bright_min,   ranges->contrast_min,
+                                   ranges->sat_min,       ranges->gamma_min   };
+        float vslider_maxs[4]  = { ranges->bright_max,   ranges->contrast_max,
+                                   ranges->sat_max,       ranges->gamma_max   };
+        float vslider_defs[4]  = { ranges->bright_def,   ranges->contrast_def,
+                                   ranges->sat_def,       ranges->gamma_def   };
+
+        for (int i = 0; i < 4; i++) {
+            float cx      = i * SHOOT_VSLIDER_COL_W + SHOOT_VSLIDER_COL_W / 2.0f;
+            float tx_left = cx - SHOOT_VSLIDER_TRACK_W / 2.0f;
+
+            // Track background
+            C2D_DrawRectSolid(tx_left, SHOOT_VSLIDER_Y, 0.5f,
+                              SHOOT_VSLIDER_TRACK_W, SHOOT_VSLIDER_H, CLR_TRACK);
+
+            float mn = vslider_mins[i], mx = vslider_maxs[i], df = vslider_defs[i];
+            float t_val = (vslider_vals[i] - mn) / (mx - mn);
+            float t_def = (df - mn) / (mx - mn);
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            // t=0 → bottom, t=1 → top
+            float hy = SHOOT_VSLIDER_Y + (1.0f - t_val) * SHOOT_VSLIDER_H;
+            float dy = SHOOT_VSLIDER_Y + (1.0f - t_def) * SHOOT_VSLIDER_H;
+            float fill_top = (hy < dy) ? hy : dy;
+            float fill_bot = (hy > dy) ? hy : dy;
+            C2D_DrawRectSolid(tx_left, fill_top, 0.4f,
+                              SHOOT_VSLIDER_TRACK_W, fill_bot - fill_top, CLR_FILL);
+
+            // Default tick
+            C2D_DrawRectSolid(cx - 5.0f, dy - 0.5f, 0.4f, 10.0f, 1.0f, CLR_DIM);
+
+            // Handle
+            draw_rounded_rect_on_panel(cx - SHOOT_VSLIDER_HANDLE_W / 2.0f,
+                                       hy - SHOOT_VSLIDER_HANDLE_H / 2.0f,
+                                       SHOOT_VSLIDER_HANDLE_W, SHOOT_VSLIDER_HANDLE_H,
+                                       2.0f, CLR_HANDLE);
+
+            // Label above
+            float tw2 = 0, th2 = 0;
+            C2D_TextParse(&t, staticBuf, vslider_labels[i]);
+            C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
+            C2D_DrawText(&t, C2D_WithColor,
+                         cx - tw2 / 2.0f, (float)SHOOT_VSLIDER_Y - 13.0f,
+                         0.5f, 0.38f, 0.38f, CLR_DIM);
+
+            // Value readout below
+            char vbuf[6];
+            snprintf(vbuf, sizeof(vbuf), "%.2f", (double)vslider_vals[i]);
+            C2D_TextParse(&t, staticBuf, vbuf);
+            C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw2, &th2);
+            C2D_DrawText(&t, C2D_WithColor,
+                         cx - tw2 / 2.0f, (float)SHOOT_VSLIDER_BOTTOM + 3.0f,
+                         0.5f, 0.34f, 0.34f, CLR_DIM);
+        }
     }
 
     if (!gallery_mode) {

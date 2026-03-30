@@ -105,6 +105,25 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             }
         }
 
+        // Vertical image-adjustment sliders (middle area, not in gallery mode)
+        if (!gallery_mode &&
+            ty >= SHOOT_VSLIDER_Y - 8 && ty <= SHOOT_VSLIDER_BOTTOM + 8) {
+            int col = tx / SHOOT_VSLIDER_COL_W;
+            if (col >= 0 && col < 4) {
+                float t_val = 1.0f - (float)(ty - SHOOT_VSLIDER_Y) / SHOOT_VSLIDER_H;
+                if (t_val < 0.0f) t_val = 0.0f;
+                if (t_val > 1.0f) t_val = 1.0f;
+                float mn, mx;
+                float *field = NULL;
+                if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
+                else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
+                else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
+                else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
+                *field = mn + t_val * (mx - mn);
+                return true;
+            }
+        }
+
         // Save button
         if (!gallery_mode && tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
             *do_save = true;
@@ -158,6 +177,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             p->pixel_size = val;
             return true;
         }
+
     }
 
     // -----------------------------------------------------------------------

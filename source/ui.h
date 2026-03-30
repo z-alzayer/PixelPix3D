@@ -130,6 +130,17 @@
 #define STYLE_PX_Y       130   // snap slider centre y
 #define PX_STOPS          8
 
+// Vertical image-adjustment sliders on SHOOT tab (Bright / Contrast / Sat / Gamma)
+// 4 columns of 80px each, middle area y=54..150
+#define SHOOT_VSLIDER_Y       54  // top of track
+#define SHOOT_VSLIDER_H       80  // track height
+#define SHOOT_VSLIDER_BOTTOM (SHOOT_VSLIDER_Y + SHOOT_VSLIDER_H)
+#define SHOOT_VSLIDER_COL_W   80  // width per column
+#define SHOOT_VSLIDER_TRACK_W  6  // track rect width
+#define SHOOT_VSLIDER_HANDLE_W 18 // handle width
+#define SHOOT_VSLIDER_HANDLE_H 10 // handle height
+// centre x of slider i = i * SHOOT_VSLIDER_COL_W + SHOOT_VSLIDER_COL_W/2
+
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled
 // ---------------------------------------------------------------------------

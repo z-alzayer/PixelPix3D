@@ -241,7 +241,7 @@ void draw_ui(C3D_RenderTarget *bot,
     // Content area dispatch
     if (active_tab == TAB_SHOOT) {
         draw_shoot_tab(staticBuf, selfie, save_flash, user_palettes,
-                       p.palette, gallery_mode);
+                       p.palette, gallery_mode, &p, ranges);
         if (gallery_mode)
             draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
                              gallery_sel, gallery_scroll);
