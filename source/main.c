@@ -224,39 +224,36 @@ int main(void) {
             if (kDown & KEY_B) {
                 params.pixel_size = (params.pixel_size % PX_STOPS) + 1;
             }
+            // X: cycle through main tabs (Shoot → Style → FX → More → Shoot)
+            if (kDown & KEY_X) {
+                if (active_tab <= TAB_MORE)
+                    active_tab = (active_tab + 1) % (TAB_MORE + 1);
+            }
             // D-pad: context-aware per active_tab
-            if (active_tab == 0) {
-                if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > ranges.bright_max)   params.brightness = ranges.bright_max; }
-                if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < ranges.bright_min)   params.brightness = ranges.bright_min; }
-                if (kDown & KEY_DLEFT)  { params.saturation -= 0.1f; if (params.saturation < ranges.sat_min)      params.saturation = ranges.sat_min; }
-                if (kDown & KEY_DRIGHT) { params.saturation += 0.1f; if (params.saturation > ranges.sat_max)      params.saturation = ranges.sat_max; }
-            } else if (active_tab == 1) {
-                if (kDown & KEY_DUP)   { settings_row--; if (settings_row < 0) settings_row = 2; }
-                if (kDown & KEY_DDOWN) { settings_row++; if (settings_row > 2) settings_row = 0; }
-                if ((kDown & KEY_DLEFT) || (kDown & KEY_DRIGHT)) {
-                    if      (settings_row == 0) save_scale         = (save_scale == 1) ? 2 : 1;
-                    else if (settings_row == 1) {
-                        if (kDown & KEY_DLEFT)
-                            params.dither_mode = (params.dither_mode + 3) & 3;
-                        else
-                            params.dither_mode = (params.dither_mode + 1) & 3;
-                    }
-                    else if (settings_row == 2) params.invert      = !params.invert;
-                }
-            } else if (active_tab == 2) {
-                if (kDown & KEY_DUP)    { if (--palette_sel_pal   < 0)                                   palette_sel_pal   = PALETTE_COUNT - 1; palette_sel_color = 0; }
-                if (kDown & KEY_DDOWN)  { if (++palette_sel_pal   >= PALETTE_COUNT)                      palette_sel_pal   = 0;                 palette_sel_color = 0; }
-                if (kDown & KEY_DLEFT)  { if (--palette_sel_color < 0)                                   palette_sel_color = user_palettes[palette_sel_pal].size - 1; }
-                if (kDown & KEY_DRIGHT) { if (++palette_sel_color >= user_palettes[palette_sel_pal].size) palette_sel_color = 0; }
-            } else if (active_tab == 4) {
+            if (active_tab == TAB_SHOOT) {
+                // On shoot screen: d-pad nudges brightness (up/down) and palette (left/right)
+                if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > ranges.bright_max) params.brightness = ranges.bright_max; }
+                if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < ranges.bright_min) params.brightness = ranges.bright_min; }
+                if (kDown & KEY_DLEFT)  { params.palette = (params.palette <= PALETTE_NONE) ? PALETTE_COUNT - 1 : params.palette - 1; }
+                if (kDown & KEY_DRIGHT) { params.palette = (params.palette >= PALETTE_COUNT - 1) ? PALETTE_NONE : params.palette + 1; }
+            } else if (active_tab == TAB_STYLE) {
+                // Pixel size
+                if (kDown & KEY_DLEFT)  { if (params.pixel_size > 1) params.pixel_size--; }
+                if (kDown & KEY_DRIGHT) { if (params.pixel_size < PX_STOPS) params.pixel_size++; }
+            } else if (active_tab == TAB_FX) {
                 if (kDown & KEY_DUP)    { params.fx_mode--; if (params.fx_mode < 0)  params.fx_mode = 6; }
                 if (kDown & KEY_DDOWN)  { params.fx_mode++; if (params.fx_mode > 6)  params.fx_mode = 0; }
                 if (kDown & KEY_DLEFT)  { params.fx_intensity--; if (params.fx_intensity < 0)  params.fx_intensity = 0; }
                 if (kDown & KEY_DRIGHT) { params.fx_intensity++; if (params.fx_intensity > 10) params.fx_intensity = 10; }
+            } else if (active_tab == TAB_PALETTE_ED) {
+                if (kDown & KEY_DUP)    { if (--palette_sel_pal   < 0)                                    palette_sel_pal   = PALETTE_COUNT - 1; palette_sel_color = 0; }
+                if (kDown & KEY_DDOWN)  { if (++palette_sel_pal   >= PALETTE_COUNT)                       palette_sel_pal   = 0;                 palette_sel_color = 0; }
+                if (kDown & KEY_DLEFT)  { if (--palette_sel_color < 0)                                    palette_sel_color = user_palettes[palette_sel_pal].size - 1; }
+                if (kDown & KEY_DRIGHT) { if (++palette_sel_color >= user_palettes[palette_sel_pal].size) palette_sel_color = 0; }
             }
 
-            // While on palette tab, keep the live filter synced with the selected palette
-            if (active_tab == 2)
+            // While on palette editor, keep the live filter synced with the selected palette
+            if (active_tab == TAB_PALETTE_ED)
                 params.palette = palette_sel_pal;
 
             // Touch input
@@ -288,16 +285,15 @@ int main(void) {
                 gallery_loaded = gallery_sel;
             }
 
-            // Gallery d-pad scrolling
-            if (gallery_mode) {
+            // Gallery d-pad scrolling (only when gallery is open on shoot tab)
+            if (gallery_mode && active_tab == TAB_SHOOT) {
                 int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
                 int max_scroll = total_rows - GALLERY_ROWS;
                 if (max_scroll < 0) max_scroll = 0;
-                if (kDown & KEY_DDOWN) { if (gallery_scroll < max_scroll) gallery_scroll++; }
-                if (kDown & KEY_DUP)   { if (gallery_scroll > 0) gallery_scroll--; }
+                if (kDown & KEY_DDOWN)  { if (gallery_scroll < max_scroll) gallery_scroll++; }
+                if (kDown & KEY_DUP)    { if (gallery_scroll > 0) gallery_scroll--; }
                 if (kDown & KEY_DRIGHT) { gallery_sel++; if (gallery_sel >= gallery_count) gallery_sel = gallery_count - 1; }
                 if (kDown & KEY_DLEFT)  { gallery_sel--; if (gallery_sel < 0) gallery_sel = 0; }
-
             }
 
             if (do_cam || (kDown & KEY_Y)) {
