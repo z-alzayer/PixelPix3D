@@ -184,14 +184,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
                     // Frames slider (row 0) and Delay slider (row 1)
                     float row_ys[2] = {
-                        (float)SHOOT_CONTENT_Y + 22.0f,
-                        (float)SHOOT_CONTENT_Y + 22.0f + HANDLE_H + 18.0f
+                        (float)SHOOT_CONTENT_Y + 6.0f,
+                        (float)SHOOT_CONTENT_Y + 6.0f + RHANDLE_H + 10.0f
                     };
                     for (int i = 0; i < 2; i++) {
                         float track_cy = row_ys[i] + TRACK_H * 0.5f + 1.0f;
-                        if (touched && ty >= (int)(track_cy - HANDLE_H) && ty <= (int)(track_cy + HANDLE_H) &&
-                            tx >= SHOOT_HSLIDER_X - 8 && tx <= SHOOT_HSLIDER_X + SHOOT_HSLIDER_W + 8) {
-                            float t_val = (float)(tx - SHOOT_HSLIDER_X) / SHOOT_HSLIDER_W;
+                        if (touched && ty >= (int)(track_cy - RHANDLE_H) && ty <= (int)(track_cy + RHANDLE_H) &&
+                            tx >= 64 && tx <= 72 + 210 + 8) {
+                            float t_val = (float)(tx - 72) / 210.0f;
                             if (t_val < 0.0f) t_val = 0.0f;
                             if (t_val > 1.0f) t_val = 1.0f;
                             if (i == 0) {

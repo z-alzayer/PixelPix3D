@@ -203,7 +203,8 @@ void draw_ui(C3D_RenderTarget *bot,
              const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
              int shoot_mode, bool shoot_mode_open,
              int shoot_timer_secs,
-             int wiggle_frames, int wiggle_delay_ms) {
+             int wiggle_frames, int wiggle_delay_ms,
+             bool wiggle_preview) {
     (void)settings_row;
 
     C2D_TargetClear(bot, CLR_BG);
@@ -247,7 +248,8 @@ void draw_ui(C3D_RenderTarget *bot,
                        p.palette, gallery_mode, &p, ranges,
                        shoot_mode, shoot_mode_open,
                        shoot_timer_secs,
-                       wiggle_frames, wiggle_delay_ms);
+                       wiggle_frames, wiggle_delay_ms,
+                       wiggle_preview);
         if (gallery_mode)
             draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
                              gallery_sel, gallery_scroll);

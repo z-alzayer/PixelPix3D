@@ -171,7 +171,7 @@ int main(void) {
     // Wiggle capture/preview state
     bool wiggle_preview      = false;  // true while showing captured pair before saving
     int  wiggle_preview_frame = 0;     // 0=left, 1=right (alternates for top-screen anim)
-    int  wiggle_preview_ticks = 0;     // vblank ticks since last frame flip
+    u64  wiggle_preview_last_tick = 0; // svcGetSystemTick() at last frame flip
 
     // Gallery state
     #define GALLERY_MAX 256
@@ -180,7 +180,12 @@ int main(void) {
     int  gallery_scroll = 0;
     static char gallery_paths[GALLERY_MAX][64];
     int  gallery_count  = 0;
-    static uint16_t gallery_thumb[CAMERA_WIDTH * CAMERA_HEIGHT];
+    #define GALLERY_WIGGLE_MAX_FRAMES 8
+    static uint16_t gallery_thumbs[GALLERY_WIGGLE_MAX_FRAMES][CAMERA_WIDTH * CAMERA_HEIGHT];
+    int  gallery_n_frames   = 1;   // 1 = still image, >1 = wiggle animation
+    int  gallery_delay_ms   = 250;
+    u64  gallery_anim_tick  = 0;   // svcGetSystemTick() at last frame advance
+    int  gallery_anim_frame = 0;
     int  gallery_loaded = -1;
 
     u32 bufSize;
@@ -218,9 +223,8 @@ int main(void) {
     if (params.gamma       < ranges.gamma_min)    params.gamma       = ranges.gamma_min;
     if (params.gamma       > ranges.gamma_max)    params.gamma       = ranges.gamma_max;
 
-    // Seed file counters once so path generation is O(1) at shutter time
-    save_counter_init(SAVE_DIR);
-    wiggle_counter_init(SAVE_DIR);
+    // Seed shared file counter — reads INI then cross-checks against dir scan
+    file_counter_init(SAVE_DIR, settings_load_file_counter());
 
     // Initialize and launch the background save thread on core 1
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
@@ -312,10 +316,28 @@ int main(void) {
                 }
             }
 
-            // Load selected photo into thumb buffer when selection changes
+            // Load selected photo into thumb buffers when selection changes
             if (gallery_mode && gallery_count > 0 && gallery_loaded != gallery_sel) {
-                load_jpeg_to_rgb565(gallery_paths[gallery_sel], gallery_thumb,
-                                    CAMERA_WIDTH, CAMERA_HEIGHT);
+                const char *gpath = gallery_paths[gallery_sel];
+                const char *ext = gpath + strlen(gpath) - 4;
+                gallery_n_frames   = 1;
+                gallery_delay_ms   = 250;
+                gallery_anim_tick  = svcGetSystemTick();
+                gallery_anim_frame = 0;
+                if (ext > gpath && strcmp(ext, ".png") == 0) {
+                    uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
+                    for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)
+                        fptrs[i] = gallery_thumbs[i];
+                    load_apng_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
+                                               &gallery_n_frames, &gallery_delay_ms,
+                                               CAMERA_WIDTH, CAMERA_HEIGHT);
+                    if (gallery_n_frames < 1) {
+                        load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
+                        gallery_n_frames = 1;
+                    }
+                } else {
+                    load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
+                }
                 gallery_loaded = gallery_sel;
             }
 
@@ -377,6 +399,7 @@ int main(void) {
             } else if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
                 char apng_path[64];
                 if (next_wiggle_path(SAVE_DIR, apng_path, sizeof(apng_path))) {
+                    settings_save_file_counter(file_counter_next());
                     // wiggle_left/right already hold the raw RGB565 snapshots
                     memcpy(s_save.snapshot_buf,  wiggle_left,  CAMERA_SCREEN_SIZE);
                     memcpy(s_save.snapshot_buf2, wiggle_right, CAMERA_SCREEN_SIZE);
@@ -396,14 +419,15 @@ int main(void) {
                 // First press: capture both cam buffers into wiggle preview
                 memcpy(wiggle_left,  buf,                        CAMERA_SCREEN_SIZE);
                 memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE,   CAMERA_SCREEN_SIZE);
-                wiggle_preview       = true;
-                wiggle_preview_frame = 0;
-                wiggle_preview_ticks = 0;
+                wiggle_preview           = true;
+                wiggle_preview_frame     = 0;
+                wiggle_preview_last_tick = svcGetSystemTick();
                 play_shutter_click();
             } else {
                 // Normal JPEG save
                 char save_path[64];
                 if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
+                    settings_save_file_counter(file_counter_next());
                     memcpy(s_save.snapshot_buf, filtered_buf, CAMERA_SCREEN_SIZE);
                     memcpy(s_save.save_path, save_path, sizeof(save_path));
                     s_save.wiggle_mode = false;
@@ -449,7 +473,9 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            if (!use3d && !comparing && !s_save.busy) {
+            // Wiggle saves never read filtered_buf, so allow live view updates during them.
+            // Only pause filter processing during JPEG saves (which copy snapshot_buf).
+            if (!use3d && !comparing && (!s_save.busy || s_save.wiggle_mode)) {
                 rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                 // Wiggle mode: show true-colour preview — skip GB filter and FX
                 if (shoot_mode != SHOOT_MODE_WIGGLE) {
@@ -466,14 +492,23 @@ int main(void) {
             break;
         }
 
-        // Advance wiggle preview animation (flips at wiggle_delay_ms rate)
+        // Advance wiggle preview animation — clock-based, not loop-count-based
         if (wiggle_preview) {
-            wiggle_preview_ticks++;
-            int ticks_per_flip = wiggle_delay_ms * 60 / 1000;
-            if (ticks_per_flip < 1) ticks_per_flip = 1;
-            if (wiggle_preview_ticks >= ticks_per_flip) {
-                wiggle_preview_frame = 1 - wiggle_preview_frame;
-                wiggle_preview_ticks = 0;
+            u64 now = svcGetSystemTick();
+            u64 period = (u64)wiggle_delay_ms * SYSCLOCK_ARM11 / 1000;
+            if (now - wiggle_preview_last_tick >= period) {
+                wiggle_preview_frame     = 1 - wiggle_preview_frame;
+                wiggle_preview_last_tick = now;
+            }
+        }
+
+        // Advance gallery wiggle animation — clock-based
+        if (gallery_mode && gallery_n_frames > 1) {
+            u64 now = svcGetSystemTick();
+            u64 period = (u64)gallery_delay_ms * SYSCLOCK_ARM11 / 1000;
+            if (now - gallery_anim_tick >= period) {
+                gallery_anim_frame = (gallery_anim_frame + 1) % gallery_n_frames;
+                gallery_anim_tick  = (u64)now;
             }
         }
 
@@ -491,7 +526,7 @@ int main(void) {
             if (wiggle_preview)
                 blit_src = (wiggle_preview_frame == 0) ? wiggle_left : wiggle_right;
             else if (gallery_mode && gallery_count > 0)
-                blit_src = gallery_thumb;
+                blit_src = gallery_thumbs[gallery_anim_frame];
             else
                 blit_src = comparing ? buf : filtered_buf;
             writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
@@ -513,7 +548,8 @@ int main(void) {
                 (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll,
                 shoot_mode, shoot_mode_open,
                 shoot_timer_secs,
-                wiggle_frames, wiggle_delay_ms);
+                wiggle_frames, wiggle_delay_ms,
+                wiggle_preview);
         C3D_FrameEnd(0);
         frame_count++;
     }

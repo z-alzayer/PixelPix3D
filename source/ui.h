@@ -355,6 +355,7 @@ void draw_ui(C3D_RenderTarget *bot,
              const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
              int shoot_mode, bool shoot_mode_open,
              int shoot_timer_secs,
-             int wiggle_frames, int wiggle_delay_ms);
+             int wiggle_frames, int wiggle_delay_ms,
+             bool wiggle_preview);
 
 #endif

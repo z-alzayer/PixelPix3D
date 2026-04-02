@@ -28,4 +28,11 @@ void settings_save_ranges(const FilterRanges *r);
 // Silently skips missing keys; enforces min <= def <= max after loading.
 void settings_load_ranges(FilterRanges *r);
 
+// Shared file counter — single sequence used by both GB_ and GW_ files.
+// Persisted as "next_file_n=NNNN" in SETTINGS_PATH.
+// Returns the stored value, or 0 if not present.
+int  settings_load_file_counter(void);
+// Writes next_file_n=n to SETTINGS_PATH (appends).
+void settings_save_file_counter(int n);
+
 #endif

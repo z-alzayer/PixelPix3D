@@ -55,9 +55,12 @@ void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
 // ---------------------------------------------------------------------------
 // Horizontal slider helper for shoot panel (label left, track, value right)
 // ---------------------------------------------------------------------------
-static void draw_panel_hslider(C2D_TextBuf buf, const char *label,
-                                float val, float mn, float mx,
-                                float row_y) {
+// track_x_fixed: if > 0, use as fixed track start (aligns multiple sliders); else derive from label width.
+// track_w_override: if > 0, use as track width; else fill to right edge (BOT_W - 8).
+static void draw_panel_hslider_sz(C2D_TextBuf buf, const char *label,
+                                   float val, float mn, float mx,
+                                   float row_y, int hw, int hh,
+                                   float track_x_fixed, float track_w_override) {
     C2D_Text t;
     float tw = 0, th = 0;
 
@@ -68,8 +71,8 @@ static void draw_panel_hslider(C2D_TextBuf buf, const char *label,
                  0.5f, 0.40f, 0.40f, CLR_DIM);
 
     // Track
-    float track_x = (float)SHOOT_HSLIDER_X;
-    float track_w = (float)SHOOT_HSLIDER_W;
+    float track_x = track_x_fixed > 0.0f ? track_x_fixed : (4.0f + tw + 8.0f);
+    float track_w = track_w_override > 0.0f ? track_w_override : ((float)BOT_W - 38.0f - track_x);
     float track_cy = row_y + TRACK_H * 0.5f + 1.0f;
     C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f, track_w, TRACK_H, CLR_TRACK);
     float t_val = (val - mn) / (mx - mn);
@@ -79,19 +82,20 @@ static void draw_panel_hslider(C2D_TextBuf buf, const char *label,
     if (hx - track_x > 0)
         C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f,
                           hx - track_x, TRACK_H, CLR_FILL);
-    draw_rounded_rect(hx - HANDLE_W * 0.5f, track_cy - HANDLE_H * 0.5f,
-                      HANDLE_W, HANDLE_H, 3.0f, CLR_HANDLE);
+    draw_rounded_rect(hx - hw * 0.5f, track_cy - hh * 0.5f,
+                      hw, hh, 3.0f, CLR_HANDLE);
 
-    // Value (integer display)
+    // Value (integer display) — placed just after the track end
     char vbuf[8];
     snprintf(vbuf, sizeof(vbuf), "%d", (int)val);
     C2D_TextParse(&t, buf, vbuf);
     C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 BOT_W - SHOOT_HSLIDER_VAL_W - 4 + (SHOOT_HSLIDER_VAL_W - tw) * 0.5f,
+                 track_x + track_w + 4.0f,
                  row_y + (TRACK_H * 0.5f) - th * 0.5f + 1.0f,
                  0.5f, 0.36f, 0.36f, CLR_DIM);
 }
+
 
 void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool selfie, int save_flash,
@@ -101,7 +105,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     const FilterParams *p, const FilterRanges *ranges,
                     int shoot_mode, bool shoot_mode_open,
                     int shoot_timer_secs,
-                    int wiggle_frames, int wiggle_delay_ms) {
+                    int wiggle_frames, int wiggle_delay_ms,
+                    bool wiggle_preview) {
     C2D_Text t;
 
     // Background for strip area
@@ -308,18 +313,13 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 }
 
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
-                // Wiggle: Frames slider + Delay slider
-                C2D_TextParse(&t, staticBuf, "Stereo GIF — adjust capture:");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.40f, 0.40f, CLR_DIM);
-
-                // Frames slider: 2..8 frames
-                draw_panel_hslider(staticBuf, "Frames",
-                                   (float)wiggle_frames, 2.0f, 8.0f,
-                                   cy + 22.0f);
-                // Delay slider: 10..1000ms
-                draw_panel_hslider(staticBuf, "Delay ms",
-                                   (float)wiggle_delay_ms, 10.0f, 1000.0f,
-                                   cy + 22.0f + HANDLE_H + 18.0f);
+                // Wiggle: Frames slider + Delay slider — use smaller handles to avoid label overlap
+                draw_panel_hslider_sz(staticBuf, "Frames",
+                                      (float)wiggle_frames, 2.0f, 8.0f,
+                                      cy + 6.0f, RHANDLE_W, RHANDLE_H, 72.0f, 0.0f);
+                draw_panel_hslider_sz(staticBuf, "Delay ms",
+                                      (float)wiggle_delay_ms, 10.0f, 1000.0f,
+                                      cy + 6.0f + RHANDLE_H + 10.0f, RHANDLE_W, RHANDLE_H, 72.0f, 0.0f);
 
             } else if (shoot_mode == SHOOT_MODE_LOMO) {
                 C2D_TextParse(&t, staticBuf, "High-contrast film look.");
@@ -342,10 +342,14 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
             save_bg  = CLR_CONFIRM;
             save_txt = CLR_WHITE;
             save_label = "Saved!";
+        } else if (wiggle_preview) {
+            save_bg  = CLR_CONFIRM;
+            save_txt = CLR_WHITE;
+            save_label = "Confirm Save";
         } else {
             save_bg  = CLR_ACCENT;
             save_txt = CLR_WHITE;
-            save_label = "Save";
+            save_label = (shoot_mode == SHOOT_MODE_WIGGLE) ? "Capture" : "Save";
         }
         C2D_DrawRectSolid(0, SHOOT_SAVE_Y, 0.5f, BOT_W, SHOOT_SAVE_H, save_bg);
         C2D_TextParse(&t, staticBuf, save_label);
@@ -387,17 +391,28 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
             const char *path = gallery_paths[idx];
             const char *slash = path;
             for (const char *p = path; *p; p++) if (*p == '/') slash = p + 1;
-            char label[12] = {0};
+            char label[10] = {0};
             int n = 0;
+            bool is_wiggle = false;
             if (sscanf(slash, "GB_%d.JPG", &n) == 1)
                 snprintf(label, sizeof(label), "%04d", n);
-            else if (sscanf(slash, "GW_%d.png", &n) == 1)
-                snprintf(label, sizeof(label), "GIF%04d", n);
-            else
+            else if (sscanf(slash, "GW_%d.png", &n) == 1) {
+                snprintf(label, sizeof(label), "%04d", n);
+                is_wiggle = true;
+            } else {
                 snprintf(label, sizeof(label), "?");
+            }
+            // Draw wiggle indicator dot
+            if (is_wiggle) {
+                C2D_DrawRectSolid(cx + 4.0f, cy + 4.0f, 0.4f, 6.0f, 6.0f,
+                                  sel ? CLR_WHITE : CLR_ACCENT);
+            }
             C2D_TextParse(&t, staticBuf, label);
+            float lw = 0, lh = 0;
+            C2D_TextGetDimensions(&t, 0.42f, 0.42f, &lw, &lh);
             C2D_DrawText(&t, C2D_WithColor,
-                         cx + 18.0f, cy + GALLERY_CELL_H / 2.0f - 6.0f,
+                         cx + (GALLERY_CELL_W - lw) * 0.5f,
+                         cy + (GALLERY_CELL_H - lh) * 0.5f,
                          0.5f, 0.42f, 0.42f,
                          sel ? CLR_WHITE : CLR_TEXT);
         }
