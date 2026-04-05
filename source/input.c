@@ -138,12 +138,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     *timer_open = false;
                     return true;
                 }
-                static const int timer_vals[4] = { 0, 3, 5, 10 };
-                float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+                static const int timer_vals[SHOOT_TIMER_VAL_COUNT] = SHOOT_TIMER_VALS_INIT;
+                float total_btn_w = SHOOT_TIMER_VAL_COUNT * SHOOT_TIMER_BTN_W + (SHOOT_TIMER_VAL_COUNT - 1) * SHOOT_TIMER_BTN_GAP;
                 float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
                 float btn_y = (float)SHOOT_CONTENT_Y + 20.0f;
                 if (tapped && ty >= (int)btn_y && ty < (int)(btn_y + SHOOT_TIMER_BTN_H)) {
-                    for (int i = 0; i < 4; i++) {
+                    for (int i = 0; i < SHOOT_TIMER_VAL_COUNT; i++) {
                         float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
                         if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
                             *shoot_timer_secs = timer_vals[i];
@@ -188,31 +188,21 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #undef VHANDLE_H
                 } else if (*shoot_mode == SHOOT_MODE_LOMO) {
                     // 3×2 preset grid (matches draw side geometry)
-                    #define LOMO_COLS  3
-                    #define LOMO_ROWS  2
-                    #define LOMO_GAP   4
-                    #define LOMO_BTN_W ((BOT_W - (LOMO_COLS + 1) * LOMO_GAP) / LOMO_COLS)
-                    #define LOMO_BTN_H 30
                     float cy = (float)SHOOT_CONTENT_Y;
                     if (tapped) {
-                        for (int row = 0; row < LOMO_ROWS; row++) {
-                            for (int col = 0; col < LOMO_COLS; col++) {
-                                int idx = row * LOMO_COLS + col;
+                        for (int row = 0; row < LOMO_GRID_ROWS; row++) {
+                            for (int col = 0; col < LOMO_GRID_COLS; col++) {
+                                int idx = row * LOMO_GRID_COLS + col;
                                 if (idx >= LOMO_PRESET_COUNT) break;
-                                int bx = LOMO_GAP + col * (LOMO_BTN_W + LOMO_GAP);
-                                int by = (int)(cy + row * (LOMO_BTN_H + LOMO_GAP));
-                                if (hit(tx, ty, bx, by, LOMO_BTN_W, LOMO_BTN_H)) {
+                                int bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
+                                int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
+                                if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
                                     *lomo_preset = idx;
                                     return true;
                                 }
                             }
                         }
                     }
-                    #undef LOMO_COLS
-                    #undef LOMO_ROWS
-                    #undef LOMO_GAP
-                    #undef LOMO_BTN_W
-                    #undef LOMO_BTN_H
                 } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
                     // Frames slider (row 0) and Delay slider (row 1)
                     float row_ys[2] = {
