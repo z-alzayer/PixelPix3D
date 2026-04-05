@@ -19,11 +19,20 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   int *shoot_mode, bool *shoot_mode_open,
                   int *shoot_timer_secs, bool *timer_open,
                   int *wiggle_frames, int *wiggle_delay_ms,
-                  int *lomo_preset) {
+                  int *lomo_preset,
+                  bool gallery_edit_mode,
+                  int *edit_tab, int *sticker_cat, int *sticker_sel, int *sticker_scroll, int *gallery_frame,
+                  PlacedSticker *placed_stickers,
+                  bool *do_edit_cancel, bool *do_edit_savenew, bool *do_edit_overwrite,
+                  bool *do_edit_enter) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
     *do_gallery_toggle = false;
+    *do_edit_cancel   = false;
+    *do_edit_savenew  = false;
+    *do_edit_overwrite = false;
+    *do_edit_enter    = false;
 
     bool touched = (kHeld & KEY_TOUCH) != 0;
     bool tapped  = (kDown & KEY_TOUCH) != 0;
@@ -32,15 +41,138 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     int tx = touch.px, ty = touch.py;
 
     // -----------------------------------------------------------------------
+    // Gallery edit mode — intercepts ALL touch when active (must be first)
+    // -----------------------------------------------------------------------
+    if (gallery_edit_mode) {
+        if (!tapped) return false;
+
+        // Action bar (bottom strip)
+        if (ty >= GEDIT_ACT_Y) {
+            if (hit(tx, ty, GEDIT_BTN_CANCEL_X,  GEDIT_ACT_Y, GEDIT_BTN_CANCEL_W,  GEDIT_ACT_H)) {
+                *do_edit_cancel = true; return true;
+            }
+            if (hit(tx, ty, GEDIT_BTN_SAVENEW_X, GEDIT_ACT_Y, GEDIT_BTN_SAVENEW_W, GEDIT_ACT_H)) {
+                *do_edit_savenew = true; return true;
+            }
+            if (hit(tx, ty, GEDIT_BTN_OVERW_X,   GEDIT_ACT_Y, GEDIT_BTN_OVERW_W,   GEDIT_ACT_H)) {
+                *do_edit_overwrite = true; return true;
+            }
+            return false;
+        }
+
+        // Tab bar
+        if (ty < GEDIT_TAB_H) {
+            *edit_tab = (tx < GEDIT_TAB_W) ? 0 : 1;
+            return true;
+        }
+
+        // Category strip (sticker tab only): y = GEDIT_TAB_H+2 .. GEDIT_TAB_H+20, x=0..159
+        #define CAT_STRIP_Y0  (GEDIT_TAB_H + 2)
+        #define CAT_STRIP_H   18
+        #define CAT_BTN_W_I   ((160 - 4) / STICKER_CAT_COUNT)
+        if (*edit_tab == 0 && tx < 160 &&
+            ty >= CAT_STRIP_Y0 && ty < CAT_STRIP_Y0 + CAT_STRIP_H) {
+            int ci = (tx - 2) / CAT_BTN_W_I;
+            if (ci < 0) ci = 0;
+            if (ci >= STICKER_CAT_COUNT) ci = STICKER_CAT_COUNT - 1;
+            if (ci != *sticker_cat) {
+                *sticker_cat   = ci;
+                *sticker_sel   = 0;
+                *sticker_scroll = 0;
+                sticker_cat_load(ci);
+            }
+            return true;
+        }
+        #undef CAT_STRIP_Y0
+        #undef CAT_STRIP_H
+        #undef CAT_BTN_W_I
+
+        // Info area tap (y = GEDIT_PICKER_BOT..GEDIT_ACT_Y) → "Place" selected sticker
+        // Passes through to main.c via sticker_sel; actual placement done there via KEY_A / this flag
+        // We re-use do_edit_savenew as a "place sticker" flag when we're in sticker tab context.
+        // Instead, signal placement via a dedicated "place" bit — we use do_edit_enter for this.
+        if (*edit_tab == 0 && ty >= GEDIT_PICKER_BOT && ty < GEDIT_ACT_Y) {
+            *do_edit_enter = true;  // reuse as "place sticker" signal in edit mode
+            return true;
+        }
+
+        // Right panel scroll buttons (x>=160, sticker tab only)
+        // Prev button: y=116..138  Next button: y=141..163  (matches draw_gallery_edit_tab layout)
+        // PREV_Y=32, PREV_H=64, name_y=100, btn_y=116, each button h=22, gap=3
+        #define RSCROLL_UP_Y0   116
+        #define RSCROLL_DN_Y0   141
+        #define RSCROLL_BTN_H    22
+        if (*edit_tab == 0 && tx >= 160) {
+            sticker_cat_load(*sticker_cat);
+            int _rc = sticker_cats[*sticker_cat].count;
+            int _tr = (_rc + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
+            int _ms = _tr - GEDIT_STICKER_ROWS;
+            if (_ms < 0) _ms = 0;
+            if (ty >= RSCROLL_UP_Y0 && ty < RSCROLL_UP_Y0 + RSCROLL_BTN_H) {
+                if (*sticker_scroll > 0) (*sticker_scroll)--;
+                return true;
+            }
+            if (ty >= RSCROLL_DN_Y0 && ty < RSCROLL_DN_Y0 + RSCROLL_BTN_H) {
+                if (*sticker_scroll < _ms) (*sticker_scroll)++;
+                return true;
+            }
+        }
+        #undef RSCROLL_UP_Y0
+        #undef RSCROLL_DN_Y0
+        #undef RSCROLL_BTN_H
+
+        // Sticker grid base y (after category strip)
+        #define SGRID_BASE_Y  (GEDIT_TAB_H + 2 + 18 + 2)   // 50
+
+        // Picker area — left panel (x=0..159)
+        if (ty >= SGRID_BASE_Y && ty < GEDIT_PICKER_BOT && tx < 160) {
+            if (*edit_tab == 0) {
+                // Sticker grid — uses GEDIT_STICKER_* from ui.h
+                #define SGRID_X0    2
+                #define SGRID_ROW_H GEDIT_STICKER_ROW_H
+                sticker_cat_load(*sticker_cat);
+                int cat_count  = sticker_cats[*sticker_cat].count;
+
+                // Cell tap
+                int col = (tx - SGRID_X0) / (GEDIT_STICKER_CELL + GEDIT_STICKER_GAP);
+                int row = (ty - SGRID_BASE_Y) / SGRID_ROW_H;
+                if (col >= 0 && col < GEDIT_STICKER_COLS && row >= 0 && row < GEDIT_STICKER_ROWS) {
+                    int idx = (*sticker_scroll * GEDIT_STICKER_COLS) + row * GEDIT_STICKER_COLS + col;
+                    if (idx >= 0 && idx < cat_count) {
+                        *sticker_sel = idx;
+                        return true;
+                    }
+                }
+                #undef SGRID_X0
+                #undef SGRID_ROW_H
+                #undef SGRID_BASE_Y
+            } else {
+                // Frame picker — left panel only (x=0..159)
+                for (int i = 0; i < FRAME_COUNT; i++) {
+                    int fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
+                    if (ty >= fy && ty < fy + FRAME_PILL_H && tx < 160) {
+                        *gallery_frame = i;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // -----------------------------------------------------------------------
     // Bottom nav bar (y >= NAV_Y, always active)
     // -----------------------------------------------------------------------
     if (tapped && ty >= NAV_Y) {
+        // In gallery/edit mode: nav taps close those contexts first
+        if (gallery_edit_mode) { *do_edit_cancel = true; return true; }
+        if (gallery_mode)      { *do_gallery_toggle = true; return true; }
+
         int seg = tx / NAV_SEG_W;
         if (seg < 0) seg = 0;
         if (seg > 3) seg = 3;
 
         if (seg == TAB_SHOOT) {
-            if (gallery_mode) *do_gallery_toggle = true;  // close gallery
             *active_tab = TAB_SHOOT;
         } else if (seg == TAB_STYLE) {
             *active_tab = TAB_STYLE;
@@ -53,39 +185,73 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     }
 
     // -----------------------------------------------------------------------
-    // SHOOT tab inputs (content area, y < NAV_Y)
+    // Gallery mode — full-screen context (intercepts all touch when active)
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_SHOOT && ty < NAV_Y) {
+    if (gallery_mode && !gallery_edit_mode && tapped && ty < NAV_Y) {
+        // New full-screen gallery layout constants (must match draw_gallery_tab)
+        #define GAL_GRID_Y0   32
+        #define GAL_GRID_COLS  4
+        #define GAL_GRID_ROWS  4
+        #define GAL_CELL_W    71
+        #define GAL_CELL_H    40
+        #define GAL_CELL_GAP   3
+        #define GAL_ROW_H    (GAL_CELL_H + GAL_CELL_GAP)
+        #define GAL_SCROLL_X 302
 
-        // Gallery grid inputs
-        if (gallery_mode && tapped) {
-            int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
-            int max_scroll = total_rows - GALLERY_ROWS;
+        // Close button (header, left)
+        if (hit(tx, ty, 4, 3, 50, 24)) {
+            *do_gallery_toggle = true;
+            return true;
+        }
+        // Edit button (header, right)
+        if (gallery_count > 0 && hit(tx, ty, BOT_W - 54, 3, 50, 24)) {
+            *do_edit_enter = true;
+            return true;
+        }
+        // Scroll arrows
+        {
+            int total_rows = (gallery_count + GAL_GRID_COLS - 1) / GAL_GRID_COLS;
+            int max_scroll = total_rows - GAL_GRID_ROWS;
             if (max_scroll < 0) max_scroll = 0;
-
-            if (hit(tx, ty, BTN_GSCROLL_X, BTN_GSCROLL_UP_Y, BTN_GSCROLL_W, BTN_GSCROLL_H)) {
+            if (hit(tx, ty, GAL_SCROLL_X, GAL_GRID_Y0, 14, 78)) {
                 if (*gallery_scroll > 0) (*gallery_scroll)--;
                 return true;
             }
-            if (hit(tx, ty, BTN_GSCROLL_X, BTN_GSCROLL_DN_Y, BTN_GSCROLL_W, BTN_GSCROLL_H)) {
+            if (hit(tx, ty, GAL_SCROLL_X, GAL_GRID_Y0 + 82, 14, 78)) {
                 if (*gallery_scroll < max_scroll) (*gallery_scroll)++;
                 return true;
             }
-            if (ty >= GALLERY_START_Y) {
-                int col = (tx - GALLERY_GAP) / (GALLERY_CELL_W + GALLERY_GAP);
-                int row = (ty - GALLERY_START_Y) / GALLERY_ROW_H;
-                if (col >= 0 && col < GALLERY_COLS && row >= 0 && row < GALLERY_ROWS) {
-                    int idx = (*gallery_scroll * GALLERY_COLS) + row * GALLERY_COLS + col;
-                    if (idx >= 0 && idx < gallery_count) {
-                        *gallery_sel = idx;
-                        return true;
-                    }
+        }
+        // Thumbnail grid taps
+        if (ty >= GAL_GRID_Y0 && tx < GAL_SCROLL_X) {
+            int col = (tx - GAL_CELL_GAP) / (GAL_CELL_W + GAL_CELL_GAP);
+            int row = (ty - GAL_GRID_Y0)  / GAL_ROW_H;
+            if (col >= 0 && col < GAL_GRID_COLS && row >= 0 && row < GAL_GRID_ROWS) {
+                int idx = *gallery_scroll * GAL_GRID_COLS + row * GAL_GRID_COLS + col;
+                if (idx >= 0 && idx < gallery_count) {
+                    *gallery_sel = idx;
+                    return true;
                 }
             }
         }
+        #undef GAL_GRID_Y0
+        #undef GAL_GRID_COLS
+        #undef GAL_GRID_ROWS
+        #undef GAL_CELL_W
+        #undef GAL_CELL_H
+        #undef GAL_CELL_GAP
+        #undef GAL_ROW_H
+        #undef GAL_SCROLL_X
+        return false;
+    }
+
+    // -----------------------------------------------------------------------
+    // SHOOT tab inputs (content area, y < NAV_Y) — only when NOT in gallery
+    // -----------------------------------------------------------------------
+    if (*active_tab == TAB_SHOOT && !gallery_mode && ty < NAV_Y) {
 
         // Shoot strip (y < SHOOT_STRIP_H)
-        if (!gallery_mode && ty < SHOOT_STRIP_H) {
+        if (ty < SHOOT_STRIP_H) {
             // Camera flip button (left zone)
             if (tapped && tx < SHOOT_CAM_W) {
                 *do_cam_toggle = true;
@@ -103,14 +269,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
 
-            // Gallery button (right zone)
+            // Gallery button opens gallery context
             if (tapped && tx >= SHOOT_GAL_X) {
                 *do_gallery_toggle = true;
                 return true;
             }
         }
 
-        if (!gallery_mode) {
+        {
             if (!*shoot_mode_open && !*timer_open) {
                 // ---- Mode grid taps ----
                 if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
@@ -498,5 +664,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     }
 
     (void)default_params;
+
     return false;
 }

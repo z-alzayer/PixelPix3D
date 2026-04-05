@@ -16,8 +16,32 @@
 #include "filter.h"
 #include "lomo.h"
 #include "image_load.h"
+#include "sticker.h"
 #include "settings.h"
 #include "sound.h"
+
+// Composite callback for save_edited_apng — applies placed stickers + frame
+typedef struct {
+    PlacedSticker *stickers;
+    int            n_stickers;
+    int            frame_idx;    // gallery_frame (-1 = none)
+    const char    *frame_path;
+} EditCompositeCtx;
+
+static void edit_composite_cb(uint8_t *rgb888, int w, int h, void *ud) {
+    EditCompositeCtx *ctx = (EditCompositeCtx *)ud;
+    for (int si = 0; si < ctx->n_stickers; si++) {
+        if (!ctx->stickers[si].active) continue;
+        const unsigned char *px = get_sticker_pixels(ctx->stickers[si].cat_idx,
+                                                      ctx->stickers[si].icon_idx);
+        if (px)
+            composite_sticker_rgb888(rgb888, w, h, px,
+                                     ctx->stickers[si].x, ctx->stickers[si].y,
+                                     ctx->stickers[si].scale, ctx->stickers[si].angle_deg);
+    }
+    if (ctx->frame_idx >= 0 && ctx->frame_path)
+        composite_frame_rgb888(rgb888, w, h, ctx->frame_path);
+}
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -198,6 +222,24 @@ int main(void) {
     int  gallery_anim_frame = 0;
     int  gallery_loaded = -1;
 
+    // Gallery edit mode state
+    bool gallery_edit_mode = false;
+    int  edit_tab          = 0;     // 0 = stickers, 1 = frames
+    int  sticker_cat       = 0;     // active category index
+    int  sticker_sel       = 0;     // currently highlighted icon in active category
+    int  sticker_scroll    = 0;     // row scroll offset in picker grid
+    int  gallery_frame     = -1;    // active frame index (-1 = none)
+    PlacedSticker placed_stickers[STICKER_MAX];
+    for (int i = 0; i < STICKER_MAX; i++) placed_stickers[i].active = false;
+    static uint8_t edit_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
+    int  edit_save_flash   = 0;     // countdown for "Saved!" display
+    // Placement cursor: position for the next sticker to be placed
+    float sticker_cursor_x   = (float)CAMERA_WIDTH  / 2.0f;
+    float sticker_cursor_y   = (float)CAMERA_HEIGHT / 2.0f;
+    float sticker_pending_scale = 2.0f;   // default 2x (32px displayed on 400px photo)
+    float sticker_pending_angle = 0.0f;   // degrees
+    bool  sticker_placing    = false;     // true = sticker "picked up", A confirms, B cancels
+
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
     CAMU_SetTransferBytes(PORT_BOTH, bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -205,6 +247,7 @@ int main(void) {
 
     Handle camReceiveEvent[4] = {0};
     bool captureInterrupted = false;
+    bool cam_active = true;   // false when camera is stopped for gallery/edit
     s32 index = 0;
 
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
@@ -212,6 +255,7 @@ int main(void) {
     CAMU_ClearBuffer(PORT_BOTH);
     CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
     CAMU_StartCapture(PORT_BOTH);
+
 
     int save_flash     = 0;
     int settings_flash = 0;
@@ -257,7 +301,8 @@ int main(void) {
         bool do_save = false;
 
         if (!captureInterrupted) {
-            // Physical button fallbacks
+            // Physical button fallbacks (skip in gallery/edit mode — buttons have different roles)
+            if (!gallery_mode && !gallery_edit_mode) {
             if (kDown & KEY_L) {
                 params.palette = (params.palette <= PALETTE_NONE)
                                ? PALETTE_COUNT - 1 : params.palette - 1;
@@ -269,13 +314,94 @@ int main(void) {
             if (kDown & KEY_B) {
                 params.pixel_size = (params.pixel_size % PX_STOPS) + 1;
             }
+            } // end !gallery_mode && !gallery_edit_mode
             // X: cycle through main tabs (Shoot → Style → FX → More → Shoot)
-            if (kDown & KEY_X) {
+            // Disabled in gallery/edit mode to avoid accidental tab switches
+            if ((kDown & KEY_X) && !gallery_mode && !gallery_edit_mode) {
                 if (active_tab <= TAB_MORE)
                     active_tab = (active_tab + 1) % (TAB_MORE + 1);
             }
             // D-pad: context-aware per active_tab
-            if (active_tab == TAB_SHOOT) {
+            if (gallery_edit_mode && active_tab == TAB_SHOOT) {
+                // Edit mode sticker tab — two-step placement flow:
+                //   Picker mode:  D-pad U/D = scroll, A = "pick up" selected sticker
+                //   Placing mode: Circle pad = move cursor, A = place, B = cancel
+                if (edit_tab == 0) {
+                    if (sticker_placing) {
+                        // ---- Placement mode: sticker is "picked up" ----
+                        // Circle pad moves cursor with deadzone
+                        circlePosition cp;
+                        hidCircleRead(&cp);
+                        #define CP_DEADZONE 12
+                        float dx = (cp.dx > CP_DEADZONE) ? (float)(cp.dx - CP_DEADZONE) :
+                                   (cp.dx < -CP_DEADZONE) ? (float)(cp.dx + CP_DEADZONE) : 0.0f;
+                        float dy = (cp.dy > CP_DEADZONE) ? (float)(cp.dy - CP_DEADZONE) :
+                                   (cp.dy < -CP_DEADZONE) ? (float)(cp.dy + CP_DEADZONE) : 0.0f;
+                        // Speed: ~3 px/frame at full deflection (crosses 400px in ~2s at 60fps)
+                        // dx max after deadzone = 156-12 = 144; target = 3px/frame
+                        // factor = 3 / (144 * CAMERA_WIDTH) but expressed simply:
+                        sticker_cursor_x += dx * 3.0f / 144.0f;
+                        sticker_cursor_y -= dy * 3.0f / 144.0f;
+                        if (sticker_cursor_x < 0) sticker_cursor_x = 0;
+                        if (sticker_cursor_x >= CAMERA_WIDTH)  sticker_cursor_x = (float)(CAMERA_WIDTH  - 1);
+                        if (sticker_cursor_y < 0) sticker_cursor_y = 0;
+                        if (sticker_cursor_y >= CAMERA_HEIGHT) sticker_cursor_y = (float)(CAMERA_HEIGHT - 1);
+                        #undef CP_DEADZONE
+
+                        // L / R (held) — scale smaller / larger
+                        if (kHeld & KEY_L) {
+                            sticker_pending_scale -= 0.03f;
+                            if (sticker_pending_scale < 0.5f) sticker_pending_scale = 0.5f;
+                        }
+                        if (kHeld & KEY_R) {
+                            sticker_pending_scale += 0.03f;
+                            if (sticker_pending_scale > 8.0f) sticker_pending_scale = 8.0f;
+                        }
+
+                        // D-pad L/R — rotate by 15°
+                        if (kDown & KEY_DLEFT)  { sticker_pending_angle -= 15.0f; if (sticker_pending_angle <   0.0f) sticker_pending_angle += 360.0f; }
+                        if (kDown & KEY_DRIGHT) { sticker_pending_angle += 15.0f; if (sticker_pending_angle >= 360.0f) sticker_pending_angle -= 360.0f; }
+
+                        // A — confirm: place sticker centered on cursor
+                        if (kDown & KEY_A) {
+                            for (int si = 0; si < STICKER_MAX; si++) {
+                                if (!placed_stickers[si].active) {
+                                    placed_stickers[si].active    = true;
+                                    placed_stickers[si].cat_idx   = sticker_cat;
+                                    placed_stickers[si].icon_idx  = sticker_sel;
+                                    placed_stickers[si].x         = (int)sticker_cursor_x;
+                                    placed_stickers[si].y         = (int)sticker_cursor_y;
+                                    placed_stickers[si].scale     = sticker_pending_scale;
+                                    placed_stickers[si].angle_deg = sticker_pending_angle;
+                                    break;
+                                }
+                            }
+                            sticker_placing = false;
+                        }
+                        // B — cancel placement (no sticker placed)
+                        if (kDown & KEY_B) {
+                            sticker_placing = false;
+                        }
+                    } else {
+                        // ---- Picker mode: browse stickers ----
+                        // D-pad U/D — scroll picker rows
+                        sticker_cat_load(sticker_cat);
+                        int total_icons = sticker_cats[sticker_cat].count;
+                        int total_rows  = (total_icons + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
+                        int max_scroll  = total_rows - GEDIT_STICKER_ROWS;
+                        if (max_scroll < 0) max_scroll = 0;
+                        if (kDown & KEY_DUP)   { if (sticker_scroll > 0)         sticker_scroll--; }
+                        if (kDown & KEY_DDOWN) { if (sticker_scroll < max_scroll) sticker_scroll++; }
+
+                        // A — pick up selected sticker, reset cursor to centre
+                        if (kDown & KEY_A) {
+                            sticker_cursor_x = (float)CAMERA_WIDTH  / 2.0f;
+                            sticker_cursor_y = (float)CAMERA_HEIGHT / 2.0f;
+                            sticker_placing  = true;
+                        }
+                    }
+                }
+            } else if (active_tab == TAB_SHOOT) {
                 // On shoot screen: d-pad nudges brightness (up/down) and palette (left/right)
                 if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > ranges.bright_max) params.brightness = ranges.bright_max; }
                 if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < ranges.bright_min) params.brightness = ranges.bright_min; }
@@ -307,6 +433,8 @@ int main(void) {
 
             bool do_cam = false, do_defaults_save = false;
             bool do_gallery_toggle = false;
+            bool do_edit_cancel = false, do_edit_savenew = false, do_edit_overwrite = false;
+            bool do_edit_enter_or_place = false;
             handle_touch(touch, kDown, kHeld, &params, &do_cam, &do_save, &do_defaults_save,
                          &active_tab, &save_scale, &default_params,
                          &ranges, user_palettes, &palette_sel_pal, &palette_sel_color,
@@ -315,17 +443,127 @@ int main(void) {
                          &shoot_mode, &shoot_mode_open,
                          &shoot_timer_secs, &timer_open,
                          &wiggle_frames, &wiggle_delay_ms,
-                         &lomo_preset);
+                         &lomo_preset,
+                         gallery_edit_mode,
+                         &edit_tab, &sticker_cat, &sticker_sel, &sticker_scroll, &gallery_frame,
+                         placed_stickers,
+                         &do_edit_cancel, &do_edit_savenew, &do_edit_overwrite,
+                         &do_edit_enter_or_place);
+
+            // Enter edit mode (from gallery view Edit button) OR pick up sticker (from info tap)
+            if (do_edit_enter_or_place) {
+                if (!gallery_edit_mode) {
+                    // Reset cursor to centre when entering edit mode
+                    sticker_cursor_x = (float)CAMERA_WIDTH  / 2.0f;
+                    sticker_cursor_y = (float)CAMERA_HEIGHT / 2.0f;
+                    sticker_pending_scale = 2.0f;
+                    sticker_pending_angle = 0.0f;
+                    sticker_placing  = false;
+                    sticker_cat      = 0;
+                    sticker_sel      = 0;
+                    sticker_scroll   = 0;
+                    sticker_cat_load(0);
+                    gallery_edit_mode = true;
+                } else if (edit_tab == 0) {
+                    // Info area tap = pick up sticker (enter placement mode), reset cursor to centre
+                    sticker_cursor_x = (float)CAMERA_WIDTH  / 2.0f;
+                    sticker_cursor_y = (float)CAMERA_HEIGHT / 2.0f;
+                    sticker_placing  = true;
+                }
+            }
 
             if (do_gallery_toggle) {
                 gallery_mode = !gallery_mode;
+                gallery_edit_mode = false;
                 if (gallery_mode) {
+                    // Stop camera — free DMA bandwidth and CPU for gallery/edit
+                    if (cam_active) {
+                        CAMU_StopCapture(PORT_BOTH);
+                        for (int i = 2; i < 4; i++) {
+                            if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
+                        }
+                        captureInterrupted = false;
+                        cam_active = false;
+                    }
                     gallery_count  = list_saved_photos(SAVE_DIR, gallery_paths, GALLERY_MAX);
                     gallery_sel    = 0;
                     gallery_scroll = 0;
                     gallery_loaded = -1;
+                } else {
+                    // Restart camera
+                    if (!cam_active) {
+                        CAMU_ClearBuffer(PORT_BOTH);
+                        if (!selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+                        CAMU_StartCapture(PORT_BOTH);
+                        cam_active = true;
+                    }
                 }
             }
+
+            // Gallery edit: Cancel
+            if (do_edit_cancel) {
+                gallery_edit_mode = false;
+                sticker_placing   = false;
+                for (int i = 0; i < STICKER_MAX; i++) placed_stickers[i].active = false;
+                gallery_frame = -1;
+            }
+
+            // Gallery edit: Save New or Overwrite
+            if ((do_edit_savenew || do_edit_overwrite) && gallery_count > 0) {
+                static const char *s_frame_paths_save[FRAME_COUNT] = FRAME_PATHS_INIT;
+                char out_path[80];
+
+                // Build composite context (shared for both still and wiggle)
+                EditCompositeCtx ctx = {
+                    placed_stickers, STICKER_MAX,
+                    gallery_frame,
+                    (gallery_frame >= 0 && gallery_frame < FRAME_COUNT)
+                        ? s_frame_paths_save[gallery_frame] : NULL
+                };
+
+                if (gallery_n_frames > 1) {
+                    // Wiggle: composite onto every frame, save as APNG
+                    const uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
+                    for (int i = 0; i < gallery_n_frames; i++)
+                        fptrs[i] = gallery_thumbs[i];
+
+                    if (do_edit_overwrite) {
+                        snprintf(out_path, sizeof(out_path), "%s", gallery_paths[gallery_sel]);
+                    } else {
+                        next_wiggle_path(SAVE_DIR, out_path, sizeof(out_path));
+                        settings_save_file_counter(file_counter_next());
+                    }
+                    save_edited_apng(out_path, fptrs,
+                                     gallery_n_frames, gallery_delay_ms,
+                                     CAMERA_WIDTH, CAMERA_HEIGHT,
+                                     edit_composite_cb, &ctx);
+                } else {
+                    // Still image: composite once, save as JPEG
+                    rgb565_to_rgb888(edit_preview_rgb888,
+                                     (const uint16_t *)gallery_thumbs[0],
+                                     CAMERA_WIDTH * CAMERA_HEIGHT);
+                    edit_composite_cb(edit_preview_rgb888,
+                                      CAMERA_WIDTH, CAMERA_HEIGHT, &ctx);
+
+                    if (do_edit_overwrite) {
+                        snprintf(out_path, sizeof(out_path), "%s", gallery_paths[gallery_sel]);
+                    } else {
+                        next_save_path(SAVE_DIR, out_path, sizeof(out_path));
+                        settings_save_file_counter(file_counter_next());
+                    }
+                    save_jpeg(out_path, edit_preview_rgb888, CAMERA_WIDTH, CAMERA_HEIGHT);
+                }
+
+                // Refresh gallery list and exit edit mode
+                gallery_count  = list_saved_photos(SAVE_DIR, gallery_paths, GALLERY_MAX);
+                gallery_loaded = -1;
+                gallery_edit_mode = false;
+                sticker_placing   = false;
+                for (int i = 0; i < STICKER_MAX; i++) placed_stickers[i].active = false;
+                gallery_frame = -1;
+                edit_save_flash = 60;
+            }
+            if (edit_save_flash > 0) edit_save_flash--;
 
             // Load selected photo into thumb buffers when selection changes
             if (gallery_mode && gallery_count > 0 && gallery_loaded != gallery_sel) {
@@ -352,15 +590,19 @@ int main(void) {
                 gallery_loaded = gallery_sel;
             }
 
-            // Gallery d-pad scrolling (only when gallery is open on shoot tab)
-            if (gallery_mode && active_tab == TAB_SHOOT) {
-                int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
-                int max_scroll = total_rows - GALLERY_ROWS;
+            // Gallery d-pad scrolling (full-screen gallery context, 4×4 grid)
+            if (gallery_mode && !gallery_edit_mode) {
+                #define GAL_GRID_COLS 4
+                #define GAL_GRID_ROWS 4
+                int total_rows = (gallery_count + GAL_GRID_COLS - 1) / GAL_GRID_COLS;
+                int max_scroll = total_rows - GAL_GRID_ROWS;
                 if (max_scroll < 0) max_scroll = 0;
                 if (kDown & KEY_DDOWN)  { if (gallery_scroll < max_scroll) gallery_scroll++; }
                 if (kDown & KEY_DUP)    { if (gallery_scroll > 0) gallery_scroll--; }
                 if (kDown & KEY_DRIGHT) { gallery_sel++; if (gallery_sel >= gallery_count) gallery_sel = gallery_count - 1; }
                 if (kDown & KEY_DLEFT)  { gallery_sel--; if (gallery_sel < 0) gallery_sel = 0; }
+                #undef GAL_GRID_COLS
+                #undef GAL_GRID_ROWS
             }
 
             if (do_cam || (kDown & KEY_Y)) {
@@ -480,7 +722,7 @@ int main(void) {
                     }
                 }
             }
-        } else if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
+        } else if ((do_save || (kDown & KEY_A)) && !s_save.busy && !gallery_mode && !gallery_edit_mode) {
             if (shoot_timer_secs > 0 && !timer_active) {
                 // Start countdown using current shoot_mode
                 timer_remaining_ms = shoot_timer_secs * 1000;
@@ -540,8 +782,11 @@ int main(void) {
         else if (save_flash > 0) save_flash--;
         if (settings_flash > 0) settings_flash--;
 
-        // Always drain both camera ports to prevent buffer error interrupts
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
+        bool comparing = (kHeld & KEY_SELECT) != 0;
+
+        if (cam_active) {
+        // Always drain both camera ports to prevent buffer error interrupts
         if (camReceiveEvent[2] == 0)
             CAMU_SetReceiving(&camReceiveEvent[2], buf,                      PORT_CAM1, CAMERA_SCREEN_SIZE, (s16)bufSize);
         if (camReceiveEvent[3] == 0)
@@ -554,9 +799,6 @@ int main(void) {
 
         // Block until any camera event fires
         svcWaitSynchronizationN(&index, camReceiveEvent, 4, false, WAIT_TIMEOUT);
-
-        // Hold SELECT to bypass the filter and preview the raw camera feed
-        bool comparing = (kHeld & KEY_SELECT) != 0;
 
         switch (index) {
         case 0:
@@ -603,6 +845,10 @@ int main(void) {
         default:
             break;
         }
+        } else {
+            // Camera is stopped (gallery / edit mode) — sleep to avoid busy-loop
+            svcSleepThread(16000000LL);  // ~16ms = ~60fps pacing without camera
+        }
 
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wiggle_preview) {
@@ -629,6 +875,68 @@ int main(void) {
         if (use3d || timer_open) {
             u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
             memset(fb, 0, CAMERA_WIDTH * CAMERA_HEIGHT * 3);
+        } else if (gallery_edit_mode && gallery_count > 0) {
+            // Build composited edit preview: photo + stickers + frame
+            static const char *s_frame_paths[FRAME_COUNT] = FRAME_PATHS_INIT;
+            // Base photo
+            rgb565_to_rgb888(edit_preview_rgb888,
+                             (const uint16_t *)gallery_thumbs[gallery_anim_frame],
+                             CAMERA_WIDTH * CAMERA_HEIGHT);
+            // Stickers
+            for (int si = 0; si < STICKER_MAX; si++) {
+                if (!placed_stickers[si].active) continue;
+                const unsigned char *px = get_sticker_pixels(placed_stickers[si].cat_idx,
+                                                              placed_stickers[si].icon_idx);
+                if (px)
+                    composite_sticker_rgb888(edit_preview_rgb888,
+                                             CAMERA_WIDTH, CAMERA_HEIGHT,
+                                             px,
+                                             placed_stickers[si].x,
+                                             placed_stickers[si].y,
+                                             placed_stickers[si].scale,
+                                             placed_stickers[si].angle_deg);
+            }
+            // Frame overlay — composite from romfs path (only when active)
+            if (gallery_frame >= 0 && gallery_frame < FRAME_COUNT)
+                composite_frame_rgb888(edit_preview_rgb888,
+                                       CAMERA_WIDTH, CAMERA_HEIGHT,
+                                       s_frame_paths[gallery_frame]);
+            // Cursor crosshair: visible when placing (sticker_placing == true)
+            if (sticker_placing && edit_tab == 0) {
+                int cx = (int)sticker_cursor_x;
+                int cy = (int)sticker_cursor_y;
+                for (int d = -12; d <= 12; d++) {
+                    // Horizontal bar
+                    int px2 = cx + d, py2 = cy;
+                    if (px2 >= 0 && px2 < CAMERA_WIDTH && py2 >= 0 && py2 < CAMERA_HEIGHT) {
+                        uint8_t *p = edit_preview_rgb888 + (py2 * CAMERA_WIDTH + px2) * 3;
+                        p[0] = 255; p[1] = 255; p[2] = 0;
+                    }
+                    // Vertical bar
+                    px2 = cx; py2 = cy + d;
+                    if (px2 >= 0 && px2 < CAMERA_WIDTH && py2 >= 0 && py2 < CAMERA_HEIGHT) {
+                        uint8_t *p = edit_preview_rgb888 + (py2 * CAMERA_WIDTH + px2) * 3;
+                        p[0] = 255; p[1] = 255; p[2] = 0;
+                    }
+                }
+                // Also preview selected sticker at cursor (shows where it will land)
+                {
+                    const unsigned char *cpx = get_sticker_pixels(sticker_cat, sticker_sel);
+                    if (cpx) {
+                        composite_sticker_rgb888(edit_preview_rgb888,
+                                                 CAMERA_WIDTH, CAMERA_HEIGHT,
+                                                 cpx, cx, cy,
+                                                 sticker_pending_scale, sticker_pending_angle);
+                    }
+                }
+            }
+            // Convert back and blit
+            static uint16_t edit_preview_rgb565[CAMERA_WIDTH * CAMERA_HEIGHT];
+            rgb888_to_rgb565(edit_preview_rgb565, edit_preview_rgb888,
+                             CAMERA_WIDTH * CAMERA_HEIGHT);
+            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
+                                            edit_preview_rgb565, 0, 0,
+                                            CAMERA_WIDTH, CAMERA_HEIGHT);
         } else {
             void *blit_src;
             if (wiggle_preview)
@@ -659,7 +967,13 @@ int main(void) {
                 wiggle_frames, wiggle_delay_ms,
                 wiggle_preview,
                 timer_active ? (timer_remaining_ms + 999) / 1000 : -1,
-                lomo_preset);
+                lomo_preset,
+                gallery_edit_mode,
+                edit_tab, sticker_cat, sticker_sel, sticker_scroll,
+                gallery_frame,
+                sticker_cursor_x, sticker_cursor_y,
+                sticker_pending_scale, sticker_pending_angle,
+                sticker_placing);
         C3D_FrameEnd(0);
         frame_count++;
     }

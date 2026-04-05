@@ -1,8 +1,19 @@
 #include "ui_draw.h"
 #include "filter.h"
 #include "lomo.h"
+#include "sticker.h"
 #include <string.h>
 #include <stdio.h>
+
+// ---------------------------------------------------------------------------
+// Frame definitions
+// ---------------------------------------------------------------------------
+
+// FRAME_COUNT is defined in ui.h
+static const char *frame_names[FRAME_COUNT] = {
+    "Polaroid", "Film", "GB Border", "Stripes", "Vignette", "Film Color", "Halftone"
+};
+// (paths used only in main.c compositing; names shown here in picker)
 
 // ---------------------------------------------------------------------------
 // Bottom nav bar (always visible at y=200)
@@ -408,24 +419,73 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
                       int gallery_sel, int gallery_scroll) {
     C2D_Text t;
+    float tw, th;
     (void)dynBuf;
+
+    // Full-screen gallery context — owns y=0..NAV_Y (200px)
+    // Header bar: y=0..30  — title + Close/Edit buttons
+    // Thumbnail grid: y=32..NAV_Y-4
+    // Scroll arrows at right edge
+
+    // --- Header bar ---
+    C2D_DrawRectSolid(0, 0, 0.5f, BOT_W, 30.0f, CLR_PANEL);
+    C2D_DrawRectSolid(0, 30.0f, 0.5f, BOT_W, 1.0f, CLR_DIVIDER);
+
+    C2D_TextParse(&t, staticBuf, "Gallery");
+    C2D_TextGetDimensions(&t, 0.48f, 0.48f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 (BOT_W - tw) * 0.5f, (30.0f - th) * 0.5f,
+                 0.5f, 0.48f, 0.48f, CLR_ACCENT);
+
+    // Close button (left)
+    draw_pill(4.0f, 3.0f, 50.0f, 24.0f, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Close");
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 4.0f + (50.0f - tw) * 0.5f, 3.0f + (24.0f - th) * 0.5f,
+                 0.5f, 0.38f, 0.38f, CLR_TEXT);
+
+    // Edit button (right, only when something selected)
+    if (gallery_count > 0) {
+        draw_pill(BOT_W - 54.0f, 3.0f, 50.0f, 24.0f, CLR_ACCENT);
+        C2D_TextParse(&t, staticBuf, "Edit");
+        C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     BOT_W - 54.0f + (50.0f - tw) * 0.5f, 3.0f + (24.0f - th) * 0.5f,
+                     0.5f, 0.38f, 0.38f, CLR_WHITE);
+    }
 
     if (gallery_count == 0) {
         C2D_TextParse(&t, staticBuf, "No photos yet");
-        C2D_DrawText(&t, C2D_WithColor, 90.0f, 90.0f, 0.5f, 0.55f, 0.55f, CLR_DIM);
+        C2D_TextGetDimensions(&t, 0.55f, 0.55f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     (BOT_W - tw) * 0.5f, 80.0f + (CONTENT_H - 80.0f - th) * 0.5f,
+                     0.5f, 0.55f, 0.55f, CLR_DIM);
         return;
     }
 
-    for (int row = 0; row < GALLERY_ROWS; row++) {
-        for (int col = 0; col < GALLERY_COLS; col++) {
-            int idx = (gallery_scroll * GALLERY_COLS) + row * GALLERY_COLS + col;
-            if (idx >= gallery_count) break;
+    // Thumbnail grid — 4 cols × 4 rows starting at y=33
+    // Available height: 200-30-nav = but we draw inside content area y=31..199
+    // Row height: (199-31-4) / 4 = 41px; cell width: (302-5*4)/4 = 71px
+    #define GAL_GRID_Y0     32
+    #define GAL_GRID_COLS    4
+    #define GAL_GRID_ROWS    4
+    #define GAL_CELL_W      71
+    #define GAL_CELL_H      40
+    #define GAL_CELL_GAP     3
+    #define GAL_ROW_H       (GAL_CELL_H + GAL_CELL_GAP)
+    #define GAL_SCROLL_X    302  // right edge scroll arrows
 
-            float cx = GALLERY_GAP + col * (GALLERY_CELL_W + GALLERY_GAP);
-            float cy = GALLERY_START_Y + row * GALLERY_ROW_H;
+    for (int row = 0; row < GAL_GRID_ROWS; row++) {
+        for (int col = 0; col < GAL_GRID_COLS; col++) {
+            int idx = gallery_scroll * GAL_GRID_COLS + row * GAL_GRID_COLS + col;
+            if (idx >= gallery_count) goto done_gallery_grid;
 
+            float cx = GAL_CELL_GAP + col * (GAL_CELL_W + GAL_CELL_GAP);
+            float cy = GAL_GRID_Y0  + row * GAL_ROW_H;
             bool sel = (idx == gallery_sel);
-            draw_pill(cx, cy, GALLERY_CELL_W, GALLERY_CELL_H,
+
+            draw_pill(cx, cy, GAL_CELL_W, GAL_CELL_H,
                       sel ? CLR_ACCENT : CLR_BTN);
 
             const char *path = gallery_paths[idx];
@@ -442,38 +502,303 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
             } else {
                 snprintf(label, sizeof(label), "?");
             }
-            // Draw wiggle indicator dot
-            if (is_wiggle) {
-                C2D_DrawRectSolid(cx + 4.0f, cy + 4.0f, 0.4f, 6.0f, 6.0f,
+            if (is_wiggle)
+                C2D_DrawRectSolid(cx + 3.0f, cy + 3.0f, 0.4f, 6.0f, 6.0f,
                                   sel ? CLR_WHITE : CLR_ACCENT);
-            }
             C2D_TextParse(&t, staticBuf, label);
-            float lw = 0, lh = 0;
-            C2D_TextGetDimensions(&t, 0.42f, 0.42f, &lw, &lh);
+            C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
             C2D_DrawText(&t, C2D_WithColor,
-                         cx + (GALLERY_CELL_W - lw) * 0.5f,
-                         cy + (GALLERY_CELL_H - lh) * 0.5f,
-                         0.5f, 0.42f, 0.42f,
+                         cx + (GAL_CELL_W - tw) * 0.5f,
+                         cy + (GAL_CELL_H - th) * 0.5f,
+                         0.5f, 0.40f, 0.40f,
+                         sel ? CLR_WHITE : CLR_TEXT);
+        }
+    }
+    done_gallery_grid:;
+
+    // Scroll arrows (right column)
+    {
+        int total_rows = (gallery_count + GAL_GRID_COLS - 1) / GAL_GRID_COLS;
+        int max_scroll = total_rows - GAL_GRID_ROWS;
+        if (max_scroll < 0) max_scroll = 0;
+        u32 up_clr = gallery_scroll > 0          ? CLR_BTN : CLR_TRACK;
+        u32 dn_clr = gallery_scroll < max_scroll  ? CLR_BTN : CLR_TRACK;
+        draw_pill((float)GAL_SCROLL_X, (float)GAL_GRID_Y0,       14.0f, 78.0f, up_clr);
+        draw_pill((float)GAL_SCROLL_X, (float)GAL_GRID_Y0 + 82.0f, 14.0f, 78.0f, dn_clr);
+        C2D_TextParse(&t, staticBuf, "^");
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     GAL_SCROLL_X + (14.0f - tw) * 0.5f,
+                     GAL_GRID_Y0 + (78.0f - th) * 0.5f,
+                     0.5f, 0.40f, 0.40f, CLR_TEXT);
+        C2D_TextParse(&t, staticBuf, "v");
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     GAL_SCROLL_X + (14.0f - tw) * 0.5f,
+                     GAL_GRID_Y0 + 82.0f + (78.0f - th) * 0.5f,
+                     0.5f, 0.40f, 0.40f, CLR_TEXT);
+    }
+
+    #undef GAL_GRID_Y0
+    #undef GAL_GRID_COLS
+    #undef GAL_GRID_ROWS
+    #undef GAL_CELL_W
+    #undef GAL_CELL_H
+    #undef GAL_CELL_GAP
+    #undef GAL_ROW_H
+    #undef GAL_SCROLL_X
+}
+
+// ---------------------------------------------------------------------------
+// Gallery edit tab (replaces gallery when gallery_edit_mode is true)
+// ---------------------------------------------------------------------------
+
+void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
+                           int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+                           int gallery_frame,
+                           float sticker_cursor_x, float sticker_cursor_y,
+                           float sticker_pending_scale, float sticker_pending_angle,
+                           bool sticker_placing) {
+    C2D_Text t;
+    float tw, th;
+
+    // Layout split: left panel (picker) x=0..159, right panel (preview) x=160..319
+    // divided at x=160 with a 1px divider.
+    #define GEDIT_SPLIT_X  160
+
+    // --- Tab bar across full width: [Stickers] [Frames] ---
+    for (int i = 0; i < 2; i++) {
+        bool sel = (edit_tab == i);
+        draw_pill((float)(i * GEDIT_TAB_W), (float)GEDIT_TAB_Y,
+                  (float)GEDIT_TAB_W, (float)GEDIT_TAB_H,
+                  sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, i == 0 ? "Stickers" : "Frames");
+        C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     i * GEDIT_TAB_W + (GEDIT_TAB_W - tw) * 0.5f,
+                     GEDIT_TAB_Y + (GEDIT_TAB_H - th) * 0.5f,
+                     0.5f, 0.44f, 0.44f,
+                     sel ? CLR_WHITE : CLR_TEXT);
+    }
+
+    // Divider below tab bar
+    C2D_DrawRectSolid(0, (float)GEDIT_TAB_H, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // Vertical divider between left picker and right preview
+    C2D_DrawRectSolid((float)GEDIT_SPLIT_X, (float)GEDIT_TAB_H, 0.5f,
+                      1.0f, (float)(GEDIT_ACT_Y - GEDIT_TAB_H), CLR_DIVIDER);
+
+    // ===== LEFT PANEL: picker (x=0..159) =====
+    if (edit_tab == 0) {
+        // Category strip — small pill per category, across left panel
+        #define CAT_STRIP_H  18
+        #define CAT_STRIP_Y  (GEDIT_TAB_H + 2)
+        #define CAT_BTN_W    ((GEDIT_SPLIT_X - 4) / STICKER_CAT_COUNT)
+        for (int ci = 0; ci < STICKER_CAT_COUNT; ci++) {
+            float bx = 2.0f + ci * CAT_BTN_W;
+            bool csel = (ci == sticker_cat);
+            draw_pill(bx, (float)CAT_STRIP_Y, (float)(CAT_BTN_W - 2), (float)(CAT_STRIP_H - 2),
+                      csel ? CLR_ACCENT : CLR_TRACK);
+            C2D_TextParse(&t, staticBuf, sticker_cats[ci].label);
+            C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((CAT_BTN_W - 2) - tw) * 0.5f,
+                         (float)CAT_STRIP_Y + ((CAT_STRIP_H - 2) - th) * 0.5f,
+                         0.5f, 0.30f, 0.30f,
+                         csel ? CLR_WHITE : CLR_TEXT);
+        }
+        C2D_DrawRectSolid(0, (float)(CAT_STRIP_Y + CAT_STRIP_H), 0.5f, (float)GEDIT_SPLIT_X, 1, CLR_DIVIDER);
+
+        // Sticker grid — uses GEDIT_STICKER_* constants from ui.h
+        #define SGRID_X0   2
+        #define SGRID_Y0   (CAT_STRIP_Y + CAT_STRIP_H + 2)
+
+        sticker_cat_load(sticker_cat);
+        int cat_count  = sticker_cats[sticker_cat].count;
+        int total_rows = (cat_count + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
+        int max_scroll = total_rows - GEDIT_STICKER_ROWS;
+        if (max_scroll < 0) max_scroll = 0;
+
+        int visible_start = sticker_scroll * GEDIT_STICKER_COLS;
+        for (int row = 0; row < GEDIT_STICKER_ROWS; row++) {
+            for (int col = 0; col < GEDIT_STICKER_COLS; col++) {
+                int idx = visible_start + row * GEDIT_STICKER_COLS + col;
+                if (idx >= cat_count) goto done_sticker_grid;
+
+                float cx = SGRID_X0 + col * (GEDIT_STICKER_CELL + GEDIT_STICKER_GAP);
+                float cy = SGRID_Y0 + row * GEDIT_STICKER_ROW_H;
+                bool sel = (idx == sticker_sel);
+
+                if (sel)
+                    C2D_DrawRectSolid(cx - 2, cy - 2, 0.45f,
+                                      GEDIT_STICKER_CELL + 4, GEDIT_STICKER_CELL + 4, CLR_ACCENT);
+                C2D_DrawRectSolid(cx, cy, 0.46f, GEDIT_STICKER_CELL, GEDIT_STICKER_CELL, CLR_WHITE);
+                draw_sticker_c2d(sticker_cat, idx, cx, cy, (float)GEDIT_STICKER_CELL, (float)GEDIT_STICKER_CELL);
+            }
+        }
+        done_sticker_grid:;
+
+        #undef SGRID_X0
+        #undef SGRID_Y0
+        #undef CAT_BTN_W
+        #undef CAT_STRIP_H
+        #undef CAT_STRIP_Y
+
+    } else {
+        // Frame picker — all items auto-sized to fit picker area
+        for (int i = 0; i < FRAME_COUNT; i++) {
+            float fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
+            bool sel = (gallery_frame == i);
+            draw_pill(2.0f, fy, (float)(GEDIT_SPLIT_X - 4), (float)FRAME_PILL_H,
+                      sel ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, frame_names[i]);
+            C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         2.0f + ((GEDIT_SPLIT_X - 4) - tw) * 0.5f,
+                         fy + (FRAME_PILL_H - th) * 0.5f,
+                         0.5f, 0.38f, 0.38f,
                          sel ? CLR_WHITE : CLR_TEXT);
         }
     }
 
-    int total_rows = (gallery_count + GALLERY_COLS - 1) / GALLERY_COLS;
-    int max_scroll = total_rows - GALLERY_ROWS;
-    if (max_scroll < 0) max_scroll = 0;
+    // ===== RIGHT PANEL: sticker preview + scroll controls (x=161..319) =====
+    if (edit_tab == 0) {
+        sticker_cat_load(sticker_cat);
+        int _cat_count = sticker_cats[sticker_cat].count;
+        int _total_rows = (_cat_count + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
+        int _max_scroll = _total_rows - GEDIT_STICKER_ROWS;
+        if (_max_scroll < 0) _max_scroll = 0;
 
-    u32 up_clr = (gallery_scroll > 0)         ? CLR_BTN : CLR_TRACK;
-    u32 dn_clr = (gallery_scroll < max_scroll) ? CLR_BTN : CLR_TRACK;
-    draw_pill(BTN_GSCROLL_X, BTN_GSCROLL_UP_Y, BTN_GSCROLL_W, BTN_GSCROLL_H, up_clr);
-    C2D_TextParse(&t, staticBuf, "^");
+        // Right panel horizontal centre
+        #define RPANEL_X    (GEDIT_SPLIT_X + 1)
+        #define RPANEL_W    (BOT_W - RPANEL_X)
+        #define RPANEL_CX   (RPANEL_X + RPANEL_W / 2)
+
+        // Preview image — 64×64, centred in right panel, starting just below tab bar
+        #define PREV_W  64
+        #define PREV_H  64
+        #define PREV_X  (RPANEL_CX - PREV_W / 2)
+        #define PREV_Y  (GEDIT_TAB_H + 4)
+
+        C2D_DrawRectSolid((float)PREV_X - 1, (float)PREV_Y - 1, 0.46f,
+                          PREV_W + 2, PREV_H + 2, CLR_DIVIDER);
+        C2D_DrawRectSolid((float)PREV_X, (float)PREV_Y, 0.47f,
+                          PREV_W, PREV_H, CLR_WHITE);
+        if (sticker_sel >= 0 && sticker_sel < _cat_count)
+            draw_sticker_c2d(sticker_cat, sticker_sel, (float)PREV_X, (float)PREV_Y, PREV_W, PREV_H);
+
+        // Sticker name below preview
+        float name_y = PREV_Y + PREV_H + 4.0f;
+        if (!sticker_placing && sticker_sel >= 0 && sticker_sel < _cat_count) {
+            const char *full_path = sticker_cats[sticker_cat].icons[sticker_sel].path;
+            const char *base = full_path;
+            for (const char *p = full_path; *p; p++) if (*p == '/') base = p + 1;
+            static char icon_name[32];
+            int ni = 0;
+            for (; base[ni] && base[ni] != '.' && ni < 31; ni++)
+                icon_name[ni] = (base[ni] == '_') ? ' ' : base[ni];
+            icon_name[ni] = '\0';
+            C2D_TextParse(&t, staticBuf, icon_name);
+            C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         RPANEL_X + (RPANEL_W - tw) * 0.5f,
+                         name_y, 0.5f, 0.32f, 0.32f, CLR_TEXT);
+        }
+
+        // Scroll buttons + page indicator — stacked in right panel below name
+        #define SARROW_W   (RPANEL_W - 6)
+        #define SARROW_H   22
+        #define SARROW_X   (RPANEL_X + 3)
+        float btn_y = name_y + 16.0f;
+
+        u32 up_col = sticker_scroll > 0          ? CLR_BTN : CLR_TRACK;
+        u32 dn_col = sticker_scroll < _max_scroll ? CLR_BTN : CLR_TRACK;
+
+        draw_pill((float)SARROW_X, btn_y,           (float)SARROW_W, (float)SARROW_H, up_col);
+        draw_pill((float)SARROW_X, btn_y + SARROW_H + 3, (float)SARROW_W, (float)SARROW_H, dn_col);
+
+        C2D_TextParse(&t, staticBuf, "^ Prev");
+        C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     SARROW_X + (SARROW_W - tw) * 0.5f,
+                     btn_y + (SARROW_H - th) * 0.5f,
+                     0.5f, 0.34f, 0.34f, CLR_TEXT);
+
+        C2D_TextParse(&t, staticBuf, "Next v");
+        C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     SARROW_X + (SARROW_W - tw) * 0.5f,
+                     btn_y + SARROW_H + 3 + (SARROW_H - th) * 0.5f,
+                     0.5f, 0.34f, 0.34f, CLR_TEXT);
+
+        // Page indicator below buttons
+        char pg[16];
+        snprintf(pg, sizeof(pg), "p.%d/%d",
+                 sticker_scroll + 1, _total_rows > 0 ? _total_rows : 1);
+        C2D_TextParse(&t, staticBuf, pg);
+        C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     RPANEL_X + (RPANEL_W - tw) * 0.5f,
+                     btn_y + 2 * SARROW_H + 8.0f,
+                     0.5f, 0.30f, 0.30f, CLR_DIM);
+
+        #undef SARROW_W
+        #undef SARROW_H
+        #undef SARROW_X
+        #undef PREV_W
+        #undef PREV_H
+        #undef PREV_X
+        #undef PREV_Y
+        #undef RPANEL_X
+        #undef RPANEL_W
+        #undef RPANEL_CX
+    } else {
+        // Right panel for frame tab: hint text
+        C2D_TextParse(&t, staticBuf, "Tap to select");
+        C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     GEDIT_SPLIT_X + 2.0f + ((BOT_W - GEDIT_SPLIT_X - 2) - tw) * 0.5f,
+                     GEDIT_PICKER_Y + 20.0f,
+                     0.5f, 0.36f, 0.36f, CLR_DIM);
+        C2D_TextParse(&t, staticBuf, "a frame");
+        C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     GEDIT_SPLIT_X + 2.0f + ((BOT_W - GEDIT_SPLIT_X - 2) - tw) * 0.5f,
+                     GEDIT_PICKER_Y + 38.0f,
+                     0.5f, 0.36f, 0.36f, CLR_DIM);
+    }
+
+    // Divider above action bar
+    C2D_DrawRectSolid(0, (float)GEDIT_PICKER_BOT, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    // --- Action bar ---
+    C2D_DrawRectSolid(0, (float)GEDIT_ACT_Y - 1, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    draw_pill(GEDIT_BTN_CANCEL_X,  GEDIT_ACT_Y, GEDIT_BTN_CANCEL_W,  GEDIT_ACT_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Cancel");
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 BTN_GSCROLL_X + 4.0f, BTN_GSCROLL_UP_Y + 6.0f,
-                 0.5f, 0.44f, 0.44f, CLR_TEXT);
-    draw_pill(BTN_GSCROLL_X, BTN_GSCROLL_DN_Y, BTN_GSCROLL_W, BTN_GSCROLL_H, dn_clr);
-    C2D_TextParse(&t, staticBuf, "v");
+                 GEDIT_BTN_CANCEL_X + (GEDIT_BTN_CANCEL_W - tw) * 0.5f,
+                 GEDIT_ACT_Y + (GEDIT_ACT_H - th) * 0.5f,
+                 0.5f, 0.38f, 0.38f, CLR_TEXT);
+
+    draw_pill(GEDIT_BTN_SAVENEW_X, GEDIT_ACT_Y, GEDIT_BTN_SAVENEW_W, GEDIT_ACT_H, CLR_ACCENT);
+    C2D_TextParse(&t, staticBuf, "Save New");
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 BTN_GSCROLL_X + 5.0f, BTN_GSCROLL_DN_Y + 6.0f,
-                 0.5f, 0.44f, 0.44f, CLR_TEXT);
+                 GEDIT_BTN_SAVENEW_X + (GEDIT_BTN_SAVENEW_W - tw) * 0.5f,
+                 GEDIT_ACT_Y + (GEDIT_ACT_H - th) * 0.5f,
+                 0.5f, 0.38f, 0.38f, CLR_WHITE);
+
+    draw_pill(GEDIT_BTN_OVERW_X,   GEDIT_ACT_Y, GEDIT_BTN_OVERW_W,   GEDIT_ACT_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Overwrite");
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 GEDIT_BTN_OVERW_X + (GEDIT_BTN_OVERW_W - tw) * 0.5f,
+                 GEDIT_ACT_Y + (GEDIT_ACT_H - th) * 0.5f,
+                 0.5f, 0.38f, 0.38f, CLR_TEXT);
+
+    #undef GEDIT_SPLIT_X
 }
 
 // ---------------------------------------------------------------------------

@@ -405,3 +405,49 @@ int save_wiggle_apng(const char *path,
     fclose(fp);
     return ok;
 }
+
+// ---------------------------------------------------------------------------
+// Save an edited wiggle APNG — composite stickers/frame onto each animation
+// frame then encode as APNG, preserving the original frame count and timing.
+// ---------------------------------------------------------------------------
+
+int save_edited_apng(const char *path,
+                     const uint16_t * const *frames_rgb565,
+                     int n_frames, int delay_ms,
+                     int w, int h,
+                     composite_fn_t composite_fn, void *userdata)
+{
+    if (n_frames < 1 || n_frames > 8) return 0;
+    int npix = w * h;
+
+    uint8_t *rgb_bufs[8] = {0};
+    const uint8_t *frame_ptrs[8];
+
+    for (int f = 0; f < n_frames; f++) {
+        rgb_bufs[f] = malloc(npix * 3);
+        if (!rgb_bufs[f]) goto fail;
+        rgb565_to_rgb888(rgb_bufs[f], frames_rgb565[f], npix);
+        if (composite_fn)
+            composite_fn(rgb_bufs[f], w, h, userdata);
+        frame_ptrs[f] = rgb_bufs[f];
+    }
+
+    uint16_t delay_num = (uint16_t)delay_ms;
+    uint16_t delay_den = 1000;
+    size_t apng_len = apng_encode(s_apng_buf, APNG_BUF_CAP,
+                                  frame_ptrs, n_frames,
+                                  w, h, delay_num, delay_den);
+
+    for (int f = 0; f < n_frames; f++) free(rgb_bufs[f]);
+
+    if (apng_len == 0) return 0;
+    FILE *fp = fopen(path, "wb");
+    if (!fp) return 0;
+    int ok = (fwrite(s_apng_buf, 1, apng_len, fp) == apng_len);
+    fclose(fp);
+    return ok;
+
+fail:
+    for (int f = 0; f < n_frames; f++) free(rgb_bufs[f]);
+    return 0;
+}
