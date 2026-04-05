@@ -137,6 +137,27 @@ void settings_load_palettes(PaletteDef *user_palettes) {
     fclose(f);
 }
 
+int settings_load_file_counter(void) {
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) return 0;
+    char line[64];
+    int result = 0;
+    while (fgets(line, sizeof(line), f)) {
+        int n = 0;
+        if (sscanf(line, "next_file_n=%d", &n) == 1) { result = n; break; }
+    }
+    fclose(f);
+    return result;
+}
+
+void settings_save_file_counter(int n) {
+    ensure_settings_dir();
+    FILE *f = fopen(SETTINGS_PATH, "a");
+    if (!f) return;
+    fprintf(f, "next_file_n=%d\n", n);
+    fclose(f);
+}
+
 void settings_save_ranges(const FilterRanges *r) {
     ensure_settings_dir();
     FILE *f = fopen(SETTINGS_PATH, "a");

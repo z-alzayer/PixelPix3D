@@ -1,4 +1,5 @@
 #include "input.h"
+#include "lomo.h"
 #include "settings.h"
 
 bool hit(int px, int py, int rx, int ry, int rw, int rh) {
@@ -14,7 +15,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   PaletteDef *user_palettes,
                   int *palette_sel_pal, int *palette_sel_color,
                   bool *do_gallery_toggle,
-                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll) {
+                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
+                  int *shoot_mode, bool *shoot_mode_open,
+                  int *shoot_timer_secs, bool *timer_open,
+                  int *wiggle_frames, int *wiggle_delay_ms,
+                  int *lomo_preset) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
@@ -105,29 +110,142 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             }
         }
 
-        // Vertical image-adjustment sliders (middle area, not in gallery mode)
-        if (!gallery_mode &&
-            ty >= SHOOT_VSLIDER_Y - 8 && ty <= SHOOT_VSLIDER_BOTTOM + 8) {
-            int col = tx / SHOOT_VSLIDER_COL_W;
-            if (col >= 0 && col < 4) {
-                float t_val = 1.0f - (float)(ty - SHOOT_VSLIDER_Y) / SHOOT_VSLIDER_H;
-                if (t_val < 0.0f) t_val = 0.0f;
-                if (t_val > 1.0f) t_val = 1.0f;
-                float mn, mx;
-                float *field = NULL;
-                if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
-                else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
-                else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
-                else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
-                *field = mn + t_val * (mx - mn);
+        if (!gallery_mode) {
+            if (!*shoot_mode_open && !*timer_open) {
+                // ---- Mode grid taps ----
+                if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
+                    // 3 capture mode buttons
+                    for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
+                        int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                            *shoot_mode = col;
+                            *shoot_mode_open = true;
+                            return true;
+                        }
+                    }
+                    // Timer button (4th slot)
+                    {
+                        int bx = SHOOT_MODE_BTN_GAP + 3 * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                            *timer_open = true;
+                            return true;
+                        }
+                    }
+                }
+            } else if (*timer_open) {
+                // ---- Timer settings panel ----
+                if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
+                    *timer_open = false;
+                    return true;
+                }
+                static const int timer_vals[4] = { 0, 3, 5, 10 };
+                float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+                float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
+                float btn_y = (float)SHOOT_CONTENT_Y + 20.0f;
+                if (tapped && ty >= (int)btn_y && ty < (int)(btn_y + SHOOT_TIMER_BTN_H)) {
+                    for (int i = 0; i < 4; i++) {
+                        float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
+                        if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
+                            *shoot_timer_secs = timer_vals[i];
+                            return true;
+                        }
+                    }
+                }
+            } else {
+                // ---- Capture mode panel ----
+
+                // Back button
+                if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
+                    *shoot_mode_open = false;
+                    return true;
+                }
+
+                if (*shoot_mode == SHOOT_MODE_GBCAM) {
+                    #define VCOL_W   80
+                    #define VHANDLE_W 14
+                    #define VHANDLE_H  8
+                    float vtrack_top = (float)SHOOT_CONTENT_Y + 14.0f;
+                    float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
+                    float vtrack_h   = vtrack_bot - vtrack_top;
+                    if (touched && ty >= (int)(vtrack_top - VHANDLE_H) && ty <= (int)(vtrack_bot + VHANDLE_H)) {
+                        int col = tx / VCOL_W;
+                        if (col >= 0 && col < 4) {
+                            float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
+                            if (t_val < 0.0f) t_val = 0.0f;
+                            if (t_val > 1.0f) t_val = 1.0f;
+                            float mn, mx;
+                            float *field = NULL;
+                            if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
+                            else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
+                            else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
+                            else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
+                            *field = mn + t_val * (mx - mn);
+                            return true;
+                        }
+                    }
+                    #undef VCOL_W
+                    #undef VHANDLE_W
+                    #undef VHANDLE_H
+                } else if (*shoot_mode == SHOOT_MODE_LOMO) {
+                    // 3×2 preset grid (matches draw side geometry)
+                    #define LOMO_COLS  3
+                    #define LOMO_ROWS  2
+                    #define LOMO_GAP   4
+                    #define LOMO_BTN_W ((BOT_W - (LOMO_COLS + 1) * LOMO_GAP) / LOMO_COLS)
+                    #define LOMO_BTN_H 30
+                    float cy = (float)SHOOT_CONTENT_Y;
+                    if (tapped) {
+                        for (int row = 0; row < LOMO_ROWS; row++) {
+                            for (int col = 0; col < LOMO_COLS; col++) {
+                                int idx = row * LOMO_COLS + col;
+                                if (idx >= LOMO_PRESET_COUNT) break;
+                                int bx = LOMO_GAP + col * (LOMO_BTN_W + LOMO_GAP);
+                                int by = (int)(cy + row * (LOMO_BTN_H + LOMO_GAP));
+                                if (hit(tx, ty, bx, by, LOMO_BTN_W, LOMO_BTN_H)) {
+                                    *lomo_preset = idx;
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    #undef LOMO_COLS
+                    #undef LOMO_ROWS
+                    #undef LOMO_GAP
+                    #undef LOMO_BTN_W
+                    #undef LOMO_BTN_H
+                } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
+                    // Frames slider (row 0) and Delay slider (row 1)
+                    float row_ys[2] = {
+                        (float)SHOOT_CONTENT_Y + 6.0f,
+                        (float)SHOOT_CONTENT_Y + 6.0f + RHANDLE_H + 10.0f
+                    };
+                    for (int i = 0; i < 2; i++) {
+                        float track_cy = row_ys[i] + TRACK_H * 0.5f + 1.0f;
+                        if (touched && ty >= (int)(track_cy - RHANDLE_H) && ty <= (int)(track_cy + RHANDLE_H) &&
+                            tx >= 64 && tx <= 72 + 210 + 8) {
+                            float t_val = (float)(tx - 72) / 210.0f;
+                            if (t_val < 0.0f) t_val = 0.0f;
+                            if (t_val > 1.0f) t_val = 1.0f;
+                            if (i == 0) {
+                                *wiggle_frames = 2 + (int)(t_val * 6.0f + 0.5f);  // 2..8
+                                if (*wiggle_frames < 2) *wiggle_frames = 2;
+                                if (*wiggle_frames > 8) *wiggle_frames = 8;
+                            } else {
+                                *wiggle_delay_ms = 10 + (int)(t_val * 990.0f + 0.5f);  // 10..1000
+                                if (*wiggle_delay_ms < 10)   *wiggle_delay_ms = 10;
+                                if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // Save button (always at bottom when not in gallery)
+            if (tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
+                *do_save = true;
                 return true;
             }
-        }
-
-        // Save button
-        if (!gallery_mode && tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
-            *do_save = true;
-            return true;
         }
     }
 

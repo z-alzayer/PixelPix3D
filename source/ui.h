@@ -130,16 +130,49 @@
 #define STYLE_PX_Y       130   // snap slider centre y
 #define PX_STOPS          8
 
-// Vertical image-adjustment sliders on SHOOT tab (Bright / Contrast / Sat / Gamma)
-// 4 columns of 80px each, middle area y=54..150
-#define SHOOT_VSLIDER_Y       54  // top of track
-#define SHOOT_VSLIDER_H       80  // track height
-#define SHOOT_VSLIDER_BOTTOM (SHOOT_VSLIDER_Y + SHOOT_VSLIDER_H)
-#define SHOOT_VSLIDER_COL_W   80  // width per column
-#define SHOOT_VSLIDER_TRACK_W  6  // track rect width
-#define SHOOT_VSLIDER_HANDLE_W 18 // handle width
-#define SHOOT_VSLIDER_HANDLE_H 10 // handle height
-// centre x of slider i = i * SHOOT_VSLIDER_COL_W + SHOOT_VSLIDER_COL_W/2
+// ---------------------------------------------------------------------------
+// Shoot mode indices
+// ---------------------------------------------------------------------------
+
+#define SHOOT_MODE_GBCAM      0
+#define SHOOT_MODE_WIGGLE     1
+#define SHOOT_MODE_LOMO       2
+#define SHOOT_MODE_COUNT      3
+
+// Mode grid geometry (y=44..82, 1 row of 3 capture modes + Timer settings button)
+#define SHOOT_MODE_ROW1_Y   44
+#define SHOOT_MODE_ROW_H    38
+#define SHOOT_MODE_BTN_W    75   // (320 - 5*4) / 4  (same spacing, Timer uses 4th slot)
+#define SHOOT_MODE_BTN_GAP   4
+
+// Full contextual panel (replaces grid when a mode is "open")
+// Occupies y=43..157: below top strip, above save button
+// Back button at top of panel: y=43..63
+#define SHOOT_PANEL_Y       43
+#define SHOOT_PANEL_H      115   // 43..158
+#define SHOOT_BACK_Y        43
+#define SHOOT_BACK_H        20
+#define SHOOT_BACK_W        64
+#define SHOOT_CONTENT_Y    (SHOOT_BACK_Y + SHOOT_BACK_H + 4)  // ~67
+#define SHOOT_CONTENT_H    (SHOOT_SAVE_Y - SHOOT_CONTENT_Y)   // ~91
+
+// Horizontal sliders inside GB Cam panel (4 sliders stacked)
+// Each row: label + slider + value. Rows at relative offsets from SHOOT_CONTENT_Y
+#define SHOOT_HSLIDER_ROW_H   20   // spacing between slider rows
+#define SHOOT_HSLIDER_LBL_W   28   // left label column width
+#define SHOOT_HSLIDER_VAL_W   28   // right value column width
+#define SHOOT_HSLIDER_X      (4 + SHOOT_HSLIDER_LBL_W + 4)
+#define SHOOT_HSLIDER_W      (BOT_W - SHOOT_HSLIDER_X - SHOOT_HSLIDER_VAL_W - 8)
+
+// Timer/Photobooth panel: 3 timer buttons
+#define SHOOT_TIMER_BTN_Y   (SHOOT_CONTENT_Y + 8)
+#define SHOOT_TIMER_BTN_H    32
+#define SHOOT_TIMER_BTN_W    88   // 3 buttons with gaps: (320-4*4)/3 ~= 101, keep 88 for breathing room
+#define SHOOT_TIMER_BTN_GAP   4
+
+// Wiggle panel sliders (2 horizontal sliders: Frames / Delay)
+#define SHOOT_WIGGLE_ROW1_Y  (SHOOT_CONTENT_Y + 4)
+#define SHOOT_WIGGLE_ROW2_Y  (SHOOT_CONTENT_Y + 28)
 
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled
@@ -315,6 +348,12 @@ void draw_ui(C3D_RenderTarget *bot,
              const FilterRanges *ranges,
              bool comparing,
              bool gallery_mode, int gallery_count,
-             const char gallery_paths[][64], int gallery_sel, int gallery_scroll);
+             const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
+             int shoot_mode, bool shoot_mode_open,
+             int shoot_timer_secs, bool timer_open,
+             int wiggle_frames, int wiggle_delay_ms,
+             bool wiggle_preview,
+             int timer_countdown,
+             int lomo_preset);
 
 #endif
