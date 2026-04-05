@@ -1,4 +1,5 @@
 #include "input.h"
+#include "lomo.h"
 #include "settings.h"
 
 bool hit(int px, int py, int rx, int ry, int rw, int rh) {
@@ -16,8 +17,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   bool *do_gallery_toggle,
                   bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
                   int *shoot_mode, bool *shoot_mode_open,
-                  int *shoot_timer_secs,
-                  int *wiggle_frames, int *wiggle_delay_ms) {
+                  int *shoot_timer_secs, bool *timer_open,
+                  int *wiggle_frames, int *wiggle_delay_ms,
+                  int *lomo_preset) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
@@ -109,9 +111,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
 
         if (!gallery_mode) {
-            if (!*shoot_mode_open) {
-                // ---- Mode grid taps: open that mode's panel ----
+            if (!*shoot_mode_open && !*timer_open) {
+                // ---- Mode grid taps ----
                 if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
+                    // 3 capture mode buttons
                     for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
                         int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
@@ -120,9 +123,36 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             return true;
                         }
                     }
+                    // Timer button (4th slot)
+                    {
+                        int bx = SHOOT_MODE_BTN_GAP + 3 * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                            *timer_open = true;
+                            return true;
+                        }
+                    }
+                }
+            } else if (*timer_open) {
+                // ---- Timer settings panel ----
+                if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
+                    *timer_open = false;
+                    return true;
+                }
+                static const int timer_vals[4] = { 0, 3, 5, 10 };
+                float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+                float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
+                float btn_y = (float)SHOOT_CONTENT_Y + 20.0f;
+                if (tapped && ty >= (int)btn_y && ty < (int)(btn_y + SHOOT_TIMER_BTN_H)) {
+                    for (int i = 0; i < 4; i++) {
+                        float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
+                        if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
+                            *shoot_timer_secs = timer_vals[i];
+                            return true;
+                        }
+                    }
                 }
             } else {
-                // ---- Inside a mode panel ----
+                // ---- Capture mode panel ----
 
                 // Back button
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
@@ -130,10 +160,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     return true;
                 }
 
-                // Per-mode panel controls
                 if (*shoot_mode == SHOOT_MODE_GBCAM) {
-                    // 4 vertical sliders, each in an 80px wide column
-                    // vtrack_top = SHOOT_CONTENT_Y + 14, vtrack_bot = SHOOT_SAVE_Y - 6
                     #define VCOL_W   80
                     #define VHANDLE_W 14
                     #define VHANDLE_H  8
@@ -159,21 +186,33 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #undef VCOL_W
                     #undef VHANDLE_W
                     #undef VHANDLE_H
-                } else if (*shoot_mode == SHOOT_MODE_TIMER) {
-                    // 4 timer buttons: 3s / 5s / 10s / 15s
-                    static const int timer_vals[4] = { 3, 5, 10, 15 };
-                    float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
-                    float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
-                    float btn_y = (float)SHOOT_CONTENT_Y + 20.0f;
-                    if (tapped && ty >= (int)btn_y && ty < (int)(btn_y + SHOOT_TIMER_BTN_H)) {
-                        for (int i = 0; i < 4; i++) {
-                            float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
-                            if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
-                                *shoot_timer_secs = timer_vals[i];
-                                return true;
+                } else if (*shoot_mode == SHOOT_MODE_LOMO) {
+                    // 3×2 preset grid (matches draw side geometry)
+                    #define LOMO_COLS  3
+                    #define LOMO_ROWS  2
+                    #define LOMO_GAP   4
+                    #define LOMO_BTN_W ((BOT_W - (LOMO_COLS + 1) * LOMO_GAP) / LOMO_COLS)
+                    #define LOMO_BTN_H 30
+                    float cy = (float)SHOOT_CONTENT_Y;
+                    if (tapped) {
+                        for (int row = 0; row < LOMO_ROWS; row++) {
+                            for (int col = 0; col < LOMO_COLS; col++) {
+                                int idx = row * LOMO_COLS + col;
+                                if (idx >= LOMO_PRESET_COUNT) break;
+                                int bx = LOMO_GAP + col * (LOMO_BTN_W + LOMO_GAP);
+                                int by = (int)(cy + row * (LOMO_BTN_H + LOMO_GAP));
+                                if (hit(tx, ty, bx, by, LOMO_BTN_W, LOMO_BTN_H)) {
+                                    *lomo_preset = idx;
+                                    return true;
+                                }
                             }
                         }
                     }
+                    #undef LOMO_COLS
+                    #undef LOMO_ROWS
+                    #undef LOMO_GAP
+                    #undef LOMO_BTN_W
+                    #undef LOMO_BTN_H
                 } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
                     // Frames slider (row 0) and Delay slider (row 1)
                     float row_ys[2] = {

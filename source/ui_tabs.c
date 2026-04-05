@@ -1,5 +1,6 @@
 #include "ui_draw.h"
 #include "filter.h"
+#include "lomo.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -104,9 +105,10 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool gallery_mode,
                     const FilterParams *p, const FilterRanges *ranges,
                     int shoot_mode, bool shoot_mode_open,
-                    int shoot_timer_secs,
+                    int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
-                    bool wiggle_preview) {
+                    bool wiggle_preview,
+                    int lomo_preset) {
     C2D_Text t;
 
     // Background for strip area
@@ -169,10 +171,10 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
     // Middle area: mode grid OR full contextual panel
     // -----------------------------------------------------------------------
     if (!gallery_mode) {
-        if (!shoot_mode_open) {
-            // ---- Mode grid ----
+        if (!shoot_mode_open && !timer_open) {
+            // ---- Mode grid: 3 capture mode buttons + Timer settings button ----
             static const char *mode_labels[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Wiggle", "Timer", "Lomo"
+                "GB Cam", "Wiggle", "Lomo"
             };
 
             for (int i = 0; i < SHOOT_MODE_COUNT; i++) {
@@ -192,8 +194,74 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                              0.5f, 0.42f, 0.42f,
                              sel ? CLR_WHITE : CLR_TEXT);
             }
+
+            // Timer button (4th slot) — highlighted if timer is on
+            {
+                float bx = SHOOT_MODE_BTN_GAP + 3 * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                float by = (float)SHOOT_MODE_ROW1_Y;
+                bool tim_on = (shoot_timer_secs > 0);
+                draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
+                          tim_on ? CLR_CONFIRM : CLR_BTN);
+                char tlbl[16];
+                if (tim_on) snprintf(tlbl, sizeof(tlbl), "%ds", shoot_timer_secs);
+                else        snprintf(tlbl, sizeof(tlbl), "Timer");
+                C2D_TextParse(&t, staticBuf, tlbl);
+                float tw2 = 0, th2 = 0;
+                C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw2, &th2);
+                C2D_DrawText(&t, C2D_WithColor,
+                             bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
+                             by + (SHOOT_MODE_ROW_H - th2) / 2.0f - 1.0f,
+                             0.5f, 0.42f, 0.42f,
+                             tim_on ? CLR_WHITE : CLR_TEXT);
+            }
+
+        } else if (timer_open) {
+            // ---- Timer settings panel ----
+            draw_pill(4.0f, (float)SHOOT_BACK_Y + 2, (float)SHOOT_BACK_W, (float)SHOOT_BACK_H - 4, CLR_BTN);
+            C2D_TextParse(&t, staticBuf, "< Back");
+            C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         4.0f + ((float)SHOOT_BACK_W - tw) * 0.5f,
+                         (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                         0.5f, 0.40f, 0.40f, CLR_TEXT);
+            C2D_TextParse(&t, staticBuf, "Timer");
+            C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         (float)SHOOT_BACK_W + 8.0f + ((BOT_W - SHOOT_BACK_W - 12.0f) - tw) * 0.5f,
+                         (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                         0.5f, 0.46f, 0.46f, CLR_ACCENT);
+            C2D_DrawRectSolid(0, (float)(SHOOT_BACK_Y + SHOOT_BACK_H + 2), 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+            float cy = (float)SHOOT_CONTENT_Y;
+            C2D_TextParse(&t, staticBuf, "Countdown delay before capture:");
+            C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.38f, 0.38f, CLR_DIM);
+
+            static const int timer_vals[4] = { 0, 3, 5, 10 };
+            static const char *timer_lbls[4] = { "Off", "3s", "5s", "10s" };
+            float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+            float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
+            for (int i = 0; i < 4; i++) {
+                float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
+                bool sel = (shoot_timer_secs == timer_vals[i]);
+                draw_pill(bx, cy + 20.0f, (float)SHOOT_TIMER_BTN_W, (float)SHOOT_TIMER_BTN_H,
+                          sel ? CLR_ACCENT : CLR_BTN);
+                C2D_TextParse(&t, staticBuf, timer_lbls[i]);
+                C2D_TextGetDimensions(&t, 0.50f, 0.50f, &tw, &th);
+                C2D_DrawText(&t, C2D_WithColor,
+                             bx + ((float)SHOOT_TIMER_BTN_W - tw) * 0.5f,
+                             cy + 20.0f + ((float)SHOOT_TIMER_BTN_H - th) * 0.5f - 1.0f,
+                             0.5f, 0.50f, 0.50f,
+                             sel ? CLR_WHITE : CLR_TEXT);
+            }
+
+            // "No capture" notice — top screen is disabled in this panel
+            C2D_TextParse(&t, staticBuf, "Top screen disabled — settings only");
+            C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor, (BOT_W - tw) * 0.5f, cy + 62.0f,
+                         0.5f, 0.36f, 0.36f, CLR_DIM);
+
         } else {
-            // ---- Full contextual panel ----
+            // ---- Capture mode contextual panel ----
 
             // Back button (top-left)
             draw_pill(4.0f, (float)SHOOT_BACK_Y + 2, (float)SHOOT_BACK_W, (float)SHOOT_BACK_H - 4, CLR_BTN);
@@ -206,7 +274,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Wiggle", "Timer", "Lomo"
+                "GB Cam", "Wiggle", "Lomo"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -270,30 +338,6 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 #undef VHANDLE_W
                 #undef VHANDLE_H
 
-            } else if (shoot_mode == SHOOT_MODE_TIMER) {
-                // Timer selector: 3s / 5s / 10s / 15s
-                static const int timer_vals[4] = { 3, 5, 10, 15 };
-                static const char *timer_lbls[4] = { "3s", "5s", "10s", "15s" };
-                float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
-                float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
-
-                C2D_TextParse(&t, staticBuf, "Countdown before capture:");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.40f, 0.40f, CLR_DIM);
-
-                for (int i = 0; i < 4; i++) {
-                    float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
-                    bool sel = (shoot_timer_secs == timer_vals[i]);
-                    draw_pill(bx, cy + 20.0f, (float)SHOOT_TIMER_BTN_W, (float)SHOOT_TIMER_BTN_H,
-                              sel ? CLR_ACCENT : CLR_BTN);
-                    C2D_TextParse(&t, staticBuf, timer_lbls[i]);
-                    C2D_TextGetDimensions(&t, 0.50f, 0.50f, &tw, &th);
-                    C2D_DrawText(&t, C2D_WithColor,
-                                 bx + ((float)SHOOT_TIMER_BTN_W - tw) * 0.5f,
-                                 cy + 20.0f + ((float)SHOOT_TIMER_BTN_H - th) * 0.5f - 1.0f,
-                                 0.5f, 0.50f, 0.50f,
-                                 sel ? CLR_WHITE : CLR_TEXT);
-                }
-
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
                 // Wiggle: Frames slider + Delay slider — use smaller handles to avoid label overlap
                 draw_panel_hslider_sz(staticBuf, "Frames",
@@ -304,12 +348,37 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                       cy + 6.0f + RHANDLE_H + 10.0f, RHANDLE_W, RHANDLE_H, 72.0f, 0.0f);
 
             } else if (shoot_mode == SHOOT_MODE_LOMO) {
-                C2D_TextParse(&t, staticBuf, "High-contrast film look.");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 8.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
-                C2D_TextParse(&t, staticBuf, "Auto-boosts contrast + vignette");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 26.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
-                C2D_TextParse(&t, staticBuf, "on each saved photo.");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 44.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
+                // 3×2 grid of preset buttons
+                // btn_w = (BOT_W - 4 * gap) / 3,  gap = 4
+                #define LOMO_COLS  3
+                #define LOMO_ROWS  2
+                #define LOMO_GAP   4
+                #define LOMO_BTN_W ((BOT_W - (LOMO_COLS + 1) * LOMO_GAP) / LOMO_COLS)
+                #define LOMO_BTN_H 30
+                for (int row = 0; row < LOMO_ROWS; row++) {
+                    for (int col = 0; col < LOMO_COLS; col++) {
+                        int idx = row * LOMO_COLS + col;
+                        if (idx >= LOMO_PRESET_COUNT) break;
+                        float bx = LOMO_GAP + col * (LOMO_BTN_W + LOMO_GAP);
+                        float by = cy + row * (LOMO_BTN_H + LOMO_GAP);
+                        bool sel = (lomo_preset == idx);
+                        draw_pill(bx, by, LOMO_BTN_W, LOMO_BTN_H,
+                                  sel ? CLR_ACCENT : CLR_BTN);
+                        C2D_TextParse(&t, staticBuf, lomo_presets[idx].name);
+                        float tw2 = 0, th2 = 0;
+                        C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw2, &th2);
+                        C2D_DrawText(&t, C2D_WithColor,
+                                     bx + (LOMO_BTN_W - tw2) / 2.0f,
+                                     by + (LOMO_BTN_H - th2) / 2.0f - 1.0f,
+                                     0.5f, 0.42f, 0.42f,
+                                     sel ? CLR_WHITE : CLR_TEXT);
+                    }
+                }
+                #undef LOMO_COLS
+                #undef LOMO_ROWS
+                #undef LOMO_GAP
+                #undef LOMO_BTN_W
+                #undef LOMO_BTN_H
             }
         }
 

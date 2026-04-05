@@ -202,9 +202,11 @@ void draw_ui(C3D_RenderTarget *bot,
              bool gallery_mode, int gallery_count,
              const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
              int shoot_mode, bool shoot_mode_open,
-             int shoot_timer_secs,
+             int shoot_timer_secs, bool timer_open,
              int wiggle_frames, int wiggle_delay_ms,
-             bool wiggle_preview) {
+             bool wiggle_preview,
+             int timer_countdown,
+             int lomo_preset) {
     (void)settings_row;
 
     C2D_TargetClear(bot, CLR_BG);
@@ -247,9 +249,10 @@ void draw_ui(C3D_RenderTarget *bot,
         draw_shoot_tab(staticBuf, selfie, save_flash, user_palettes,
                        p.palette, gallery_mode, &p, ranges,
                        shoot_mode, shoot_mode_open,
-                       shoot_timer_secs,
+                       shoot_timer_secs, timer_open,
                        wiggle_frames, wiggle_delay_ms,
-                       wiggle_preview);
+                       wiggle_preview,
+                       lomo_preset);
         if (gallery_mode)
             draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
                              gallery_sel, gallery_scroll);
@@ -264,5 +267,27 @@ void draw_ui(C3D_RenderTarget *bot,
                          palette_sel_pal, palette_sel_color, settings_flash);
     } else if (active_tab == TAB_CALIBRATE) {
         draw_calibrate_tab(staticBuf, dynBuf, ranges, settings_flash);
+    }
+
+    // Countdown overlay — drawn last so it appears on top of everything
+    if (timer_countdown >= 0) {
+        C2D_Text t;
+        // Semi-transparent dark veil
+        C2D_DrawRectSolid(0, 0, 0.7f, BOT_W, CONTENT_H, C2D_Color32(0, 0, 0, 160));
+        // Large number
+        char cbuf[8];
+        snprintf(cbuf, sizeof(cbuf), "%d", timer_countdown > 99 ? 99 : timer_countdown);
+        C2D_TextParse(&t, staticBuf, cbuf);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(&t, 2.0f, 2.0f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     (BOT_W - tw) * 0.5f, (CONTENT_H - th) * 0.5f - 8.0f,
+                     0.8f, 2.0f, 2.0f, C2D_Color32(255, 255, 255, 255));
+        // "B to cancel" hint
+        C2D_TextParse(&t, staticBuf, "B to cancel");
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     (BOT_W - tw) * 0.5f, CONTENT_H - th - 6.0f,
+                     0.8f, 0.40f, 0.40f, C2D_Color32(200, 200, 200, 200));
     }
 }

@@ -136,14 +136,13 @@
 
 #define SHOOT_MODE_GBCAM      0
 #define SHOOT_MODE_WIGGLE     1
-#define SHOOT_MODE_TIMER      2
-#define SHOOT_MODE_LOMO       3
-#define SHOOT_MODE_COUNT      4
+#define SHOOT_MODE_LOMO       2
+#define SHOOT_MODE_COUNT      3
 
-// Mode grid geometry (y=44..82, 1 row of 4 buttons)
+// Mode grid geometry (y=44..82, 1 row of 3 capture modes + Timer settings button)
 #define SHOOT_MODE_ROW1_Y   44
 #define SHOOT_MODE_ROW_H    38
-#define SHOOT_MODE_BTN_W    75   // (320 - 5*4) / 4
+#define SHOOT_MODE_BTN_W    75   // (320 - 5*4) / 4  (same spacing, Timer uses 4th slot)
 #define SHOOT_MODE_BTN_GAP   4
 
 // Full contextual panel (replaces grid when a mode is "open")
@@ -351,8 +350,10 @@ void draw_ui(C3D_RenderTarget *bot,
              bool gallery_mode, int gallery_count,
              const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
              int shoot_mode, bool shoot_mode_open,
-             int shoot_timer_secs,
+             int shoot_timer_secs, bool timer_open,
              int wiggle_frames, int wiggle_delay_ms,
-             bool wiggle_preview);
+             bool wiggle_preview,
+             int timer_countdown,
+             int lomo_preset);
 
 #endif

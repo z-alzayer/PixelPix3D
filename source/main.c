@@ -14,6 +14,7 @@
 #include "ui.h"
 #include "input.h"
 #include "filter.h"
+#include "lomo.h"
 #include "image_load.h"
 #include "settings.h"
 #include "sound.h"
@@ -164,9 +165,16 @@ int main(void) {
     // Shoot mode state
     int  shoot_mode       = SHOOT_MODE_GBCAM;
     bool shoot_mode_open  = false;
-    int  shoot_timer_secs = 5;
+    bool timer_open       = false;
+    int  shoot_timer_secs = 0;  // 0 = disabled
     int  wiggle_frames    = 4;
     int  wiggle_delay_ms  = 250;
+    int  lomo_preset      = 0;  // index into lomo_presets[]
+
+    // Timer countdown state
+    bool timer_active       = false;
+    int  timer_remaining_ms = 0;
+    u64  timer_prev_tick    = 0;
 
     // Wiggle capture/preview state
     bool wiggle_preview      = false;  // true while showing captured pair before saving
@@ -305,8 +313,9 @@ int main(void) {
                          &do_gallery_toggle,
                          gallery_mode, gallery_count, &gallery_sel, &gallery_scroll,
                          &shoot_mode, &shoot_mode_open,
-                         &shoot_timer_secs,
-                         &wiggle_frames, &wiggle_delay_ms);
+                         &shoot_timer_secs, &timer_open,
+                         &wiggle_frames, &wiggle_delay_ms,
+                         &lomo_preset);
 
             if (do_gallery_toggle) {
                 gallery_mode = !gallery_mode;
@@ -416,8 +425,68 @@ int main(void) {
                     wiggle_preview = false;
                 }
             }
+        } else if (timer_active) {
+            // B cancels countdown
+            if (kDown & KEY_B) {
+                timer_active = false;
+            } else {
+                // Advance countdown using wall-clock ticks
+                u64 now = svcGetSystemTick();
+                int elapsed_ms = (int)((now - timer_prev_tick) * 1000 / SYSCLOCK_ARM11);
+                timer_prev_tick = now;
+                timer_remaining_ms -= elapsed_ms;
+                if (timer_remaining_ms <= 0) {
+                    timer_active = false;
+                    // Fire save using the mode that was active before switching to Timer
+                    if (shoot_mode == SHOOT_MODE_WIGGLE) {
+                        memcpy(wiggle_left,  buf,                      CAMERA_SCREEN_SIZE);
+                        memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE, CAMERA_SCREEN_SIZE);
+                        int nf = wiggle_frames < 2 ? 2 : (wiggle_frames > WIGGLE_PREVIEW_MAX ? WIGGLE_PREVIEW_MAX : wiggle_frames);
+                        int half = nf / 2; if (half < 1) half = 1;
+                        const uint16_t *L = (const uint16_t *)wiggle_left;
+                        const uint16_t *R = (const uint16_t *)wiggle_right;
+                        int npix = CAMERA_WIDTH * CAMERA_HEIGHT;
+                        for (int f = 0; f < nf; f++) {
+                            int alpha = (f <= half) ? (f * 255 / half) : ((nf - f) * 255 / half);
+                            uint16_t *dst = wiggle_preview_frames[f];
+                            if (alpha == 0)       memcpy(dst, L, npix * sizeof(uint16_t));
+                            else if (alpha >= 255) memcpy(dst, R, npix * sizeof(uint16_t));
+                            else for (int i = 0; i < npix; i++) {
+                                uint16_t pl = L[i], pr = R[i];
+                                int lr = (pl>>11)&0x1f, lg = (pl>>5)&0x3f, lb = pl&0x1f;
+                                int rr = (pr>>11)&0x1f, rg = (pr>>5)&0x3f, rb = pr&0x1f;
+                                dst[i] = (uint16_t)(((lr*(255-alpha)+rr*alpha)/255 << 11) |
+                                                    ((lg*(255-alpha)+rg*alpha)/255 << 5)  |
+                                                     (lb*(255-alpha)+rb*alpha)/255);
+                            }
+                        }
+                        wiggle_preview = true;
+                        wiggle_preview_frame = 0;
+                        wiggle_preview_last_tick = svcGetSystemTick();
+                        play_shutter_click();
+                    } else if (!s_save.busy) {
+                        char save_path[64];
+                        if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
+                            settings_save_file_counter(file_counter_next());
+                            memcpy(s_save.snapshot_buf, filtered_buf, CAMERA_SCREEN_SIZE);
+                            memcpy(s_save.save_path, save_path, sizeof(save_path));
+                            s_save.wiggle_mode = false;
+                            s_save.save_scale  = save_scale;
+                            s_save.busy = true;
+                            save_flash  = 20;
+                            play_shutter_click();
+                            LightEvent_Signal(&s_save.request_event);
+                        }
+                    }
+                }
+            }
         } else if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
-            if (shoot_mode == SHOOT_MODE_WIGGLE) {
+            if (shoot_timer_secs > 0 && !timer_active) {
+                // Start countdown using current shoot_mode
+                timer_remaining_ms = shoot_timer_secs * 1000;
+                timer_prev_tick    = svcGetSystemTick();
+                timer_active       = true;
+            } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
                 // First press: capture both cam buffers and build blended preview frames
                 memcpy(wiggle_left,  buf,                        CAMERA_SCREEN_SIZE);
                 memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE,   CAMERA_SCREEN_SIZE);
@@ -504,8 +573,24 @@ int main(void) {
             // Only pause filter processing during JPEG saves (which copy snapshot_buf).
             if (!use3d && !comparing && (!s_save.busy || s_save.wiggle_mode)) {
                 rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
-                // Wiggle mode: show true-colour preview — skip GB filter and FX
-                if (shoot_mode != SHOOT_MODE_WIGGLE) {
+                if (shoot_mode == SHOOT_MODE_LOMO) {
+                    // Lomo: raw camera feed — apply tonal preset + FX only, no GB pixel filter
+                    const LomoPreset *lp = &lomo_presets[lomo_preset];
+                    FilterParams lp_params = params;
+                    lp_params.brightness  = lp->brightness;
+                    lp_params.contrast    = lp->contrast;
+                    lp_params.saturation  = lp->saturation;
+                    lp_params.gamma       = lp->gamma;
+                    lp_params.fx_mode     = lp->fx_mode;
+                    lp_params.fx_intensity = lp->fx_intensity;
+                    lp_params.pixel_size  = 1;        // no pixelation
+                    lp_params.palette     = PALETTE_NONE;  // no palette quantisation
+                    lp_params.color_levels = 256;     // no posterisation
+                    apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params);
+                    apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params, frame_count);
+                } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
+                    // Wiggle: true-colour preview — skip all filters
+                } else {
                     apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, params);
                     apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, params, frame_count);
                 }
@@ -541,13 +626,9 @@ int main(void) {
 
         // Blit camera frame to top screen raw framebuffer
         gfxSet3D(false);
-        if (use3d) {
+        if (use3d || timer_open) {
             u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-            for (int i = 0; i < CAMERA_WIDTH * CAMERA_HEIGHT; i++) {
-                fb[i*3+0] = 0;
-                fb[i*3+1] = 0;
-                fb[i*3+2] = 180;
-            }
+            memset(fb, 0, CAMERA_WIDTH * CAMERA_HEIGHT * 3);
         } else {
             void *blit_src;
             if (wiggle_preview)
@@ -574,9 +655,11 @@ int main(void) {
                 gallery_mode, gallery_count,
                 (const char (*)[64])gallery_paths, gallery_sel, gallery_scroll,
                 shoot_mode, shoot_mode_open,
-                shoot_timer_secs,
+                shoot_timer_secs, timer_open,
                 wiggle_frames, wiggle_delay_ms,
-                wiggle_preview);
+                wiggle_preview,
+                timer_active ? (timer_remaining_ms + 999) / 1000 : -1,
+                lomo_preset);
         C3D_FrameEnd(0);
         frame_count++;
     }

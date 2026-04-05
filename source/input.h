@@ -25,7 +25,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   bool *do_gallery_toggle,
                   bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
                   int *shoot_mode, bool *shoot_mode_open,
-                  int *shoot_timer_secs,
-                  int *wiggle_frames, int *wiggle_delay_ms);
+                  int *shoot_timer_secs, bool *timer_open,
+                  int *wiggle_frames, int *wiggle_delay_ms,
+                  int *lomo_preset);
 
 #endif
