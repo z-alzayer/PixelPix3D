@@ -6,7 +6,7 @@
 #include <dirent.h>
 
 // stb_image implementation lives in image_load.c — include header only
-#include "../filter/stb_image.h"
+#include "stb_image.h"
 
 // ---------------------------------------------------------------------------
 // Category table — add new categories here only
