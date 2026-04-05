@@ -14,7 +14,7 @@ RUN make -C /tmp/project_ctr/makerom deps
 
 RUN make -C /tmp/project_ctr/makerom
 
-RUN mv /tmp/project_ctr/makerom/build/makerom /usr/local/bin/makerom \
+RUN mv /tmp/project_ctr/makerom/bin/makerom /usr/local/bin/makerom \
     && rm -rf /tmp/project_ctr
 
 ENV DEVKITPRO=/opt/devkitpro
