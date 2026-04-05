@@ -236,11 +236,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
             C2D_TextParse(&t, staticBuf, "Countdown delay before capture:");
             C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.38f, 0.38f, CLR_DIM);
 
-            static const int timer_vals[4] = { 0, 3, 5, 10 };
-            static const char *timer_lbls[4] = { "Off", "3s", "5s", "10s" };
-            float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
+            static const int  timer_vals[SHOOT_TIMER_VAL_COUNT] = SHOOT_TIMER_VALS_INIT;
+            static const char *timer_lbls[SHOOT_TIMER_VAL_COUNT] = SHOOT_TIMER_LBLS_INIT;
+            float total_btn_w = SHOOT_TIMER_VAL_COUNT * SHOOT_TIMER_BTN_W + (SHOOT_TIMER_VAL_COUNT - 1) * SHOOT_TIMER_BTN_GAP;
             float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < SHOOT_TIMER_VAL_COUNT; i++) {
                 float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
                 bool sel = (shoot_timer_secs == timer_vals[i]);
                 draw_pill(bx, cy + 20.0f, (float)SHOOT_TIMER_BTN_W, (float)SHOOT_TIMER_BTN_H,
@@ -349,36 +349,25 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             } else if (shoot_mode == SHOOT_MODE_LOMO) {
                 // 3×2 grid of preset buttons
-                // btn_w = (BOT_W - 4 * gap) / 3,  gap = 4
-                #define LOMO_COLS  3
-                #define LOMO_ROWS  2
-                #define LOMO_GAP   4
-                #define LOMO_BTN_W ((BOT_W - (LOMO_COLS + 1) * LOMO_GAP) / LOMO_COLS)
-                #define LOMO_BTN_H 30
-                for (int row = 0; row < LOMO_ROWS; row++) {
-                    for (int col = 0; col < LOMO_COLS; col++) {
-                        int idx = row * LOMO_COLS + col;
+                for (int row = 0; row < LOMO_GRID_ROWS; row++) {
+                    for (int col = 0; col < LOMO_GRID_COLS; col++) {
+                        int idx = row * LOMO_GRID_COLS + col;
                         if (idx >= LOMO_PRESET_COUNT) break;
-                        float bx = LOMO_GAP + col * (LOMO_BTN_W + LOMO_GAP);
-                        float by = cy + row * (LOMO_BTN_H + LOMO_GAP);
+                        float bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
+                        float by = cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP);
                         bool sel = (lomo_preset == idx);
-                        draw_pill(bx, by, LOMO_BTN_W, LOMO_BTN_H,
+                        draw_pill(bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H,
                                   sel ? CLR_ACCENT : CLR_BTN);
                         C2D_TextParse(&t, staticBuf, lomo_presets[idx].name);
                         float tw2 = 0, th2 = 0;
                         C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw2, &th2);
                         C2D_DrawText(&t, C2D_WithColor,
-                                     bx + (LOMO_BTN_W - tw2) / 2.0f,
-                                     by + (LOMO_BTN_H - th2) / 2.0f - 1.0f,
+                                     bx + (LOMO_GRID_BTN_W - tw2) / 2.0f,
+                                     by + (LOMO_GRID_BTN_H - th2) / 2.0f - 1.0f,
                                      0.5f, 0.42f, 0.42f,
                                      sel ? CLR_WHITE : CLR_TEXT);
                     }
                 }
-                #undef LOMO_COLS
-                #undef LOMO_ROWS
-                #undef LOMO_GAP
-                #undef LOMO_BTN_W
-                #undef LOMO_BTN_H
             }
         }
 

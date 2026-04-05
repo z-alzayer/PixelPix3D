@@ -174,6 +174,18 @@
 #define SHOOT_WIGGLE_ROW1_Y  (SHOOT_CONTENT_Y + 4)
 #define SHOOT_WIGGLE_ROW2_Y  (SHOOT_CONTENT_Y + 28)
 
+// Lomo preset grid (3 cols × 2 rows inside the Lomo contextual panel)
+#define LOMO_GRID_COLS  3
+#define LOMO_GRID_ROWS  2
+#define LOMO_GRID_GAP   4
+#define LOMO_GRID_BTN_W ((BOT_W - (LOMO_GRID_COLS + 1) * LOMO_GRID_GAP) / LOMO_GRID_COLS)
+#define LOMO_GRID_BTN_H 30
+
+// Timer button values shared between draw and input
+#define SHOOT_TIMER_VAL_COUNT       4
+#define SHOOT_TIMER_VALS_INIT  { 0, 3, 5, 10 }
+#define SHOOT_TIMER_LBLS_INIT  { "Off", "3s", "5s", "10s" }
+
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled
 // ---------------------------------------------------------------------------
