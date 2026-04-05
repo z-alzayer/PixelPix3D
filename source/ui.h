@@ -135,18 +135,15 @@
 // ---------------------------------------------------------------------------
 
 #define SHOOT_MODE_GBCAM      0
-#define SHOOT_MODE_RANDOM     1
-#define SHOOT_MODE_PHOTOBOOTH 2
-#define SHOOT_MODE_TIMER      3
-#define SHOOT_MODE_WIGGLE     4
-#define SHOOT_MODE_LOMO       5
-#define SHOOT_MODE_COUNT      6
+#define SHOOT_MODE_WIGGLE     1
+#define SHOOT_MODE_TIMER      2
+#define SHOOT_MODE_LOMO       3
+#define SHOOT_MODE_COUNT      4
 
-// Mode grid geometry (y=44..124, 2 rows of 3 buttons)
+// Mode grid geometry (y=44..82, 1 row of 4 buttons)
 #define SHOOT_MODE_ROW1_Y   44
-#define SHOOT_MODE_ROW2_Y   86
 #define SHOOT_MODE_ROW_H    38
-#define SHOOT_MODE_BTN_W   101   // (320 - 4*4) / 3
+#define SHOOT_MODE_BTN_W    75   // (320 - 5*4) / 4
 #define SHOOT_MODE_BTN_GAP   4
 
 // Full contextual panel (replaces grid when a mode is "open")

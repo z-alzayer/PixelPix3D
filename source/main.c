@@ -170,8 +170,10 @@ int main(void) {
 
     // Wiggle capture/preview state
     bool wiggle_preview      = false;  // true while showing captured pair before saving
-    int  wiggle_preview_frame = 0;     // 0=left, 1=right (alternates for top-screen anim)
-    u64  wiggle_preview_last_tick = 0; // svcGetSystemTick() at last frame flip
+    int  wiggle_preview_frame = 0;     // current frame index cycling through preview frames
+    u64  wiggle_preview_last_tick = 0; // svcGetSystemTick() at last frame advance
+    #define WIGGLE_PREVIEW_MAX 8
+    static uint16_t wiggle_preview_frames[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
 
     // Gallery state
     #define GALLERY_MAX 256
@@ -416,9 +418,34 @@ int main(void) {
             }
         } else if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
             if (shoot_mode == SHOOT_MODE_WIGGLE) {
-                // First press: capture both cam buffers into wiggle preview
+                // First press: capture both cam buffers and build blended preview frames
                 memcpy(wiggle_left,  buf,                        CAMERA_SCREEN_SIZE);
                 memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE,   CAMERA_SCREEN_SIZE);
+                int nf = wiggle_frames < 2 ? 2 : (wiggle_frames > WIGGLE_PREVIEW_MAX ? WIGGLE_PREVIEW_MAX : wiggle_frames);
+                int half = nf / 2;
+                if (half < 1) half = 1;
+                const uint16_t *L = (const uint16_t *)wiggle_left;
+                const uint16_t *R = (const uint16_t *)wiggle_right;
+                int npix = CAMERA_WIDTH * CAMERA_HEIGHT;
+                for (int f = 0; f < nf; f++) {
+                    int alpha = (f <= half) ? (f * 255 / half) : ((nf - f) * 255 / half);
+                    uint16_t *dst = wiggle_preview_frames[f];
+                    if (alpha == 0) {
+                        memcpy(dst, L, npix * sizeof(uint16_t));
+                    } else if (alpha >= 255) {
+                        memcpy(dst, R, npix * sizeof(uint16_t));
+                    } else {
+                        for (int i = 0; i < npix; i++) {
+                            uint16_t pl = L[i], pr = R[i];
+                            int lr = (pl >> 11) & 0x1f, lg = (pl >> 5) & 0x3f, lb = pl & 0x1f;
+                            int rr = (pr >> 11) & 0x1f, rg = (pr >> 5) & 0x3f, rb = pr & 0x1f;
+                            int br = (lr * (255 - alpha) + rr * alpha) / 255;
+                            int bg = (lg * (255 - alpha) + rg * alpha) / 255;
+                            int bb = (lb * (255 - alpha) + rb * alpha) / 255;
+                            dst[i] = (uint16_t)((br << 11) | (bg << 5) | bb);
+                        }
+                    }
+                }
                 wiggle_preview           = true;
                 wiggle_preview_frame     = 0;
                 wiggle_preview_last_tick = svcGetSystemTick();
@@ -492,12 +519,12 @@ int main(void) {
             break;
         }
 
-        // Advance wiggle preview animation — clock-based, not loop-count-based
+        // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wiggle_preview) {
             u64 now = svcGetSystemTick();
             u64 period = (u64)wiggle_delay_ms * SYSCLOCK_ARM11 / 1000;
             if (now - wiggle_preview_last_tick >= period) {
-                wiggle_preview_frame     = 1 - wiggle_preview_frame;
+                wiggle_preview_frame     = (wiggle_preview_frame + 1) % wiggle_frames;
                 wiggle_preview_last_tick = now;
             }
         }
@@ -524,7 +551,7 @@ int main(void) {
         } else {
             void *blit_src;
             if (wiggle_preview)
-                blit_src = (wiggle_preview_frame == 0) ? wiggle_left : wiggle_right;
+                blit_src = wiggle_preview_frames[wiggle_preview_frame];
             else if (gallery_mode && gallery_count > 0)
                 blit_src = gallery_thumbs[gallery_anim_frame];
             else

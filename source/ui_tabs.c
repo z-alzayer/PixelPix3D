@@ -172,15 +172,12 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open) {
             // ---- Mode grid ----
             static const char *mode_labels[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Random", "Photobooth", "Timer", "Wiggle", "Lomo"
+                "GB Cam", "Wiggle", "Timer", "Lomo"
             };
-            static const int mode_row_ys[2] = { SHOOT_MODE_ROW1_Y, SHOOT_MODE_ROW2_Y };
 
             for (int i = 0; i < SHOOT_MODE_COUNT; i++) {
-                int row  = i / 3;
-                int col  = i % 3;
-                float bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                float by = (float)mode_row_ys[row];
+                float bx = SHOOT_MODE_BTN_GAP + i * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                float by = (float)SHOOT_MODE_ROW1_Y;
                 bool sel = (shoot_mode == i);
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
@@ -209,7 +206,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Random", "Photobooth", "Timer", "Wiggle", "Lomo"
+                "GB Cam", "Wiggle", "Timer", "Lomo"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -273,24 +270,14 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 #undef VHANDLE_W
                 #undef VHANDLE_H
 
-            } else if (shoot_mode == SHOOT_MODE_RANDOM) {
-                C2D_TextParse(&t, staticBuf, "Applies a random palette each save.");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 8.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
-                C2D_TextParse(&t, staticBuf, "Current palette used as fallback.");
-                C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 26.0f, 0.5f, 0.40f, 0.40f, CLR_DIM);
-
-            } else if (shoot_mode == SHOOT_MODE_PHOTOBOOTH ||
-                       shoot_mode == SHOOT_MODE_TIMER) {
+            } else if (shoot_mode == SHOOT_MODE_TIMER) {
                 // Timer selector: 3s / 5s / 10s / 15s
                 static const int timer_vals[4] = { 3, 5, 10, 15 };
                 static const char *timer_lbls[4] = { "3s", "5s", "10s", "15s" };
                 float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
                 float btn_start_x = (BOT_W - total_btn_w) * 0.5f;
 
-                C2D_TextParse(&t, staticBuf,
-                    shoot_mode == SHOOT_MODE_PHOTOBOOTH
-                        ? "Timer delay between 4 shots:"
-                        : "Countdown before capture:");
+                C2D_TextParse(&t, staticBuf, "Countdown before capture:");
                 C2D_DrawText(&t, C2D_WithColor, 8.0f, cy, 0.5f, 0.40f, 0.40f, CLR_DIM);
 
                 for (int i = 0; i < 4; i++) {
@@ -305,11 +292,6 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                  cy + 20.0f + ((float)SHOOT_TIMER_BTN_H - th) * 0.5f - 1.0f,
                                  0.5f, 0.50f, 0.50f,
                                  sel ? CLR_WHITE : CLR_TEXT);
-                }
-
-                if (shoot_mode == SHOOT_MODE_PHOTOBOOTH) {
-                    C2D_TextParse(&t, staticBuf, "4 shots with countdown each");
-                    C2D_DrawText(&t, C2D_WithColor, 8.0f, cy + 60.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
                 }
 
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {

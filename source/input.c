@@ -111,19 +111,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         if (!gallery_mode) {
             if (!*shoot_mode_open) {
                 // ---- Mode grid taps: open that mode's panel ----
-                if (tapped) {
-                    static const int row_ys[2] = { SHOOT_MODE_ROW1_Y, SHOOT_MODE_ROW2_Y };
-                    for (int row = 0; row < 2; row++) {
-                        if (ty >= row_ys[row] && ty < row_ys[row] + SHOOT_MODE_ROW_H) {
-                            for (int col = 0; col < 3; col++) {
-                                int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                                if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
-                                    int new_mode = row * 3 + col;
-                                    *shoot_mode = new_mode;
-                                    *shoot_mode_open = true;
-                                    return true;
-                                }
-                            }
+                if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
+                    for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
+                        int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                            *shoot_mode = col;
+                            *shoot_mode_open = true;
+                            return true;
                         }
                     }
                 }
@@ -165,8 +159,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #undef VCOL_W
                     #undef VHANDLE_W
                     #undef VHANDLE_H
-                } else if (*shoot_mode == SHOOT_MODE_PHOTOBOOTH ||
-                           *shoot_mode == SHOOT_MODE_TIMER) {
+                } else if (*shoot_mode == SHOOT_MODE_TIMER) {
                     // 4 timer buttons: 3s / 5s / 10s / 15s
                     static const int timer_vals[4] = { 3, 5, 10, 15 };
                     float total_btn_w = 4 * SHOOT_TIMER_BTN_W + 3 * SHOOT_TIMER_BTN_GAP;
