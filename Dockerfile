@@ -8,11 +8,11 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
 RUN wget -q -O /opt/devkitpro/devkitARM/arm-none-eabi/include/stb_image.h https://raw.githubusercontent.com/nothings/stb/master/stb_image.h \
     && wget -q -O /opt/devkitpro/devkitARM/arm-none-eabi/include/stb_image_write.h https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h
 
-RUN wget -q https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip \
-    && unzip makerom-v0.18.4-ubuntu_x86_64.zip \
+RUN wget -q https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-ubuntu_x86_64.zip \
+    && unzip makerom-v0.19.0-ubuntu_x86_64.zip \
     && mv makerom /usr/local/bin/makerom \
     && chmod +x /usr/local/bin/makerom \
-    && rm makerom-v0.18.4-ubuntu_x86_64.zip
+    && rm makerom-v0.19.0-ubuntu_x86_64.zip
 
 ENV DEVKITPRO=/opt/devkitpro
 ENV DEVKITARM=/opt/devkitpro/devkitARM

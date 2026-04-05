@@ -20,3 +20,6 @@ SystemControlInfo:
     SaveDataSize    : 0KB
     RemasterVersion : 0000
     StackSize       : 0x00004000
+
+RomFs:
+    RootPath        : "$(DIR_ROMFS)"

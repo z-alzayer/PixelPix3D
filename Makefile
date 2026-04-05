@@ -180,7 +180,7 @@ endif
 #---------------------------------------------------------------------------------
 cia: all
 	@echo building CIA ...
-	$(or $(shell which makerom 2>/dev/null),$(CURDIR)/makerom) -f cia -o $(TARGET).cia -rsf $(CURDIR)/$(TARGET).rsf -target t -elf $(TARGET).elf -icon $(TARGET).smdh -desc app:4
+	$(or $(shell which makerom 2>/dev/null),$(CURDIR)/makerom) -f cia -o $(TARGET).cia -rsf $(CURDIR)/$(TARGET).rsf -DDIR_ROMFS=$(CURDIR)/$(ROMFS) -target t -elf $(TARGET).elf -icon $(TARGET).smdh -desc app:4
 
 #---------------------------------------------------------------------------------
 clean:
