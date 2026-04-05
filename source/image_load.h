@@ -45,6 +45,18 @@ int list_saved_photos(const char *dir, char paths[][64], int max);
 // Return the next free GW_XXXX.png path (O(1) after file_counter_init).
 int next_wiggle_path(const char *dir, char *out_path, int out_len);
 
+// Save an edited wiggle: composites stickers/frame onto each RGB565 thumb frame,
+// then encodes as APNG.  composite_fn is called once per frame with the RGB888
+// scratch buffer already converted from the RGB565 source.
+// composite_fn(rgb888, w, h, userdata) — apply stickers/frames in place.
+// Returns 1 on success, 0 on failure.
+typedef void (*composite_fn_t)(uint8_t *rgb888, int w, int h, void *userdata);
+int save_edited_apng(const char *path,
+                     const uint16_t * const *frames_rgb565,
+                     int n_frames, int delay_ms,
+                     int w, int h,
+                     composite_fn_t composite_fn, void *userdata);
+
 // Save a true-colour wiggle APNG from two raw RGB565 camera buffers.
 // No filter is applied — full 24-bit RGB output.
 // n_frames: number of animation frames (2..8).

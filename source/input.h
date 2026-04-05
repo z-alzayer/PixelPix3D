@@ -6,6 +6,7 @@
 #include "filter.h"
 #include "ui.h"
 #include "settings.h"
+#include "sticker.h"
 
 // Hit-test: returns true if (px, py) is inside rect [rx, ry, rw, rh]
 bool hit(int px, int py, int rx, int ry, int rw, int rh);
@@ -27,6 +28,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   int *shoot_mode, bool *shoot_mode_open,
                   int *shoot_timer_secs, bool *timer_open,
                   int *wiggle_frames, int *wiggle_delay_ms,
-                  int *lomo_preset);
+                  int *lomo_preset,
+                  bool gallery_edit_mode,
+                  int *edit_tab, int *sticker_cat, int *sticker_sel, int *sticker_scroll, int *gallery_frame,
+                  PlacedSticker *placed_stickers,
+                  bool *do_edit_cancel, bool *do_edit_savenew, bool *do_edit_overwrite,
+                  bool *do_edit_enter);
 
 #endif

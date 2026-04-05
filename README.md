@@ -148,6 +148,18 @@ You can also open `settings.ini` on a computer and edit values manually — it's
 
 ---
 
+## Credits
+
+### Pixel art food stickers
+**Free Pixel Art Foods** by [alexkovacsart](https://alexkovacsart.itch.io/free-pixel-art-foods) — seriously great pixel art, go check it out!
+Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — attribution required.
+
+### Emoji stickers
+**Emoji Comic Pack** by [Notokapixel / narehop](https://narehop.itch.io/emoji-comic-pack) — the comic-style emojis are awesome, worth a look!
+Licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (Public Domain).
+
+---
+
 ## Building from source
 
 ### Requirements

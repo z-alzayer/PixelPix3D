@@ -206,7 +206,13 @@ void draw_ui(C3D_RenderTarget *bot,
              int wiggle_frames, int wiggle_delay_ms,
              bool wiggle_preview,
              int timer_countdown,
-             int lomo_preset) {
+             int lomo_preset,
+             bool gallery_edit_mode,
+             int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+             int gallery_frame,
+             float sticker_cursor_x, float sticker_cursor_y,
+             float sticker_pending_scale, float sticker_pending_angle,
+             bool sticker_placing) {
     (void)settings_row;
 
     C2D_TargetClear(bot, CLR_BG);
@@ -226,11 +232,11 @@ void draw_ui(C3D_RenderTarget *bot,
 
     C2D_TextBufClear(staticBuf);
 
-    // Bottom nav bar (always visible)
-    draw_bottom_nav(staticBuf, active_tab);
-
-    // Divider above nav
-    C2D_DrawRectSolid(0, NAV_Y, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    // Bottom nav bar — hidden in gallery/edit contexts (they own the full screen)
+    if (!gallery_edit_mode && !gallery_mode) {
+        draw_bottom_nav(staticBuf, active_tab);
+        C2D_DrawRectSolid(0, NAV_Y, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    }
 
     if (comparing) {
         C2D_Text t;
@@ -245,7 +251,17 @@ void draw_ui(C3D_RenderTarget *bot,
     }
 
     // Content area dispatch
-    if (active_tab == TAB_SHOOT) {
+    if (gallery_edit_mode) {
+        // Edit mode owns the full bottom screen
+        draw_gallery_edit_tab(staticBuf, edit_tab, sticker_cat, sticker_sel, sticker_scroll, gallery_frame,
+                              sticker_cursor_x, sticker_cursor_y,
+                              sticker_pending_scale, sticker_pending_angle,
+                              sticker_placing);
+    } else if (gallery_mode) {
+        // Gallery mode owns the full bottom screen (no shoot strip)
+        draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
+                         gallery_sel, gallery_scroll);
+    } else if (active_tab == TAB_SHOOT) {
         draw_shoot_tab(staticBuf, selfie, save_flash, user_palettes,
                        p.palette, gallery_mode, &p, ranges,
                        shoot_mode, shoot_mode_open,
@@ -253,9 +269,6 @@ void draw_ui(C3D_RenderTarget *bot,
                        wiggle_frames, wiggle_delay_ms,
                        wiggle_preview,
                        lomo_preset);
-        if (gallery_mode)
-            draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
-                             gallery_sel, gallery_scroll);
     } else if (active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf, &p, ranges);
     } else if (active_tab == TAB_FX) {

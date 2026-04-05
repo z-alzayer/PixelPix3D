@@ -33,6 +33,12 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
                       int gallery_sel, int gallery_scroll);
+void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
+                           int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+                           int gallery_frame,
+                           float sticker_cursor_x, float sticker_cursor_y,
+                           float sticker_pending_scale, float sticker_pending_angle,
+                           bool sticker_placing);
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     const FilterParams *p, const FilterRanges *ranges);
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,

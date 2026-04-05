@@ -298,6 +298,64 @@
 #define PALTAB_SAVE_DEF_X    ((BOT_W / 2) + 2)
 
 // ---------------------------------------------------------------------------
+// Gallery edit mode geometry (bottom screen editor — full 240px, no nav bar)
+// ---------------------------------------------------------------------------
+
+// Edit tab bar (Stickers / Frames)
+#define GEDIT_TAB_Y       0
+#define GEDIT_TAB_H      28
+#define GEDIT_TAB_W     160   // half of BOT_W
+
+// Sticker/frame picker area  y=29..194 (h=166)
+// cat strip 20px at y=29 + 3 rows*41px + 2px gap + 20px arrows = 165px fits
+#define GEDIT_PICKER_Y   29
+#define GEDIT_PICKER_H  166
+#define GEDIT_PICKER_BOT 195
+
+// Sticker grid: 3 columns, 36px cells, 5px gaps
+#define GEDIT_STICKER_COLS    3
+#define GEDIT_STICKER_CELL    36
+#define GEDIT_STICKER_GAP      5
+#define GEDIT_STICKER_ROW_H  (GEDIT_STICKER_CELL + GEDIT_STICKER_GAP)
+#define GEDIT_STICKER_ROWS    3
+
+// Action bar  y=196..239 (h=43) — tall enough for readable button text
+#define GEDIT_ACT_Y     196
+#define GEDIT_ACT_H      40
+// Three equal-width buttons across 320px with 2px gaps
+#define GEDIT_BTN_CANCEL_X    2
+#define GEDIT_BTN_CANCEL_W  103
+#define GEDIT_BTN_SAVENEW_X 107
+#define GEDIT_BTN_SAVENEW_W 103
+#define GEDIT_BTN_OVERW_X   212
+#define GEDIT_BTN_OVERW_W   106
+
+// Edit button shown in gallery strip when a photo is selected
+#define GEDIT_EDIT_BTN_X     4
+#define GEDIT_EDIT_BTN_Y     4
+#define GEDIT_EDIT_BTN_W    56
+#define GEDIT_EDIT_BTN_H    34
+
+// Frame picker row sizing — auto-fits FRAME_COUNT items into picker area
+#define FRAME_ROW_H       (GEDIT_PICKER_H / FRAME_COUNT)
+#define FRAME_PILL_H      (FRAME_ROW_H - 2)
+
+// Sticker credit line
+#define STICKER_CREDIT  "Stickers: alexkovacsart.itch.io"
+
+// Frame count and romfs paths (must match frame_names[] in ui_tabs.c)
+#define FRAME_COUNT  7
+#define FRAME_PATHS_INIT { \
+    "romfs:/frames/polaroid.png",  \
+    "romfs:/frames/film.png",      \
+    "romfs:/frames/gb_border.png", \
+    "romfs:/frames/stripes.png",   \
+    "romfs:/frames/vignette.png",  \
+    "romfs:/frames/film_color.png",\
+    "romfs:/frames/halftone.png"   \
+}
+
+// ---------------------------------------------------------------------------
 // Gallery tab geometry (toggled from SHOOT tab)
 // ---------------------------------------------------------------------------
 
@@ -366,6 +424,12 @@ void draw_ui(C3D_RenderTarget *bot,
              int wiggle_frames, int wiggle_delay_ms,
              bool wiggle_preview,
              int timer_countdown,
-             int lomo_preset);
+             int lomo_preset,
+             bool gallery_edit_mode,
+             int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+             int gallery_frame,
+             float sticker_cursor_x, float sticker_cursor_y,
+             float sticker_pending_scale, float sticker_pending_angle,
+             bool sticker_placing);
 
 #endif
