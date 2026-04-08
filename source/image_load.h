@@ -57,17 +57,6 @@ int save_edited_apng(const char *path,
                      int w, int h,
                      composite_fn_t composite_fn, void *userdata);
 
-// Save a true-colour wiggle APNG from two raw RGB565 camera buffers.
-// No filter is applied — full 24-bit RGB output.
-// n_frames: number of animation frames (2..8).
-// delay_ms: milliseconds per frame.
-// Returns 1 on success, 0 on failure.
-int save_wiggle_apng(const char *path,
-                     const uint8_t *left_rgb565,  int w, int h,
-                     const uint8_t *right_rgb565,
-                     int n_frames,
-                     int delay_ms);
-
 #define SAVE_DIR "sdmc:/DCIM/GameboyCamera"
 
 #endif
