@@ -29,6 +29,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
+                    int wiggle_offset_dx, int wiggle_offset_dy,
                     int lomo_preset);
 void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],

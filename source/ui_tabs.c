@@ -69,45 +69,6 @@ void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
 // ---------------------------------------------------------------------------
 // track_x_fixed: if > 0, use as fixed track start (aligns multiple sliders); else derive from label width.
 // track_w_override: if > 0, use as track width; else fill to right edge (BOT_W - 8).
-static void draw_panel_hslider_sz(C2D_TextBuf buf, const char *label,
-                                   float val, float mn, float mx,
-                                   float row_y, int hw, int hh,
-                                   float track_x_fixed, float track_w_override) {
-    C2D_Text t;
-    float tw = 0, th = 0;
-
-    // Label
-    C2D_TextParse(&t, buf, label);
-    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, row_y + (TRACK_H * 0.5f) - th * 0.5f + 1.0f,
-                 0.5f, 0.40f, 0.40f, CLR_DIM);
-
-    // Track
-    float track_x = track_x_fixed > 0.0f ? track_x_fixed : (4.0f + tw + 8.0f);
-    float track_w = track_w_override > 0.0f ? track_w_override : ((float)BOT_W - 38.0f - track_x);
-    float track_cy = row_y + TRACK_H * 0.5f + 1.0f;
-    C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f, track_w, TRACK_H, CLR_TRACK);
-    float t_val = (val - mn) / (mx - mn);
-    if (t_val < 0.0f) t_val = 0.0f;
-    if (t_val > 1.0f) t_val = 1.0f;
-    float hx = track_x + t_val * track_w;
-    if (hx - track_x > 0)
-        C2D_DrawRectSolid(track_x, track_cy - TRACK_H * 0.5f, 0.5f,
-                          hx - track_x, TRACK_H, CLR_FILL);
-    draw_rounded_rect(hx - hw * 0.5f, track_cy - hh * 0.5f,
-                      hw, hh, 3.0f, CLR_HANDLE);
-
-    // Value (integer display) — placed just after the track end
-    char vbuf[8];
-    snprintf(vbuf, sizeof(vbuf), "%d", (int)val);
-    C2D_TextParse(&t, buf, vbuf);
-    C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor,
-                 track_x + track_w + 4.0f,
-                 row_y + (TRACK_H * 0.5f) - th * 0.5f + 1.0f,
-                 0.5f, 0.36f, 0.36f, CLR_DIM);
-}
-
 
 void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool selfie, int save_flash,
@@ -119,6 +80,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
+                    int wiggle_offset_dx, int wiggle_offset_dy,
                     int lomo_preset) {
     C2D_Text t;
 
@@ -350,13 +312,200 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 #undef VHANDLE_H
 
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
-                // Wiggle: Frames slider + Delay slider — use smaller handles to avoid label overlap
-                draw_panel_hslider_sz(staticBuf, "Frames",
-                                      (float)wiggle_frames, 2.0f, 8.0f,
-                                      cy + 6.0f, RHANDLE_W, RHANDLE_H, 72.0f, 0.0f);
-                draw_panel_hslider_sz(staticBuf, "Delay ms",
-                                      (float)wiggle_delay_ms, 10.0f, 1000.0f,
-                                      cy + 6.0f + RHANDLE_H + 10.0f, RHANDLE_W, RHANDLE_H, 72.0f, 0.0f);
+                // Wiggle panel layout:
+                //   Left zone  (x=0..159):  X horizontal slider (top) + Y vertical slider (bottom-left)
+                //   Mid zone   (x=160..249): (Y vertical slider centred here)
+                //   Right zone (x=160..319): Delay vertical slider
+                // All vertical sliders end at SHOOT_SAVE_Y-20 to avoid overlap with save button.
+                // Left zone (x=0..158): two stepper rows for X and Y offsets
+                // Only shown after capture (wiggle_preview == true)
+                // Layout per row: label | [-] [value] [+] [R]
+                #define WIG_BTN_W   28
+                #define WIG_BTN_H   22
+                #define WIG_VAL_W   36
+                #define WIG_RST_W   22
+                // x positions: label at 2, then [-] at 18, value, [+], [R]
+                #define WIG_MINUS_X  18.0f
+                #define WIG_VAL_X    (WIG_MINUS_X + WIG_BTN_W + 2)
+                #define WIG_PLUS_X   (WIG_VAL_X + WIG_VAL_W + 2)
+                #define WIG_RST_X    (WIG_PLUS_X + WIG_BTN_W + 2)
+
+                if (!wiggle_preview) {
+                    // Pre-capture: just show a hint
+                    C2D_Text th2; float thw=0,thh=0;
+                    C2D_TextParse(&th2, staticBuf, "A = Capture");
+                    C2D_TextGetDimensions(&th2, 0.38f, 0.38f, &thw, &thh);
+                    C2D_DrawText(&th2, C2D_WithColor,
+                                 (158.0f - thw) * 0.5f, cy + (((float)SHOOT_SAVE_Y - cy) - thh) * 0.5f,
+                                 0.5f, 0.38f, 0.38f, CLR_DIM);
+                } else {
+
+                // -- Row 1: X offset --
+                {
+                    float ry = cy + 4.0f;
+                    // label
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"X");
+                      C2D_TextGetDimensions(&t,0.36f,0.36f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,4.0f+(16.0f-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.36f,0.36f,CLR_DIM); }
+                    draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"-");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_MINUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    draw_rounded_rect(WIG_VAL_X, ry, WIG_VAL_W, WIG_BTN_H, 3.0f, CLR_TRACK);
+                    { char buf[8]; snprintf(buf,sizeof(buf),"%d",wiggle_offset_dx);
+                      C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,buf);
+                      C2D_TextGetDimensions(&t,0.33f,0.33f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_VAL_X+(WIG_VAL_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.33f,0.33f,CLR_TEXT); }
+                    draw_pill(WIG_PLUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"+");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    draw_pill(WIG_RST_X, ry, WIG_RST_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"R");
+                      C2D_TextGetDimensions(&t,0.30f,0.30f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_RST_X+(WIG_RST_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.30f,0.30f,CLR_TEXT); }
+                }
+
+                // -- Row 2: Y offset --
+                {
+                    float ry = cy + 32.0f;
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Y");
+                      C2D_TextGetDimensions(&t,0.36f,0.36f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,4.0f+(16.0f-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.36f,0.36f,CLR_DIM); }
+                    draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"-");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_MINUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    draw_rounded_rect(WIG_VAL_X, ry, WIG_VAL_W, WIG_BTN_H, 3.0f, CLR_TRACK);
+                    { char buf[8]; snprintf(buf,sizeof(buf),"%d",wiggle_offset_dy);
+                      C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,buf);
+                      C2D_TextGetDimensions(&t,0.33f,0.33f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_VAL_X+(WIG_VAL_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.33f,0.33f,CLR_TEXT); }
+                    draw_pill(WIG_PLUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"+");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    draw_pill(WIG_RST_X, ry, WIG_RST_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"R");
+                      C2D_TextGetDimensions(&t,0.30f,0.30f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_RST_X+(WIG_RST_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.30f,0.30f,CLR_TEXT); }
+                }
+                } // end wiggle_preview else
+
+                #undef WIG_BTN_W
+                #undef WIG_BTN_H
+                #undef WIG_VAL_W
+                #undef WIG_RST_W
+                #undef WIG_MINUS_X
+                #undef WIG_VAL_X
+                #undef WIG_PLUS_X
+                #undef WIG_RST_X
+
+                // Divider
+                C2D_DrawRectSolid(158.0f, cy, 0.5f, 1.0f, (float)SHOOT_SAVE_Y - cy, CLR_DIVIDER);
+
+                // -- Delay: presets + stepper in right zone (x=160..319) --
+                {
+                    #define DZONE_X    160
+                    #define DZONE_W    160
+                    #define DZONE_CX   (DZONE_X + DZONE_W / 2)
+                    // "Delay" label
+                    {
+                        C2D_Text td; float lw = 0, lh = 0;
+                        C2D_TextParse(&td, staticBuf, "Delay");
+                        C2D_TextGetDimensions(&td, 0.36f, 0.36f, &lw, &lh);
+                        C2D_DrawText(&td, C2D_WithColor,
+                                     DZONE_CX - lw * 0.5f, cy + 4.0f,
+                                     0.5f, 0.36f, 0.36f, CLR_DIM);
+                    }
+                    // Preset pills: 50 / 100 / 200 / 500
+                    {
+                        static const int presets[4] = {50, 100, 200, 500};
+                        static const char *preset_labels[4] = {"50", "100", "200", "500"};
+                        #define DPILL_W   32
+                        #define DPILL_H   16
+                        #define DPILL_GAP  3
+                        float total_w = 4 * DPILL_W + 3 * DPILL_GAP;
+                        float px0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
+                        float py0 = cy + 20.0f;
+                        for (int i = 0; i < 4; i++) {
+                            float bx = px0 + i * (DPILL_W + DPILL_GAP);
+                            bool sel = (wiggle_delay_ms == presets[i]);
+                            draw_pill(bx, py0, DPILL_W, DPILL_H,
+                                      sel ? CLR_ACCENT : CLR_BTN);
+                            C2D_Text tp; float tw = 0, th = 0;
+                            C2D_TextParse(&tp, staticBuf, preset_labels[i]);
+                            C2D_TextGetDimensions(&tp, 0.33f, 0.33f, &tw, &th);
+                            C2D_DrawText(&tp, C2D_WithColor,
+                                         bx + (DPILL_W - tw) * 0.5f,
+                                         py0 + (DPILL_H - th) * 0.5f,
+                                         0.5f, 0.33f, 0.33f,
+                                         sel ? CLR_WHITE : CLR_TEXT);
+                        }
+                        #undef DPILL_W
+                        #undef DPILL_H
+                        #undef DPILL_GAP
+                    }
+                    // Stepper row: [ - ]  [ NNNms ]  [ + ]
+                    {
+                        #define DSTEP_BTN_W  22
+                        #define DSTEP_BTN_H  18
+                        #define DSTEP_VAL_W  54
+                        float sy = cy + 44.0f;
+                        float total_w = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
+                        float sx0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
+                        // "-" button
+                        draw_pill(sx0, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
+                        {
+                            C2D_Text tm; float tw = 0, th = 0;
+                            C2D_TextParse(&tm, staticBuf, "-");
+                            C2D_TextGetDimensions(&tm, 0.44f, 0.44f, &tw, &th);
+                            C2D_DrawText(&tm, C2D_WithColor,
+                                         sx0 + (DSTEP_BTN_W - tw) * 0.5f,
+                                         sy + (DSTEP_BTN_H - th) * 0.5f,
+                                         0.5f, 0.44f, 0.44f, CLR_TEXT);
+                        }
+                        // Value label
+                        float vx = sx0 + DSTEP_BTN_W + 2;
+                        draw_rounded_rect(vx, sy, DSTEP_VAL_W, DSTEP_BTN_H, 3.0f, CLR_TRACK);
+                        {
+                            char vbuf[10]; snprintf(vbuf, sizeof(vbuf), "%dms", wiggle_delay_ms);
+                            C2D_Text tv; float tw = 0, th = 0;
+                            C2D_TextParse(&tv, staticBuf, vbuf);
+                            C2D_TextGetDimensions(&tv, 0.33f, 0.33f, &tw, &th);
+                            C2D_DrawText(&tv, C2D_WithColor,
+                                         vx + (DSTEP_VAL_W - tw) * 0.5f,
+                                         sy + (DSTEP_BTN_H - th) * 0.5f,
+                                         0.5f, 0.33f, 0.33f, CLR_TEXT);
+                        }
+                        // "+" button
+                        float px_btn = vx + DSTEP_VAL_W + 2;
+                        draw_pill(px_btn, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
+                        {
+                            C2D_Text tp; float tw = 0, th = 0;
+                            C2D_TextParse(&tp, staticBuf, "+");
+                            C2D_TextGetDimensions(&tp, 0.44f, 0.44f, &tw, &th);
+                            C2D_DrawText(&tp, C2D_WithColor,
+                                         px_btn + (DSTEP_BTN_W - tw) * 0.5f,
+                                         sy + (DSTEP_BTN_H - th) * 0.5f,
+                                         0.5f, 0.44f, 0.44f, CLR_TEXT);
+                        }
+                        #undef DSTEP_BTN_W
+                        #undef DSTEP_BTN_H
+                        #undef DSTEP_VAL_W
+                    }
+                    #undef DZONE_X
+                    #undef DZONE_W
+                    #undef DZONE_CX
+                }
+
+
+                #undef WIG_VTRACK_W
+                #undef WIG_VHANDLE_W
+                #undef WIG_VHANDLE_H
+                #undef WIG_VTOP
+                #undef WIG_VBOT
+                #undef WIG_VH
 
             } else if (shoot_mode == SHOOT_MODE_LOMO) {
                 // 3×2 grid of preset buttons
@@ -732,7 +881,7 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                      0.5f, 0.34f, 0.34f, CLR_TEXT);
 
         // Page indicator below buttons
-        char pg[16];
+        char pg[24];
         snprintf(pg, sizeof(pg), "p.%d/%d",
                  sticker_scroll + 1, _total_rows > 0 ? _total_rows : 1);
         C2D_TextParse(&t, staticBuf, pg);

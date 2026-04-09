@@ -63,6 +63,10 @@ typedef struct {
     bool          wiggle_mode;     // true = save APNG from both cam buffers
     int           wiggle_n_frames;
     int           wiggle_delay_ms;
+    WiggleAlign   wiggle_align_result;
+    bool          wiggle_has_align;
+    int           wiggle_offset_dx;
+    int           wiggle_offset_dy;
     volatile bool busy;            // main sets true on trigger; worker clears on finish
     volatile bool quit;            // main sets true at shutdown
     LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start
@@ -92,7 +96,10 @@ static void save_thread_func(void *arg) {
                              st->snapshot_buf,  CAMERA_WIDTH, CAMERA_HEIGHT,
                              st->snapshot_buf2,
                              st->wiggle_n_frames,
-                             st->wiggle_delay_ms);
+                             st->wiggle_delay_ms,
+                             NULL,
+                             st->wiggle_offset_dx,
+                             st->wiggle_offset_dy);
         } else {
             int scale = st->save_scale;
             rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
@@ -206,6 +213,15 @@ int main(void) {
     int  wiggle_preview_frame = 0;     // current frame index cycling through preview frames
     u64  wiggle_preview_last_tick = 0; // svcGetSystemTick() at last frame advance
     static uint16_t wiggle_preview_frames[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
+    static uint16_t wiggle_compose_buf[CAMERA_WIDTH * CAMERA_HEIGHT]; // full-size blit target
+    static WiggleAlign wiggle_align_res; // auto-detected alignment
+    bool wiggle_has_align = false;       // true once wiggle_align has run for current capture
+    int  wiggle_offset_dx = 0;         // user H adjustment (pixels, added on top of auto)
+    int  wiggle_offset_dy = 0;         // user V adjustment (pixels)
+    bool wiggle_rebuild   = false;     // set when offsets change mid-preview
+    int  wiggle_crop_w    = CAMERA_WIDTH;   // actual frame width after overlap crop
+    int  wiggle_crop_h    = CAMERA_HEIGHT;  // actual frame height after overlap crop
+    int  wiggle_dpad_repeat = 0;       // frame counter for d-pad repeat delay
 
     // Gallery state
     #define GALLERY_MAX 256
@@ -403,10 +419,13 @@ int main(void) {
                 }
             } else if (active_tab == TAB_SHOOT) {
                 // On shoot screen: d-pad nudges brightness (up/down) and palette (left/right)
+                // Suppress when wiggle preview is active — d-pad is used for offset adjustment there
+                if (!wiggle_preview) {
                 if (kDown & KEY_DUP)    { params.brightness += 0.1f; if (params.brightness > ranges.bright_max) params.brightness = ranges.bright_max; }
                 if (kDown & KEY_DDOWN)  { params.brightness -= 0.1f; if (params.brightness < ranges.bright_min) params.brightness = ranges.bright_min; }
                 if (kDown & KEY_DLEFT)  { params.palette = (params.palette <= PALETTE_NONE) ? PALETTE_COUNT - 1 : params.palette - 1; }
                 if (kDown & KEY_DRIGHT) { params.palette = (params.palette >= PALETTE_COUNT - 1) ? PALETTE_NONE : params.palette + 1; }
+                }
             } else if (active_tab == TAB_STYLE) {
                 // Pixel size
                 if (kDown & KEY_DLEFT)  { if (params.pixel_size > 1) params.pixel_size--; }
@@ -443,6 +462,8 @@ int main(void) {
                          &shoot_mode, &shoot_mode_open,
                          &shoot_timer_secs, &timer_open,
                          &wiggle_frames, &wiggle_delay_ms,
+                         &wiggle_offset_dx, &wiggle_offset_dy, &wiggle_rebuild,
+                         &wiggle_preview,
                          &lomo_preset,
                          gallery_edit_mode,
                          &edit_tab, &sticker_cat, &sticker_sel, &sticker_scroll, &gallery_frame,
@@ -645,8 +666,72 @@ int main(void) {
             }
         }
 
-        // Wiggle preview: B cancels, A/Save confirms and writes APNG
+        // Wiggle preview: B cancels, Save button confirms and writes APNG
+        // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
         if (wiggle_preview) {
+            // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
+            u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
+            if (dpad) {
+                bool fire = (kDown & dpad) || (wiggle_dpad_repeat > 20 && wiggle_dpad_repeat % 4 == 0);
+                wiggle_dpad_repeat++;
+                if (fire) {
+                    if ((dpad & KEY_DLEFT)  && wiggle_offset_dx > -20) { wiggle_offset_dx--; wiggle_rebuild = true; }
+                    if ((dpad & KEY_DRIGHT) && wiggle_offset_dx <  20) { wiggle_offset_dx++; wiggle_rebuild = true; }
+                    if ((dpad & KEY_DUP)    && wiggle_offset_dy <  10) { wiggle_offset_dy++; wiggle_rebuild = true; }
+                    if ((dpad & KEY_DDOWN)  && wiggle_offset_dy > -10) { wiggle_offset_dy--; wiggle_rebuild = true; }
+                }
+            } else {
+                wiggle_dpad_repeat = 0;
+            }
+            // Touch buttons — re-read touch here so they work even when captureInterrupted
+            // Use tapped (kDown) not held, to avoid rapid-fire on resistive screen
+            {
+                touchPosition wtouch;
+                hidTouchRead(&wtouch);
+                bool wtapped = (kDown & KEY_TOUCH) != 0;
+                if (wtapped) {
+                    int tx = wtouch.px, ty = wtouch.py;
+                    #define WBTW  28
+                    #define WBTH  22
+                    #define WVALW 36
+                    #define WRSTW 22
+                    #define WMINX 18
+                    #define WVALX (WMINX + WBTW + 2)
+                    #define WPLUX (WVALX + WVALW + 2)
+                    #define WRSTX (WPLUX + WBTW + 2)
+                    int row_x_y = SHOOT_CONTENT_Y + 4;
+                    int row_y_y = SHOOT_CONTENT_Y + 32;
+                    int *val = NULL; int lo = 0, hi = 0;
+                    if (tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
+                        { val = &wiggle_offset_dx; lo = -20; hi = 20; }
+                    else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
+                        { val = &wiggle_offset_dy; lo = -10; hi = 10; }
+                    if (val) {
+                        if (tx >= WMINX && tx < WMINX + WBTW) {
+                            if (*val > lo) { (*val)--; wiggle_rebuild = true; }
+                        } else if (tx >= WPLUX && tx < WPLUX + WBTW) {
+                            if (*val < hi) { (*val)++; wiggle_rebuild = true; }
+                        } else if (tx >= WRSTX && tx < WRSTX + WRSTW) {
+                            *val = 0; wiggle_rebuild = true;
+                        }
+                    }
+                    #undef WBTW
+                    #undef WBTH
+                    #undef WVALW
+                    #undef WRSTW
+                    #undef WMINX
+                    #undef WVALX
+                    #undef WPLUX
+                    #undef WRSTX
+                }
+            }
+            // L/R bumpers cycle through delay presets (50 → 100 → 200 → 500)
+            if (kDown & KEY_L || kDown & KEY_R) {
+                static const int delay_presets[] = {50, 100, 200, 500};
+                int cur = 0;
+                for (int i = 0; i < 4; i++) if (wiggle_delay_ms == delay_presets[i]) { cur = i; break; }
+                wiggle_delay_ms = delay_presets[(cur + (kDown & KEY_L ? 3 : 1)) % 4];
+            }
             if (kDown & KEY_B) {
                 wiggle_preview = false;
             } else if ((do_save || (kDown & KEY_A)) && !s_save.busy) {
@@ -660,6 +745,10 @@ int main(void) {
                     s_save.wiggle_mode     = true;
                     s_save.wiggle_n_frames = wiggle_frames;
                     s_save.wiggle_delay_ms = wiggle_delay_ms;
+                    s_save.wiggle_has_align = wiggle_has_align;
+                    s_save.wiggle_offset_dx = wiggle_offset_dx;
+                    s_save.wiggle_offset_dy = wiggle_offset_dy;
+                    if (wiggle_has_align) s_save.wiggle_align_result = wiggle_align_res;
                     s_save.busy = true;
                     save_flash  = 20;
                     play_shutter_click();
@@ -683,10 +772,15 @@ int main(void) {
                     if (shoot_mode == SHOOT_MODE_WIGGLE) {
                         memcpy(wiggle_left,  buf,                      CAMERA_SCREEN_SIZE);
                         memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE, CAMERA_SCREEN_SIZE);
-                        build_wiggle_preview_frames(wiggle_preview_frames,
+                        wiggle_has_align = false;
+                        wiggle_offset_dx = 0;
+                        wiggle_offset_dy = 0;
+                        wiggle_frames = build_wiggle_preview_frames(wiggle_preview_frames,
                                                     wiggle_left, wiggle_right,
                                                     CAMERA_WIDTH, CAMERA_HEIGHT,
-                                                    wiggle_frames);
+                                                    wiggle_frames, NULL,
+                                                    wiggle_offset_dx, wiggle_offset_dy,
+                                                    &wiggle_crop_w, &wiggle_crop_h);
                         wiggle_preview = true;
                         wiggle_preview_frame = 0;
                         wiggle_preview_last_tick = svcGetSystemTick();
@@ -714,13 +808,18 @@ int main(void) {
                 timer_prev_tick    = svcGetSystemTick();
                 timer_active       = true;
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
-                // First press: capture both cam buffers and build blended preview frames
+                // First press: capture both cam buffers, auto-align, build preview
                 memcpy(wiggle_left,  buf,                      CAMERA_SCREEN_SIZE);
                 memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE, CAMERA_SCREEN_SIZE);
-                build_wiggle_preview_frames(wiggle_preview_frames,
+                wiggle_has_align = false;
+                wiggle_offset_dx = 0;
+                wiggle_offset_dy = 0;
+                wiggle_frames = build_wiggle_preview_frames(wiggle_preview_frames,
                                             wiggle_left, wiggle_right,
                                             CAMERA_WIDTH, CAMERA_HEIGHT,
-                                            wiggle_frames);
+                                            wiggle_frames, NULL,
+                                            wiggle_offset_dx, wiggle_offset_dy,
+                                            &wiggle_crop_w, &wiggle_crop_h);
                 wiggle_preview           = true;
                 wiggle_preview_frame     = 0;
                 wiggle_preview_last_tick = svcGetSystemTick();
@@ -816,6 +915,16 @@ int main(void) {
 
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wiggle_preview) {
+            // Rebuild frames when user has adjusted H/V offsets
+            if (wiggle_rebuild) {
+                wiggle_frames = build_wiggle_preview_frames(wiggle_preview_frames,
+                                            wiggle_left, wiggle_right,
+                                            CAMERA_WIDTH, CAMERA_HEIGHT,
+                                            wiggle_frames, NULL,
+                                            wiggle_offset_dx, wiggle_offset_dy,
+                                            &wiggle_crop_w, &wiggle_crop_h);
+                wiggle_rebuild = false;
+            }
             u64 now = svcGetSystemTick();
             u64 period = (u64)wiggle_delay_ms * SYSCLOCK_ARM11 / 1000;
             if (now - wiggle_preview_last_tick >= period) {
@@ -902,15 +1011,29 @@ int main(void) {
                                             edit_preview_rgb565, 0, 0,
                                             CAMERA_WIDTH, CAMERA_HEIGHT);
         } else {
-            void *blit_src;
-            if (wiggle_preview)
-                blit_src = wiggle_preview_frames[wiggle_preview_frame];
-            else if (gallery_mode && gallery_count > 0)
-                blit_src = gallery_thumbs[gallery_anim_frame];
-            else
-                blit_src = comparing ? buf : filtered_buf;
-            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                            blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+            if (wiggle_preview) {
+                // Compose cropped frame into a full 400×240 buffer (black borders),
+                // then blit normally. This keeps the framebuffer column stride correct.
+                int bx = (CAMERA_WIDTH  - wiggle_crop_w) / 2;
+                int by = (CAMERA_HEIGHT - wiggle_crop_h) / 2;
+                memset(wiggle_compose_buf, 0, sizeof(wiggle_compose_buf));
+                const uint16_t *src = wiggle_preview_frames[wiggle_preview_frame];
+                for (int row = 0; row < wiggle_crop_h; row++)
+                    memcpy(wiggle_compose_buf + (by + row) * CAMERA_WIDTH + bx,
+                           src + row * wiggle_crop_w,
+                           wiggle_crop_w * sizeof(uint16_t));
+                writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
+                                                wiggle_compose_buf, 0, 0,
+                                                CAMERA_WIDTH, CAMERA_HEIGHT);
+            } else {
+                void *blit_src;
+                if (gallery_mode && gallery_count > 0)
+                    blit_src = gallery_thumbs[gallery_anim_frame];
+                else
+                    blit_src = comparing ? buf : filtered_buf;
+                writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
+                                                blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+            }
         }
 
         // Flush top screen before C3D takes the GPU
@@ -930,6 +1053,7 @@ int main(void) {
                 shoot_timer_secs, timer_open,
                 wiggle_frames, wiggle_delay_ms,
                 wiggle_preview,
+                wiggle_offset_dx, wiggle_offset_dy,
                 timer_active ? (timer_remaining_ms + 999) / 1000 : -1,
                 lomo_preset,
                 gallery_edit_mode,

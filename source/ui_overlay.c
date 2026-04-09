@@ -205,6 +205,7 @@ void draw_ui(C3D_RenderTarget *bot,
              int shoot_timer_secs, bool timer_open,
              int wiggle_frames, int wiggle_delay_ms,
              bool wiggle_preview,
+             int wiggle_offset_dx, int wiggle_offset_dy,
              int timer_countdown,
              int lomo_preset,
              bool gallery_edit_mode,
@@ -268,6 +269,7 @@ void draw_ui(C3D_RenderTarget *bot,
                        shoot_timer_secs, timer_open,
                        wiggle_frames, wiggle_delay_ms,
                        wiggle_preview,
+                       wiggle_offset_dx, wiggle_offset_dy,
                        lomo_preset);
     } else if (active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf, &p, ranges);

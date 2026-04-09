@@ -19,6 +19,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   int *shoot_mode, bool *shoot_mode_open,
                   int *shoot_timer_secs, bool *timer_open,
                   int *wiggle_frames, int *wiggle_delay_ms,
+                  int *wiggle_offset_dx, int *wiggle_offset_dy, bool *wiggle_rebuild,
+                  bool *wiggle_preview,
                   int *lomo_preset,
                   bool gallery_edit_mode,
                   int *edit_tab, int *sticker_cat, int *sticker_sel, int *sticker_scroll, int *gallery_frame,
@@ -323,6 +325,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 // Back button
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
                     *shoot_mode_open = false;
+                    *wiggle_preview  = false;
                     return true;
                 }
 
@@ -370,30 +373,79 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         }
                     }
                 } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
-                    // Frames slider (row 0) and Delay slider (row 1)
-                    float row_ys[2] = {
-                        (float)SHOOT_CONTENT_Y + 6.0f,
-                        (float)SHOOT_CONTENT_Y + 6.0f + RHANDLE_H + 10.0f
-                    };
-                    for (int i = 0; i < 2; i++) {
-                        float track_cy = row_ys[i] + TRACK_H * 0.5f + 1.0f;
-                        if (touched && ty >= (int)(track_cy - RHANDLE_H) && ty <= (int)(track_cy + RHANDLE_H) &&
-                            tx >= 64 && tx <= 72 + 210 + 8) {
-                            float t_val = (float)(tx - 72) / 210.0f;
-                            if (t_val < 0.0f) t_val = 0.0f;
-                            if (t_val > 1.0f) t_val = 1.0f;
-                            if (i == 0) {
-                                *wiggle_frames = 2 + (int)(t_val * 6.0f + 0.5f);  // 2..8
-                                if (*wiggle_frames < 2) *wiggle_frames = 2;
-                                if (*wiggle_frames > 8) *wiggle_frames = 8;
-                            } else {
-                                *wiggle_delay_ms = 10 + (int)(t_val * 990.0f + 0.5f);  // 10..1000
-                                if (*wiggle_delay_ms < 10)   *wiggle_delay_ms = 10;
-                                if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
+                    // Left zone: two stepper rows — only active after capture (wiggle_preview)
+                    // Row 1 (X) at SHOOT_CONTENT_Y+4, Row 2 (Y) at SHOOT_CONTENT_Y+32, each 22px tall
+                    // Columns: label(2..18), [-](18..46), value(48..84), [+](86..114), [R](116..138)
+                    #define WIG_BTN_W  28
+                    #define WIG_BTN_H  22
+                    #define WIG_VAL_W  36
+                    #define WIG_RST_W  22
+                    #define WIG_MINUS_X  18
+                    #define WIG_VAL_X    (WIG_MINUS_X + WIG_BTN_W + 2)
+                    #define WIG_PLUS_X   (WIG_VAL_X + WIG_VAL_W + 2)
+                    #define WIG_RST_X    (WIG_PLUS_X + WIG_BTN_W + 2)
+
+                    // X/Y offset buttons handled in main.c wiggle block (outside captureInterrupted)
+
+                    // Delay: preset pills + stepper (right zone x=160..319)
+                    if (tapped && tx >= 160) {
+                        // Preset pills row (y = SHOOT_CONTENT_Y+20 .. +36)
+                        float py0 = (float)SHOOT_CONTENT_Y + 20.0f;
+                        #define DPILL_W   32
+                        #define DPILL_H   16
+                        #define DPILL_GAP  3
+                        static const int presets[4] = {50, 100, 200, 500};
+                        float total_pw = 4 * DPILL_W + 3 * DPILL_GAP;
+                        float px0 = 160.0f + (160.0f - total_pw) * 0.5f;
+                        if (ty >= (int)py0 && ty < (int)(py0 + DPILL_H)) {
+                            for (int i = 0; i < 4; i++) {
+                                float bx = px0 + i * (DPILL_W + DPILL_GAP);
+                                if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
+                                    *wiggle_delay_ms = presets[i];
+                                    return true;
+                                }
                             }
-                            return true;
                         }
+                        #undef DPILL_W
+                        #undef DPILL_H
+                        #undef DPILL_GAP
+
+                        // Stepper row (y = SHOOT_CONTENT_Y+44 .. +62)
+                        float sy = (float)SHOOT_CONTENT_Y + 44.0f;
+                        #define DSTEP_BTN_W  22
+                        #define DSTEP_BTN_H  18
+                        #define DSTEP_VAL_W  54
+                        float total_sw = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
+                        float sx0 = 160.0f + (160.0f - total_sw) * 0.5f;
+                        if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
+                            // "-" button
+                            if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
+                                *wiggle_delay_ms -= 10;
+                                if (*wiggle_delay_ms < 10) *wiggle_delay_ms = 10;
+                                return true;
+                            }
+                            // "+" button
+                            float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
+                            if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
+                                *wiggle_delay_ms += 10;
+                                if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
+                                return true;
+                            }
+                        }
+                        #undef DSTEP_BTN_W
+                        #undef DSTEP_BTN_H
+                        #undef DSTEP_VAL_W
                     }
+
+                    #undef WIG_BTN_W
+                    #undef WIG_BTN_H
+                    #undef WIG_VAL_W
+                    #undef WIG_RST_W
+                    #undef WIG_MINUS_X
+                    #undef WIG_VAL_X
+                    #undef WIG_PLUS_X
+                    #undef WIG_RST_X
+                    (void)wiggle_frames;
                 }
             }
 
