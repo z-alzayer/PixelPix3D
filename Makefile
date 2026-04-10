@@ -179,8 +179,10 @@ endif
 
 #---------------------------------------------------------------------------------
 cia: all
+	@echo building banner ...
+	bannertool makebanner -i $(CURDIR)/banner.png -a $(CURDIR)/banner_audio.wav -o $(CURDIR)/banner.bnr
 	@echo building CIA ...
-	$(or $(shell which makerom 2>/dev/null),$(CURDIR)/makerom) -f cia -o $(TARGET).cia -rsf $(CURDIR)/PixelPix3D.rsf -DDIR_ROMFS=$(CURDIR)/$(ROMFS) -target t -elf $(TARGET).elf -icon $(TARGET).smdh -desc app:4
+	$(or $(shell which makerom 2>/dev/null),$(CURDIR)/makerom) -f cia -o $(TARGET).cia -rsf $(CURDIR)/PixelPix3D.rsf -DDIR_ROMFS=$(CURDIR)/$(ROMFS) -target t -elf $(TARGET).elf -icon $(TARGET).smdh -banner $(CURDIR)/banner.bnr -desc app:4
 
 #---------------------------------------------------------------------------------
 clean:
