@@ -6,6 +6,7 @@
 #include <citro2d.h>
 #include <citro3d.h>
 #include "filter.h"
+#include "app_state.h"
 
 // ---------------------------------------------------------------------------
 // Bottom screen dimensions
@@ -409,28 +410,9 @@ void draw_range_slider(float cy, float abs_min, float abs_max,
                        float val_min, float val_max, float val_def);
 void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-             FilterParams p, bool selfie,
-             int save_flash, bool warn3d,
-             int active_tab, int save_scale, bool settings_flash,
-             int settings_row,
-             const PaletteDef *user_palettes,
-             int palette_sel_pal, int palette_sel_color,
-             const FilterRanges *ranges,
-             bool comparing,
-             bool gallery_mode, int gallery_count,
-             const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
-             int shoot_mode, bool shoot_mode_open,
-             int shoot_timer_secs, bool timer_open,
-             int wiggle_frames, int wiggle_delay_ms,
-             bool wiggle_preview,
-             int wiggle_offset_dx, int wiggle_offset_dy,
-             int timer_countdown,
-             int lomo_preset,
-             bool gallery_edit_mode,
-             int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
-             int gallery_frame,
-             float sticker_cursor_x, float sticker_cursor_y,
-             float sticker_pending_scale, float sticker_pending_angle,
-             bool sticker_placing);
+             const AppState *app, const ShootState *shoot,
+             const WiggleState *wig, const GalleryState *gal,
+             const EditState *edit,
+             bool warn3d, bool comparing, int timer_countdown);
 
 #endif

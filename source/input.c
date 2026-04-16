@@ -7,26 +7,12 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
 }
 
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
-                  FilterParams *p,
+                  AppState *app, ShootState *shoot, WiggleState *wig,
+                  GalleryState *gal, EditState *edit,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
-                  int *active_tab, int *save_scale,
-                  FilterParams *default_params,
-                  FilterRanges *ranges,
-                  PaletteDef *user_palettes,
-                  int *palette_sel_pal, int *palette_sel_color,
                   bool *do_gallery_toggle,
-                  bool gallery_mode, int gallery_count, int *gallery_sel, int *gallery_scroll,
-                  int *shoot_mode, bool *shoot_mode_open,
-                  int *shoot_timer_secs, bool *timer_open,
-                  int *wiggle_frames, int *wiggle_delay_ms,
-                  int *wiggle_offset_dx, int *wiggle_offset_dy, bool *wiggle_rebuild,
-                  bool *wiggle_preview,
-                  int *lomo_preset,
-                  bool gallery_edit_mode,
-                  int *edit_tab, int *sticker_cat, int *sticker_sel, int *sticker_scroll, int *gallery_frame,
-                  PlacedSticker *placed_stickers,
-                  bool *do_edit_cancel, bool *do_edit_savenew, bool *do_edit_overwrite,
-                  bool *do_edit_enter) {
+                  bool *do_edit_cancel, bool *do_edit_savenew,
+                  bool *do_edit_overwrite, bool *do_edit_enter) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
@@ -42,10 +28,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
     int tx = touch.px, ty = touch.py;
 
+    FilterParams *p = &app->params;
+
     // -----------------------------------------------------------------------
     // Gallery edit mode — intercepts ALL touch when active (must be first)
     // -----------------------------------------------------------------------
-    if (gallery_edit_mode) {
+    if (edit->active) {
         if (!tapped) return false;
 
         // Action bar (bottom strip)
@@ -64,7 +52,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
         // Tab bar
         if (ty < GEDIT_TAB_H) {
-            *edit_tab = (tx < GEDIT_TAB_W) ? 0 : 1;
+            edit->tab = (tx < GEDIT_TAB_W) ? 0 : 1;
             return true;
         }
 
@@ -72,15 +60,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         #define CAT_STRIP_Y0  (GEDIT_TAB_H + 2)
         #define CAT_STRIP_H   18
         #define CAT_BTN_W_I   ((160 - 4) / STICKER_CAT_COUNT)
-        if (*edit_tab == 0 && tx < 160 &&
+        if (edit->tab == 0 && tx < 160 &&
             ty >= CAT_STRIP_Y0 && ty < CAT_STRIP_Y0 + CAT_STRIP_H) {
             int ci = (tx - 2) / CAT_BTN_W_I;
             if (ci < 0) ci = 0;
             if (ci >= STICKER_CAT_COUNT) ci = STICKER_CAT_COUNT - 1;
-            if (ci != *sticker_cat) {
-                *sticker_cat   = ci;
-                *sticker_sel   = 0;
-                *sticker_scroll = 0;
+            if (ci != edit->sticker_cat) {
+                edit->sticker_cat   = ci;
+                edit->sticker_sel   = 0;
+                edit->sticker_scroll = 0;
                 sticker_cat_load(ci);
             }
             return true;
@@ -90,32 +78,27 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         #undef CAT_BTN_W_I
 
         // Info area tap (y = GEDIT_PICKER_BOT..GEDIT_ACT_Y) → "Place" selected sticker
-        // Passes through to main.c via sticker_sel; actual placement done there via KEY_A / this flag
-        // We re-use do_edit_savenew as a "place sticker" flag when we're in sticker tab context.
-        // Instead, signal placement via a dedicated "place" bit — we use do_edit_enter for this.
-        if (*edit_tab == 0 && ty >= GEDIT_PICKER_BOT && ty < GEDIT_ACT_Y) {
-            *do_edit_enter = true;  // reuse as "place sticker" signal in edit mode
+        if (edit->tab == 0 && ty >= GEDIT_PICKER_BOT && ty < GEDIT_ACT_Y) {
+            *do_edit_enter = true;
             return true;
         }
 
         // Right panel scroll buttons (x>=160, sticker tab only)
-        // Prev button: y=116..138  Next button: y=141..163  (matches draw_gallery_edit_tab layout)
-        // PREV_Y=32, PREV_H=64, name_y=100, btn_y=116, each button h=22, gap=3
         #define RSCROLL_UP_Y0   116
         #define RSCROLL_DN_Y0   141
         #define RSCROLL_BTN_H    22
-        if (*edit_tab == 0 && tx >= 160) {
-            sticker_cat_load(*sticker_cat);
-            int _rc = sticker_cats[*sticker_cat].count;
+        if (edit->tab == 0 && tx >= 160) {
+            sticker_cat_load(edit->sticker_cat);
+            int _rc = sticker_cats[edit->sticker_cat].count;
             int _tr = (_rc + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
             int _ms = _tr - GEDIT_STICKER_ROWS;
             if (_ms < 0) _ms = 0;
             if (ty >= RSCROLL_UP_Y0 && ty < RSCROLL_UP_Y0 + RSCROLL_BTN_H) {
-                if (*sticker_scroll > 0) (*sticker_scroll)--;
+                if (edit->sticker_scroll > 0) edit->sticker_scroll--;
                 return true;
             }
             if (ty >= RSCROLL_DN_Y0 && ty < RSCROLL_DN_Y0 + RSCROLL_BTN_H) {
-                if (*sticker_scroll < _ms) (*sticker_scroll)++;
+                if (edit->sticker_scroll < _ms) edit->sticker_scroll++;
                 return true;
             }
         }
@@ -128,20 +111,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
         // Picker area — left panel (x=0..159)
         if (ty >= SGRID_BASE_Y && ty < GEDIT_PICKER_BOT && tx < 160) {
-            if (*edit_tab == 0) {
-                // Sticker grid — uses GEDIT_STICKER_* from ui.h
+            if (edit->tab == 0) {
+                // Sticker grid
                 #define SGRID_X0    2
                 #define SGRID_ROW_H GEDIT_STICKER_ROW_H
-                sticker_cat_load(*sticker_cat);
-                int cat_count  = sticker_cats[*sticker_cat].count;
+                sticker_cat_load(edit->sticker_cat);
+                int cat_count  = sticker_cats[edit->sticker_cat].count;
 
-                // Cell tap
                 int col = (tx - SGRID_X0) / (GEDIT_STICKER_CELL + GEDIT_STICKER_GAP);
                 int row = (ty - SGRID_BASE_Y) / SGRID_ROW_H;
                 if (col >= 0 && col < GEDIT_STICKER_COLS && row >= 0 && row < GEDIT_STICKER_ROWS) {
-                    int idx = (*sticker_scroll * GEDIT_STICKER_COLS) + row * GEDIT_STICKER_COLS + col;
+                    int idx = (edit->sticker_scroll * GEDIT_STICKER_COLS) + row * GEDIT_STICKER_COLS + col;
                     if (idx >= 0 && idx < cat_count) {
-                        *sticker_sel = idx;
+                        edit->sticker_sel = idx;
                         return true;
                     }
                 }
@@ -149,11 +131,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 #undef SGRID_ROW_H
                 #undef SGRID_BASE_Y
             } else {
-                // Frame picker — left panel only (x=0..159)
+                // Frame picker
                 for (int i = 0; i < FRAME_COUNT; i++) {
                     int fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
                     if (ty >= fy && ty < fy + FRAME_PILL_H && tx < 160) {
-                        *gallery_frame = i;
+                        edit->gallery_frame = i;
                         return true;
                     }
                 }
@@ -166,22 +148,21 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // Bottom nav bar (y >= NAV_Y, always active)
     // -----------------------------------------------------------------------
     if (tapped && ty >= NAV_Y) {
-        // In gallery/edit mode: nav taps close those contexts first
-        if (gallery_edit_mode) { *do_edit_cancel = true; return true; }
-        if (gallery_mode)      { *do_gallery_toggle = true; return true; }
+        if (edit->active)  { *do_edit_cancel = true; return true; }
+        if (gal->mode)     { *do_gallery_toggle = true; return true; }
 
         int seg = tx / NAV_SEG_W;
         if (seg < 0) seg = 0;
         if (seg > 3) seg = 3;
 
         if (seg == TAB_SHOOT) {
-            *active_tab = TAB_SHOOT;
+            app->active_tab = TAB_SHOOT;
         } else if (seg == TAB_STYLE) {
-            *active_tab = TAB_STYLE;
+            app->active_tab = TAB_STYLE;
         } else if (seg == TAB_FX) {
-            *active_tab = TAB_FX;
+            app->active_tab = TAB_FX;
         } else if (seg == TAB_MORE) {
-            *active_tab = (*active_tab == TAB_MORE) ? TAB_SHOOT : TAB_MORE;
+            app->active_tab = (app->active_tab == TAB_MORE) ? TAB_SHOOT : TAB_MORE;
         }
         return true;
     }
@@ -189,8 +170,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // Gallery mode — full-screen context (intercepts all touch when active)
     // -----------------------------------------------------------------------
-    if (gallery_mode && !gallery_edit_mode && tapped && ty < NAV_Y) {
-        // New full-screen gallery layout constants (must match draw_gallery_tab)
+    if (gal->mode && !edit->active && tapped && ty < NAV_Y) {
         #define GAL_GRID_Y0   32
         #define GAL_GRID_COLS  4
         #define GAL_GRID_ROWS  4
@@ -206,21 +186,21 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
         // Edit button (header, right)
-        if (gallery_count > 0 && hit(tx, ty, BOT_W - 54, 3, 50, 24)) {
+        if (gal->count > 0 && hit(tx, ty, BOT_W - 54, 3, 50, 24)) {
             *do_edit_enter = true;
             return true;
         }
         // Scroll arrows
         {
-            int total_rows = (gallery_count + GAL_GRID_COLS - 1) / GAL_GRID_COLS;
+            int total_rows = (gal->count + GAL_GRID_COLS - 1) / GAL_GRID_COLS;
             int max_scroll = total_rows - GAL_GRID_ROWS;
             if (max_scroll < 0) max_scroll = 0;
             if (hit(tx, ty, GAL_SCROLL_X, GAL_GRID_Y0, 14, 78)) {
-                if (*gallery_scroll > 0) (*gallery_scroll)--;
+                if (gal->scroll > 0) gal->scroll--;
                 return true;
             }
             if (hit(tx, ty, GAL_SCROLL_X, GAL_GRID_Y0 + 82, 14, 78)) {
-                if (*gallery_scroll < max_scroll) (*gallery_scroll)++;
+                if (gal->scroll < max_scroll) gal->scroll++;
                 return true;
             }
         }
@@ -229,9 +209,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             int col = (tx - GAL_CELL_GAP) / (GAL_CELL_W + GAL_CELL_GAP);
             int row = (ty - GAL_GRID_Y0)  / GAL_ROW_H;
             if (col >= 0 && col < GAL_GRID_COLS && row >= 0 && row < GAL_GRID_ROWS) {
-                int idx = *gallery_scroll * GAL_GRID_COLS + row * GAL_GRID_COLS + col;
-                if (idx >= 0 && idx < gallery_count) {
-                    *gallery_sel = idx;
+                int idx = gal->scroll * GAL_GRID_COLS + row * GAL_GRID_COLS + col;
+                if (idx >= 0 && idx < gal->count) {
+                    gal->sel = idx;
                     return true;
                 }
             }
@@ -250,7 +230,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // SHOOT tab inputs (content area, y < NAV_Y) — only when NOT in gallery
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_SHOOT && !gallery_mode && ty < NAV_Y) {
+    if (app->active_tab == TAB_SHOOT && !gal->mode && ty < NAV_Y) {
 
         // Shoot strip (y < SHOOT_STRIP_H)
         if (ty < SHOOT_STRIP_H) {
@@ -279,15 +259,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
 
         {
-            if (!*shoot_mode_open && !*timer_open) {
+            if (!shoot->shoot_mode_open && !shoot->timer_open) {
                 // ---- Mode grid taps ----
                 if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
                     // 3 capture mode buttons
                     for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
                         int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
-                            *shoot_mode = col;
-                            *shoot_mode_open = true;
+                            shoot->shoot_mode = col;
+                            shoot->shoot_mode_open = true;
                             return true;
                         }
                     }
@@ -295,15 +275,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     {
                         int bx = SHOOT_MODE_BTN_GAP + 3 * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
-                            *timer_open = true;
+                            shoot->timer_open = true;
                             return true;
                         }
                     }
                 }
-            } else if (*timer_open) {
+            } else if (shoot->timer_open) {
                 // ---- Timer settings panel ----
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
-                    *timer_open = false;
+                    shoot->timer_open = false;
                     return true;
                 }
                 static const int timer_vals[SHOOT_TIMER_VAL_COUNT] = SHOOT_TIMER_VALS_INIT;
@@ -314,7 +294,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     for (int i = 0; i < SHOOT_TIMER_VAL_COUNT; i++) {
                         float bx = btn_start_x + i * (SHOOT_TIMER_BTN_W + SHOOT_TIMER_BTN_GAP);
                         if (tx >= (int)bx && tx < (int)(bx + SHOOT_TIMER_BTN_W)) {
-                            *shoot_timer_secs = timer_vals[i];
+                            shoot->shoot_timer_secs = timer_vals[i];
                             return true;
                         }
                     }
@@ -324,12 +304,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
                 // Back button
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
-                    *shoot_mode_open = false;
-                    *wiggle_preview  = false;
+                    shoot->shoot_mode_open = false;
+                    wig->preview  = false;
                     return true;
                 }
 
-                if (*shoot_mode == SHOOT_MODE_GBCAM) {
+                if (shoot->shoot_mode == SHOOT_MODE_GBCAM) {
                     #define VCOL_W   80
                     #define VHANDLE_W 14
                     #define VHANDLE_H  8
@@ -344,10 +324,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             if (t_val > 1.0f) t_val = 1.0f;
                             float mn, mx;
                             float *field = NULL;
-                            if      (col == 0) { mn = ranges->bright_min;   mx = ranges->bright_max;   field = &p->brightness;  }
-                            else if (col == 1) { mn = ranges->contrast_min; mx = ranges->contrast_max; field = &p->contrast;    }
-                            else if (col == 2) { mn = ranges->sat_min;      mx = ranges->sat_max;      field = &p->saturation;  }
-                            else               { mn = ranges->gamma_min;    mx = ranges->gamma_max;    field = &p->gamma;       }
+                            if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
+                            else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
+                            else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
+                            else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
                             *field = mn + t_val * (mx - mn);
                             return true;
                         }
@@ -355,8 +335,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #undef VCOL_W
                     #undef VHANDLE_W
                     #undef VHANDLE_H
-                } else if (*shoot_mode == SHOOT_MODE_LOMO) {
-                    // 3×2 preset grid (matches draw side geometry)
+                } else if (shoot->shoot_mode == SHOOT_MODE_LOMO) {
+                    // 3×2 preset grid
                     float cy = (float)SHOOT_CONTENT_Y;
                     if (tapped) {
                         for (int row = 0; row < LOMO_GRID_ROWS; row++) {
@@ -366,16 +346,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 int bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
                                 int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
                                 if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
-                                    *lomo_preset = idx;
+                                    shoot->lomo_preset = idx;
                                     return true;
                                 }
                             }
                         }
                     }
-                } else if (*shoot_mode == SHOOT_MODE_WIGGLE) {
-                    // Left zone: two stepper rows — only active after capture (wiggle_preview)
-                    // Row 1 (X) at SHOOT_CONTENT_Y+4, Row 2 (Y) at SHOOT_CONTENT_Y+32, each 22px tall
-                    // Columns: label(2..18), [-](18..46), value(48..84), [+](86..114), [R](116..138)
+                } else if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
                     #define WIG_BTN_W  28
                     #define WIG_BTN_H  22
                     #define WIG_VAL_W  36
@@ -385,11 +362,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #define WIG_PLUS_X   (WIG_VAL_X + WIG_VAL_W + 2)
                     #define WIG_RST_X    (WIG_PLUS_X + WIG_BTN_W + 2)
 
-                    // X/Y offset buttons handled in main.c wiggle block (outside captureInterrupted)
+                    // X/Y offset buttons handled in wigglegram.c (outside captureInterrupted)
 
                     // Delay: preset pills + stepper (right zone x=160..319)
                     if (tapped && tx >= 160) {
-                        // Preset pills row (y = SHOOT_CONTENT_Y+20 .. +36)
+                        // Preset pills row
                         float py0 = (float)SHOOT_CONTENT_Y + 20.0f;
                         #define DPILL_W   32
                         #define DPILL_H   16
@@ -401,7 +378,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             for (int i = 0; i < 4; i++) {
                                 float bx = px0 + i * (DPILL_W + DPILL_GAP);
                                 if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
-                                    *wiggle_delay_ms = presets[i];
+                                    wig->delay_ms = presets[i];
                                     return true;
                                 }
                             }
@@ -410,7 +387,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         #undef DPILL_H
                         #undef DPILL_GAP
 
-                        // Stepper row (y = SHOOT_CONTENT_Y+44 .. +62)
+                        // Stepper row
                         float sy = (float)SHOOT_CONTENT_Y + 44.0f;
                         #define DSTEP_BTN_W  22
                         #define DSTEP_BTN_H  18
@@ -418,17 +395,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         float total_sw = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
                         float sx0 = 160.0f + (160.0f - total_sw) * 0.5f;
                         if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
-                            // "-" button
                             if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
-                                *wiggle_delay_ms -= 10;
-                                if (*wiggle_delay_ms < 10) *wiggle_delay_ms = 10;
+                                wig->delay_ms -= 10;
+                                if (wig->delay_ms < 10) wig->delay_ms = 10;
                                 return true;
                             }
-                            // "+" button
                             float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
                             if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
-                                *wiggle_delay_ms += 10;
-                                if (*wiggle_delay_ms > 1000) *wiggle_delay_ms = 1000;
+                                wig->delay_ms += 10;
+                                if (wig->delay_ms > 1000) wig->delay_ms = 1000;
                                 return true;
                             }
                         }
@@ -445,7 +420,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #undef WIG_VAL_X
                     #undef WIG_PLUS_X
                     #undef WIG_RST_X
-                    (void)wiggle_frames;
                 }
             }
 
@@ -460,32 +434,30 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // STYLE tab inputs
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_STYLE && ty < NAV_Y) {
+    if (app->active_tab == TAB_STYLE && ty < NAV_Y) {
 
-        // Palette buttons row 1 (y = STYLE_PAL_Y0 .. STYLE_PAL_Y0 + STYLE_PAL_H)
+        // Palette buttons row 1
         if (tapped && ty >= STYLE_PAL_Y0 && ty < STYLE_PAL_Y0 + STYLE_PAL_H) {
-            // Row 1: 4 buttons (indices 0..3) centred in 320px
             int count = 4;
             float total_w = count * STYLE_PAL_W + (count - 1) * STYLE_PAL_GAP;
             float start_x = (BOT_W - total_w) / 2.0f;
             for (int col = 0; col < count; col++) {
                 float bx = start_x + col * (STYLE_PAL_W + STYLE_PAL_GAP);
                 if (tx >= (int)bx && tx < (int)(bx + STYLE_PAL_W)) {
-                    p->palette = col;  // indices 0..3
+                    p->palette = col;
                     return true;
                 }
             }
         }
-        // Palette buttons row 2 (y = STYLE_PAL_Y1 .. STYLE_PAL_Y1 + STYLE_PAL_H)
+        // Palette buttons row 2
         if (tapped && ty >= STYLE_PAL_Y1 && ty < STYLE_PAL_Y1 + STYLE_PAL_H) {
-            // Row 2: 3 buttons (indices 4..6: GBA, DB, None) centred
             int count = 3;
             float total_w = count * STYLE_PAL_W + (count - 1) * STYLE_PAL_GAP;
             float start_x = (BOT_W - total_w) / 2.0f;
             for (int col = 0; col < count; col++) {
                 float bx = start_x + col * (STYLE_PAL_W + STYLE_PAL_GAP);
                 if (tx >= (int)bx && tx < (int)(bx + STYLE_PAL_W)) {
-                    p->palette = (col < 2) ? (4 + col) : PALETTE_NONE;  // 4=GBA, 5=DB, NONE
+                    p->palette = (col < 2) ? (4 + col) : PALETTE_NONE;
                     return true;
                 }
             }
@@ -509,7 +481,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // FX tab inputs
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_FX && ty < NAV_Y) {
+    if (app->active_tab == TAB_FX && ty < NAV_Y) {
         // Mode buttons row 1
         if (tapped && ty >= FXTAB_BTN_Y1 && ty < FXTAB_BTN_Y1 + FXTAB_BTN_H) {
             for (int i = 0; i < 4; i++) {
@@ -547,15 +519,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // MORE tab inputs
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_MORE && tapped && ty < NAV_Y) {
+    if (app->active_tab == TAB_MORE && tapped && ty < NAV_Y) {
         // Save Scale: 1x
         if (hit(tx, ty, MORE_STOG_X0, MORE_SCALE_Y - MORE_STOG_H / 2, MORE_STOG_W, MORE_STOG_H)) {
-            *save_scale = 1;
+            app->save_scale = 1;
             return true;
         }
         // Save Scale: 2x
         if (hit(tx, ty, MORE_STOG_X1, MORE_SCALE_Y - MORE_STOG_H / 2, MORE_STOG_W, MORE_STOG_H)) {
-            *save_scale = 2;
+            app->save_scale = 2;
             return true;
         }
         // Dither buttons
@@ -578,12 +550,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
         // Palette Editor button
         if (hit(tx, ty, MORE_PALED_X, MORE_POWED_Y, MORE_POWED_W, MORE_POWED_H)) {
-            *active_tab = TAB_PALETTE_ED;
+            app->active_tab = TAB_PALETTE_ED;
             return true;
         }
         // Calibrate button
         if (hit(tx, ty, MORE_CALIB_X, MORE_POWED_Y, MORE_POWED_W, MORE_POWED_H)) {
-            *active_tab = TAB_CALIBRATE;
+            app->active_tab = TAB_CALIBRATE;
             return true;
         }
         // Save as Default
@@ -596,36 +568,36 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // Palette editor tab inputs
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_PALETTE_ED) {
+    if (app->active_tab == TAB_PALETTE_ED) {
         if (tapped && ty < NAV_Y) {
-            // Back ("< More" tap area: top-left ~60x20)
+            // Back
             if (hit(tx, ty, 0, 0, 60, 20)) {
-                *active_tab = TAB_MORE;
+                app->active_tab = TAB_MORE;
                 return true;
             }
             // Palette selector strip
             if (ty >= PALTAB_PALSEL_Y && ty < PALTAB_PALSEL_Y + PALTAB_PALSEL_H) {
                 int i = tx / PALTAB_PALSEL_BTN_W;
                 if (i >= 0 && i < PALETTE_COUNT) {
-                    *palette_sel_pal   = i;
-                    *palette_sel_color = 0;
+                    app->palette_sel_pal   = i;
+                    app->palette_sel_color = 0;
                     return true;
                 }
             }
             // Colour swatch strip
             if (ty >= PALTAB_SWATCH_Y && ty < PALTAB_SWATCH_Y + PALTAB_SWATCH_H) {
-                int size = user_palettes[*palette_sel_pal].size;
+                int size = app->user_palettes[app->palette_sel_pal].size;
                 for (int i = 0; i < size; i++) {
                     int sx = 4 + i * (PALTAB_SWATCH_W + 4);
                     if (tx >= sx && tx < sx + PALTAB_SWATCH_W) {
-                        *palette_sel_color = i;
+                        app->palette_sel_color = i;
                         return true;
                     }
                 }
             }
             // Reset button
             if (hit(tx, ty, PALTAB_RESET_X, PALTAB_BTN_Y, PALTAB_RESET_W, PALTAB_BTN_H)) {
-                user_palettes[*palette_sel_pal] = palettes[*palette_sel_pal];
+                app->user_palettes[app->palette_sel_pal] = palettes[app->palette_sel_pal];
                 return true;
             }
             // Save as Default button
@@ -636,8 +608,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
         // Drag: HS rectangle and Value strip
         if (touched && ty < NAV_Y) {
-            PaletteDef *pal = &user_palettes[*palette_sel_pal];
-            int ci = *palette_sel_color;
+            PaletteDef *pal = &app->user_palettes[app->palette_sel_pal];
+            int ci = app->palette_sel_color;
             float cur_h, cur_s, cur_v;
             if (ty >= PALTAB_HS_Y && ty < PALTAB_HS_Y + PALTAB_HS_H) {
                 int cx = tx < PALTAB_HS_X ? PALTAB_HS_X :
@@ -670,10 +642,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // -----------------------------------------------------------------------
     // Calibrate tab inputs
     // -----------------------------------------------------------------------
-    if (*active_tab == TAB_CALIBRATE && ty < NAV_Y) {
+    if (app->active_tab == TAB_CALIBRATE && ty < NAV_Y) {
         // Back
         if (tapped && hit(tx, ty, 0, 0, 60, 20)) {
-            *active_tab = TAB_MORE;
+            app->active_tab = TAB_MORE;
             return true;
         }
         // Range sliders (drag)
@@ -702,10 +674,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     return true; \
                 }
 
-            CAL_ROW(ROW_BRIGHT,   CAL_BRIGHT_ABS_MIN,   CAL_BRIGHT_ABS_MAX,   ranges->bright_min,   ranges->bright_max,   ranges->bright_def)
-            CAL_ROW(ROW_CONTRAST, CAL_CONTRAST_ABS_MIN, CAL_CONTRAST_ABS_MAX, ranges->contrast_min, ranges->contrast_max, ranges->contrast_def)
-            CAL_ROW(ROW_SAT,      CAL_SAT_ABS_MIN,      CAL_SAT_ABS_MAX,      ranges->sat_min,      ranges->sat_max,      ranges->sat_def)
-            CAL_ROW(ROW_GAMMA,    CAL_GAMMA_ABS_MIN,    CAL_GAMMA_ABS_MAX,    ranges->gamma_min,    ranges->gamma_max,    ranges->gamma_def)
+            CAL_ROW(ROW_BRIGHT,   CAL_BRIGHT_ABS_MIN,   CAL_BRIGHT_ABS_MAX,   app->ranges.bright_min,   app->ranges.bright_max,   app->ranges.bright_def)
+            CAL_ROW(ROW_CONTRAST, CAL_CONTRAST_ABS_MIN, CAL_CONTRAST_ABS_MAX, app->ranges.contrast_min, app->ranges.contrast_max, app->ranges.contrast_def)
+            CAL_ROW(ROW_SAT,      CAL_SAT_ABS_MIN,      CAL_SAT_ABS_MAX,      app->ranges.sat_min,      app->ranges.sat_max,      app->ranges.sat_def)
+            CAL_ROW(ROW_GAMMA,    CAL_GAMMA_ABS_MIN,    CAL_GAMMA_ABS_MAX,    app->ranges.gamma_min,    app->ranges.gamma_max,    app->ranges.gamma_def)
             #undef CAL_ROW
         }
         // Save as Default
@@ -714,8 +686,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
     }
-
-    (void)default_params;
 
     return false;
 }

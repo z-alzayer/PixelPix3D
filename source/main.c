@@ -281,20 +281,10 @@ int main(void) {
             bool do_gallery_toggle = false;
             bool do_edit_cancel = false, do_edit_savenew = false, do_edit_overwrite = false;
             bool do_edit_enter_or_place = false;
-            handle_touch(touch, kDown, kHeld, &app.params, &do_cam, &do_save, &do_defaults_save,
-                         &app.active_tab, &app.save_scale, &app.default_params,
-                         &app.ranges, app.user_palettes, &app.palette_sel_pal, &app.palette_sel_color,
+            handle_touch(touch, kDown, kHeld,
+                         &app, &shoot, &wig, &gal, &edit,
+                         &do_cam, &do_save, &do_defaults_save,
                          &do_gallery_toggle,
-                         gal.mode, gal.count, &gal.sel, &gal.scroll,
-                         &shoot.shoot_mode, &shoot.shoot_mode_open,
-                         &shoot.shoot_timer_secs, &shoot.timer_open,
-                         &wig.n_frames, &wig.delay_ms,
-                         &wig.offset_dx, &wig.offset_dy, &wig.rebuild,
-                         &wig.preview,
-                         &shoot.lomo_preset,
-                         edit.active,
-                         &edit.tab, &edit.sticker_cat, &edit.sticker_sel, &edit.sticker_scroll, &edit.gallery_frame,
-                         edit.placed,
                          &do_edit_cancel, &do_edit_savenew, &do_edit_overwrite,
                          &do_edit_enter_or_place);
 
@@ -436,26 +426,10 @@ int main(void) {
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf, app.params, app.selfie, app.save_flash, use3d,
-                app.active_tab, app.save_scale, app.settings_flash > 0,
-                app.settings_row,
-                app.user_palettes, app.palette_sel_pal, app.palette_sel_color,
-                &app.ranges, comparing,
-                gal.mode, gal.count,
-                (const char (*)[64])gal.paths, gal.sel, gal.scroll,
-                shoot.shoot_mode, shoot.shoot_mode_open,
-                shoot.shoot_timer_secs, shoot.timer_open,
-                wig.n_frames, wig.delay_ms,
-                wig.preview,
-                wig.offset_dx, wig.offset_dy,
-                shoot.timer_active ? (shoot.timer_remaining_ms + 999) / 1000 : -1,
-                shoot.lomo_preset,
-                edit.active,
-                edit.tab, edit.sticker_cat, edit.sticker_sel, edit.sticker_scroll,
-                edit.gallery_frame,
-                edit.cursor_x, edit.cursor_y,
-                edit.pending_scale, edit.pending_angle,
-                edit.placing);
+        draw_ui(bot, staticBuf, dynBuf,
+                &app, &shoot, &wig, &gal, &edit,
+                use3d, comparing,
+                shoot.timer_active ? (shoot.timer_remaining_ms + 999) / 1000 : -1);
         C3D_FrameEnd(0);
         app.frame_count++;
     }

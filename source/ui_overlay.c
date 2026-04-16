@@ -191,30 +191,10 @@ void draw_calibrate_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 
 void draw_ui(C3D_RenderTarget *bot,
              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-             FilterParams p, bool selfie,
-             int save_flash, bool warn3d,
-             int active_tab, int save_scale, bool settings_flash,
-             int settings_row,
-             const PaletteDef *user_palettes,
-             int palette_sel_pal, int palette_sel_color,
-             const FilterRanges *ranges,
-             bool comparing,
-             bool gallery_mode, int gallery_count,
-             const char gallery_paths[][64], int gallery_sel, int gallery_scroll,
-             int shoot_mode, bool shoot_mode_open,
-             int shoot_timer_secs, bool timer_open,
-             int wiggle_frames, int wiggle_delay_ms,
-             bool wiggle_preview,
-             int wiggle_offset_dx, int wiggle_offset_dy,
-             int timer_countdown,
-             int lomo_preset,
-             bool gallery_edit_mode,
-             int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
-             int gallery_frame,
-             float sticker_cursor_x, float sticker_cursor_y,
-             float sticker_pending_scale, float sticker_pending_angle,
-             bool sticker_placing) {
-    (void)settings_row;
+             const AppState *app, const ShootState *shoot,
+             const WiggleState *wig, const GalleryState *gal,
+             const EditState *edit,
+             bool warn3d, bool comparing, int timer_countdown) {
 
     C2D_TargetClear(bot, CLR_BG);
     C2D_SceneBegin(bot);
@@ -233,9 +213,11 @@ void draw_ui(C3D_RenderTarget *bot,
 
     C2D_TextBufClear(staticBuf);
 
+    bool settings_flash = app->settings_flash > 0;
+
     // Bottom nav bar — hidden in gallery/edit contexts (they own the full screen)
-    if (!gallery_edit_mode && !gallery_mode) {
-        draw_bottom_nav(staticBuf, active_tab);
+    if (!edit->active && !gal->mode) {
+        draw_bottom_nav(staticBuf, app->active_tab);
         C2D_DrawRectSolid(0, NAV_Y, 0.5f, BOT_W, 1, CLR_DIVIDER);
     }
 
@@ -252,44 +234,42 @@ void draw_ui(C3D_RenderTarget *bot,
     }
 
     // Content area dispatch
-    if (gallery_edit_mode) {
-        // Edit mode owns the full bottom screen
-        draw_gallery_edit_tab(staticBuf, edit_tab, sticker_cat, sticker_sel, sticker_scroll, gallery_frame,
-                              sticker_cursor_x, sticker_cursor_y,
-                              sticker_pending_scale, sticker_pending_angle,
-                              sticker_placing);
-    } else if (gallery_mode) {
-        // Gallery mode owns the full bottom screen (no shoot strip)
-        draw_gallery_tab(staticBuf, dynBuf, gallery_count, gallery_paths,
-                         gallery_sel, gallery_scroll);
-    } else if (active_tab == TAB_SHOOT) {
-        draw_shoot_tab(staticBuf, selfie, save_flash, user_palettes,
-                       p.palette, gallery_mode, &p, ranges,
-                       shoot_mode, shoot_mode_open,
-                       shoot_timer_secs, timer_open,
-                       wiggle_frames, wiggle_delay_ms,
-                       wiggle_preview,
-                       wiggle_offset_dx, wiggle_offset_dy,
-                       lomo_preset);
-    } else if (active_tab == TAB_STYLE) {
-        draw_style_tab(staticBuf, dynBuf, &p, ranges);
-    } else if (active_tab == TAB_FX) {
-        draw_fx_tab(staticBuf, dynBuf, &p, settings_flash);
-    } else if (active_tab == TAB_MORE) {
-        draw_more_tab(staticBuf, &p, save_scale, settings_flash);
-    } else if (active_tab == TAB_PALETTE_ED) {
-        draw_palette_tab(staticBuf, dynBuf, user_palettes,
-                         palette_sel_pal, palette_sel_color, settings_flash);
-    } else if (active_tab == TAB_CALIBRATE) {
-        draw_calibrate_tab(staticBuf, dynBuf, ranges, settings_flash);
+    if (edit->active) {
+        draw_gallery_edit_tab(staticBuf, edit->tab, edit->sticker_cat, edit->sticker_sel,
+                              edit->sticker_scroll, edit->gallery_frame,
+                              edit->cursor_x, edit->cursor_y,
+                              edit->pending_scale, edit->pending_angle,
+                              edit->placing);
+    } else if (gal->mode) {
+        draw_gallery_tab(staticBuf, dynBuf, gal->count,
+                         (const char (*)[64])gal->paths,
+                         gal->sel, gal->scroll);
+    } else if (app->active_tab == TAB_SHOOT) {
+        draw_shoot_tab(staticBuf, app->selfie, app->save_flash, app->user_palettes,
+                       app->params.palette, gal->mode, &app->params, &app->ranges,
+                       shoot->shoot_mode, shoot->shoot_mode_open,
+                       shoot->shoot_timer_secs, shoot->timer_open,
+                       wig->n_frames, wig->delay_ms,
+                       wig->preview,
+                       wig->offset_dx, wig->offset_dy,
+                       shoot->lomo_preset);
+    } else if (app->active_tab == TAB_STYLE) {
+        draw_style_tab(staticBuf, dynBuf, &app->params, &app->ranges);
+    } else if (app->active_tab == TAB_FX) {
+        draw_fx_tab(staticBuf, dynBuf, &app->params, settings_flash);
+    } else if (app->active_tab == TAB_MORE) {
+        draw_more_tab(staticBuf, &app->params, app->save_scale, settings_flash);
+    } else if (app->active_tab == TAB_PALETTE_ED) {
+        draw_palette_tab(staticBuf, dynBuf, app->user_palettes,
+                         app->palette_sel_pal, app->palette_sel_color, settings_flash);
+    } else if (app->active_tab == TAB_CALIBRATE) {
+        draw_calibrate_tab(staticBuf, dynBuf, &app->ranges, settings_flash);
     }
 
     // Countdown overlay — drawn last so it appears on top of everything
     if (timer_countdown >= 0) {
         C2D_Text t;
-        // Semi-transparent dark veil
         C2D_DrawRectSolid(0, 0, 0.7f, BOT_W, CONTENT_H, C2D_Color32(0, 0, 0, 160));
-        // Large number
         char cbuf[8];
         snprintf(cbuf, sizeof(cbuf), "%d", timer_countdown > 99 ? 99 : timer_countdown);
         C2D_TextParse(&t, staticBuf, cbuf);
@@ -298,7 +278,6 @@ void draw_ui(C3D_RenderTarget *bot,
         C2D_DrawText(&t, C2D_WithColor,
                      (BOT_W - tw) * 0.5f, (CONTENT_H - th) * 0.5f - 8.0f,
                      0.8f, 2.0f, 2.0f, C2D_Color32(255, 255, 255, 255));
-        // "B to cancel" hint
         C2D_TextParse(&t, staticBuf, "B to cancel");
         C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
         C2D_DrawText(&t, C2D_WithColor,
