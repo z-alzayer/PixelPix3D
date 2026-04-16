@@ -1,6 +1,12 @@
 #include "wigglegram.h"
 #include "camera.h"
 #include "apng_enc.h"
+#include "app_state.h"
+#include "shoot.h"
+#include "ui.h"
+#include "image_load.h"
+#include "settings.h"
+#include "sound.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -231,4 +237,130 @@ int save_wiggle_apng(const char *path,
     int ok = (fwrite(s_apng_buf, 1, apng_len, fp) == apng_len);
     fclose(fp);
     return ok;
+}
+
+// ---------------------------------------------------------------------------
+// wiggle_preview_update — handle input while wiggle preview is displayed
+// ---------------------------------------------------------------------------
+
+void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
+                           u32 kDown, u32 kHeld,
+                           bool do_save,
+                           u8 *wiggle_left, u8 *wiggle_right,
+                           int *save_flash) {
+    // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
+    u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
+    if (dpad) {
+        bool fire = (kDown & dpad) || (wig->dpad_repeat > 20 && wig->dpad_repeat % 4 == 0);
+        wig->dpad_repeat++;
+        if (fire) {
+            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -20) { wig->offset_dx--; wig->rebuild = true; }
+            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  20) { wig->offset_dx++; wig->rebuild = true; }
+            if ((dpad & KEY_DUP)    && wig->offset_dy <  10) { wig->offset_dy++; wig->rebuild = true; }
+            if ((dpad & KEY_DDOWN)  && wig->offset_dy > -10) { wig->offset_dy--; wig->rebuild = true; }
+        }
+    } else {
+        wig->dpad_repeat = 0;
+    }
+
+    // Touch buttons — re-read touch here so they work even when captureInterrupted
+    // Use tapped (kDown) not held, to avoid rapid-fire on resistive screen
+    {
+        touchPosition wtouch;
+        hidTouchRead(&wtouch);
+        bool wtapped = (kDown & KEY_TOUCH) != 0;
+        if (wtapped) {
+            int tx = wtouch.px, ty = wtouch.py;
+            #define WBTW  28
+            #define WBTH  22
+            #define WVALW 36
+            #define WRSTW 22
+            #define WMINX 18
+            #define WVALX (WMINX + WBTW + 2)
+            #define WPLUX (WVALX + WVALW + 2)
+            #define WRSTX (WPLUX + WBTW + 2)
+            int row_x_y = SHOOT_CONTENT_Y + 4;
+            int row_y_y = SHOOT_CONTENT_Y + 32;
+            int *val = NULL; int lo = 0, hi = 0;
+            if (tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
+                { val = &wig->offset_dx; lo = -20; hi = 20; }
+            else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
+                { val = &wig->offset_dy; lo = -10; hi = 10; }
+            if (val) {
+                if (tx >= WMINX && tx < WMINX + WBTW) {
+                    if (*val > lo) { (*val)--; wig->rebuild = true; }
+                } else if (tx >= WPLUX && tx < WPLUX + WBTW) {
+                    if (*val < hi) { (*val)++; wig->rebuild = true; }
+                } else if (tx >= WRSTX && tx < WRSTX + WRSTW) {
+                    *val = 0; wig->rebuild = true;
+                }
+            }
+            #undef WBTW
+            #undef WBTH
+            #undef WVALW
+            #undef WRSTW
+            #undef WMINX
+            #undef WVALX
+            #undef WPLUX
+            #undef WRSTX
+        }
+    }
+
+    // L/R bumpers cycle through delay presets (50 → 100 → 200 → 500)
+    if (kDown & KEY_L || kDown & KEY_R) {
+        static const int delay_presets[] = {50, 100, 200, 500};
+        int cur = 0;
+        for (int i = 0; i < 4; i++) if (wig->delay_ms == delay_presets[i]) { cur = i; break; }
+        wig->delay_ms = delay_presets[(cur + (kDown & KEY_L ? 3 : 1)) % 4];
+    }
+
+    if (kDown & KEY_B) {
+        wig->preview = false;
+    } else if ((do_save || (kDown & KEY_A)) && !save->busy) {
+        char apng_path[64];
+        if (next_wiggle_path(SAVE_DIR, apng_path, sizeof(apng_path))) {
+            settings_save_file_counter(file_counter_next());
+            // wiggle_left/right already hold the raw RGB565 snapshots
+            memcpy(save->snapshot_buf,  wiggle_left,  CAMERA_SCREEN_SIZE);
+            memcpy(save->snapshot_buf2, wiggle_right, CAMERA_SCREEN_SIZE);
+            memcpy(save->save_path, apng_path, sizeof(apng_path));
+            save->wiggle_mode      = true;
+            save->wiggle_n_frames  = wig->n_frames;
+            save->wiggle_delay_ms  = wig->delay_ms;
+            save->wiggle_has_align = wig->has_align;
+            save->wiggle_offset_dx = wig->offset_dx;
+            save->wiggle_offset_dy = wig->offset_dy;
+            if (wig->has_align) save->wiggle_align_result = wig->align_res;
+            save->busy = true;
+            *save_flash = 20;
+            play_shutter_click();
+            LightEvent_Signal(&save->request_event);
+            wig->preview = false;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// wiggle_preview_tick — advance animation (rebuild if offsets changed)
+// ---------------------------------------------------------------------------
+
+void wiggle_preview_tick(WiggleState *wig,
+                         uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                         const u8 *wiggle_left, const u8 *wiggle_right) {
+    // Rebuild frames when user has adjusted H/V offsets
+    if (wig->rebuild) {
+        wig->n_frames = build_wiggle_preview_frames(preview_frames,
+                                        wiggle_left, wiggle_right,
+                                        CAMERA_WIDTH, CAMERA_HEIGHT,
+                                        wig->n_frames, NULL,
+                                        wig->offset_dx, wig->offset_dy,
+                                        &wig->crop_w, &wig->crop_h);
+        wig->rebuild = false;
+    }
+    u64 now = svcGetSystemTick();
+    u64 period = (u64)wig->delay_ms * SYSCLOCK_ARM11 / 1000;
+    if (now - wig->preview_last_tick >= period) {
+        wig->preview_frame     = (wig->preview_frame + 1) % wig->n_frames;
+        wig->preview_last_tick = now;
+    }
 }

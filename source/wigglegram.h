@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <3ds.h>
+#include "camera.h"
+
+// Forward declarations (avoid circular include with app_state.h / shoot.h)
+struct WiggleState;
+struct SaveThreadState;
 
 // Maximum number of animation frames in a wiggle preview / saved APNG.
 #define WIGGLE_PREVIEW_MAX 8
@@ -31,6 +37,27 @@ int build_wiggle_preview_frames(uint16_t dst[][400 * 240],
                                 const WiggleAlign *align,
                                 int offset_dx, int offset_dy,
                                 int *out_w, int *out_h);
+
+// ---------------------------------------------------------------------------
+// Per-frame helpers extracted from the main loop
+// ---------------------------------------------------------------------------
+
+// Handle wiggle preview input (d-pad offsets, touch +/- buttons, delay cycling,
+// B cancel, A/save confirm).  Called each frame when wig->preview is true.
+// do_save: true if the touch-screen Save button was tapped this frame.
+// save_flash: pointer to app.save_flash (set to 20 on save trigger).
+void wiggle_preview_update(struct WiggleState *wig,
+                           struct SaveThreadState *save,
+                           u32 kDown, u32 kHeld,
+                           bool do_save,
+                           u8 *wiggle_left, u8 *wiggle_right,
+                           int *save_flash);
+
+// Advance the wiggle preview animation: rebuild frames if offsets changed,
+// then cycle to the next frame based on wall-clock time.
+void wiggle_preview_tick(struct WiggleState *wig,
+                         uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                         const u8 *wiggle_left, const u8 *wiggle_right);
 
 // Save a true-colour wiggle APNG from two raw RGB565 camera buffers.
 // n_frames: number of animation frames (2..8).

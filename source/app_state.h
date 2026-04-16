@@ -1,0 +1,112 @@
+#ifndef APP_STATE_H
+#define APP_STATE_H
+
+#include <stdbool.h>
+#include <3ds.h>
+#include "filter.h"
+#include "sticker.h"
+#include "wigglegram.h"
+#include "camera.h"
+
+// ---------------------------------------------------------------------------
+// Shoot mode state (GB Cam / Wiggle / Lomo + timer)
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    int  shoot_mode;       // SHOOT_MODE_GBCAM / WIGGLE / LOMO
+    bool shoot_mode_open;  // dropdown visible
+    bool timer_open;       // timer picker visible
+    int  shoot_timer_secs; // 0 = disabled
+    int  lomo_preset;
+
+    // timer countdown
+    bool timer_active;
+    int  timer_remaining_ms;
+    u64  timer_prev_tick;
+} ShootState;
+
+// ---------------------------------------------------------------------------
+// Wiggle capture / preview
+// ---------------------------------------------------------------------------
+
+typedef struct WiggleState {
+    bool          preview;          // showing captured pair
+    int           n_frames;         // requested frame count
+    int           delay_ms;
+    int           preview_frame;    // current cycling index
+    u64           preview_last_tick;
+    WiggleAlign   align_res;
+    bool          has_align;
+    int           offset_dx;
+    int           offset_dy;
+    bool          rebuild;          // offsets changed, need re-blend
+    int           crop_w;
+    int           crop_h;
+    int           dpad_repeat;
+} WiggleState;
+
+// ---------------------------------------------------------------------------
+// Gallery browser
+// ---------------------------------------------------------------------------
+
+#define GALLERY_MAX               256
+#define GALLERY_WIGGLE_MAX_FRAMES   8
+
+typedef struct {
+    bool  mode;              // gallery visible
+    int   sel;
+    int   scroll;
+    char  paths[GALLERY_MAX][64];
+    int   count;
+    int   loaded;            // index of photo currently in thumb buffers (-1 = none)
+    int   n_frames;          // 1 = still, >1 = wiggle animation
+    int   delay_ms;
+    u64   anim_tick;
+    int   anim_frame;
+} GalleryState;
+
+// ---------------------------------------------------------------------------
+// Gallery edit / sticker placement
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    bool  active;            // edit mode on
+    int   tab;               // 0 = stickers, 1 = frames
+    int   sticker_cat;
+    int   sticker_sel;
+    int   sticker_scroll;
+    int   gallery_frame;     // active frame overlay index (-1 = none)
+    PlacedSticker placed[STICKER_MAX];
+    int   save_flash;
+
+    // placement cursor
+    float cursor_x;
+    float cursor_y;
+    float pending_scale;
+    float pending_angle;
+    bool  placing;           // sticker "picked up"
+} EditState;
+
+// ---------------------------------------------------------------------------
+// Top-level app / UI state
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    int   active_tab;
+    bool  selfie;
+    bool  cam_active;
+    int   save_flash;
+    int   settings_flash;
+    int   frame_count;
+    int   save_scale;
+    int   settings_row;
+
+    FilterParams  params;
+    FilterParams  default_params;
+    PaletteDef    user_palettes[PALETTE_COUNT];
+    FilterRanges  ranges;
+    int           palette_sel_pal;
+    int           palette_sel_color;
+} AppState;
+
+#endif
