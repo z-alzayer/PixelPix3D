@@ -24,6 +24,7 @@
 #include "shoot.h"
 #include "gallery.h"
 #include "editor.h"
+#include "render.h"
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -427,41 +428,11 @@ int main(void) {
         gallery_tick(&gal);
 
         // Blit camera frame to top screen raw framebuffer
-        gfxSet3D(false);
-        if (use3d || shoot.timer_open) {
-            u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
-            memset(fb, 0, CAMERA_WIDTH * CAMERA_HEIGHT * 3);
-        } else if (edit.active && gal.count > 0) {
-            edit_render_top(&edit, &gal, edit_preview_rgb888);
-        } else {
-            if (wig.preview) {
-                // Compose cropped frame into a full 400×240 buffer (black borders),
-                // then blit normally. This keeps the framebuffer column stride correct.
-                int bx = (CAMERA_WIDTH  - wig.crop_w) / 2;
-                int by = (CAMERA_HEIGHT - wig.crop_h) / 2;
-                memset(wiggle_compose_buf, 0, sizeof(wiggle_compose_buf));
-                const uint16_t *src = wiggle_preview_frames[wig.preview_frame];
-                for (int row = 0; row < wig.crop_h; row++)
-                    memcpy(wiggle_compose_buf + (by + row) * CAMERA_WIDTH + bx,
-                           src + row * wig.crop_w,
-                           wig.crop_w * sizeof(uint16_t));
-                writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                                wiggle_compose_buf, 0, 0,
-                                                CAMERA_WIDTH, CAMERA_HEIGHT);
-            } else {
-                void *blit_src;
-                if (gal.mode && gal.count > 0)
-                    blit_src = gallery_thumbs[gal.anim_frame];
-                else
-                    blit_src = comparing ? buf : filtered_buf;
-                writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                                blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
-            }
-        }
-
-        // Flush top screen before C3D takes the GPU
-        gfxFlushBuffers();
-        gfxScreenSwapBuffers(GFX_TOP, true);
+        render_top_screen(use3d, shoot.timer_open,
+                          &edit, &gal, &wig,
+                          edit_preview_rgb888, wiggle_compose_buf,
+                          wiggle_preview_frames,
+                          comparing, buf, filtered_buf);
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
