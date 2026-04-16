@@ -1,14 +1,9 @@
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <malloc.h>
 #include <setjmp.h>
-#include <stdbool.h>
 #include <3ds.h>
 #include <citro2d.h>
-#include <sys/dirent.h>
-#include <sys/errno.h>
-#include <sys/unistd.h>
 
 #include "camera.h"
 #include "ui.h"
@@ -17,7 +12,6 @@
 #include "lomo.h"
 #include "image_load.h"
 #include "wigglegram.h"
-#include "sticker.h"
 #include "settings.h"
 #include "sound.h"
 #include "app_state.h"
@@ -140,7 +134,6 @@ int main(void) {
         .dpad_repeat      = 0,
     };
     static uint16_t wiggle_preview_frames[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
-    static uint16_t wiggle_compose_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
 
     // Gallery state
     GalleryState gal = {
@@ -170,7 +163,6 @@ int main(void) {
         .placing        = false,
     };
     for (int i = 0; i < STICKER_MAX; i++) edit.placed[i].active = false;
-    static uint8_t edit_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 
     u32 bufSize;
     CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
@@ -420,7 +412,6 @@ int main(void) {
         // Blit camera frame to top screen raw framebuffer
         render_top_screen(use3d, shoot.timer_open,
                           &edit, &gal, &wig,
-                          edit_preview_rgb888, wiggle_compose_buf,
                           wiggle_preview_frames,
                           comparing, buf, filtered_buf);
 

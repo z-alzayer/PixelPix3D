@@ -4,11 +4,13 @@
 #include "editor.h"
 #include <string.h>
 
+// Scratch buffers owned by this module
+static uint8_t  s_edit_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
+static uint16_t s_wiggle_compose_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
+
 void render_top_screen(bool use3d, bool timer_open,
                        const EditState *edit, const GalleryState *gal,
                        const WiggleState *wig,
-                       uint8_t *edit_preview_rgb888,
-                       uint16_t *wiggle_compose_buf,
                        uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                        bool comparing, const u8 *buf, const u8 *filtered_buf) {
     gfxSet3D(false);
@@ -16,21 +18,21 @@ void render_top_screen(bool use3d, bool timer_open,
         u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
         memset(fb, 0, CAMERA_WIDTH * CAMERA_HEIGHT * 3);
     } else if (edit->active && gal->count > 0) {
-        edit_render_top(edit, gal, edit_preview_rgb888);
+        edit_render_top(edit, gal, s_edit_preview_rgb888);
     } else {
         if (wig->preview) {
             // Compose cropped frame into a full 400x240 buffer (black borders),
             // then blit normally. This keeps the framebuffer column stride correct.
             int bx = (CAMERA_WIDTH  - wig->crop_w) / 2;
             int by = (CAMERA_HEIGHT - wig->crop_h) / 2;
-            memset(wiggle_compose_buf, 0, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+            memset(s_wiggle_compose_buf, 0, sizeof(s_wiggle_compose_buf));
             const uint16_t *src = wiggle_preview_frames[wig->preview_frame];
             for (int row = 0; row < wig->crop_h; row++)
-                memcpy(wiggle_compose_buf + (by + row) * CAMERA_WIDTH + bx,
+                memcpy(s_wiggle_compose_buf + (by + row) * CAMERA_WIDTH + bx,
                        src + row * wig->crop_w,
                        wig->crop_w * sizeof(uint16_t));
             writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                            wiggle_compose_buf, 0, 0,
+                                            s_wiggle_compose_buf, 0, 0,
                                             CAMERA_WIDTH, CAMERA_HEIGHT);
         } else {
             void *blit_src;
