@@ -35,4 +35,11 @@ uint8_t *camera_get_upscale_buf(void);
 void writePictureToFramebufferRGB565(void *fb, void *img,
                                      u16 x, u16 y, u16 w, u16 h);
 
+// ---------------------------------------------------------------------------
+// Camera toggle (swap front ↔ rear)
+// ---------------------------------------------------------------------------
+
+void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
+                   Handle camReceiveEvent[4], bool *captureInterrupted);
+
 #endif

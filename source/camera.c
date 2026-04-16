@@ -1,4 +1,5 @@
 #include "camera.h"
+#include <stdbool.h>
 #include <string.h>
 
 // ---------------------------------------------------------------------------
@@ -70,4 +71,40 @@ void writePictureToFramebufferRGB565(void *fb, void *img,
             fb_8[v+2] = ((data >> 11) & 0x1F) << 3;  // R
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Camera toggle (swap front ↔ rear)
+// ---------------------------------------------------------------------------
+
+void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
+                   Handle camReceiveEvent[4], bool *captureInterrupted) {
+    CAMU_StopCapture(PORT_BOTH);
+    for (int i = 0; i < 4; i++) {
+        if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
+    }
+    CAMU_Activate(SELECT_NONE);
+
+    *selfie    = !*selfie;
+    *camSelect = *selfie ? SELECT_IN1_OUT2 : SELECT_OUT1_OUT2;
+
+    CAMU_SetSize(*camSelect, SIZE_CTR_TOP_LCD, CONTEXT_A);
+    CAMU_SetOutputFormat(*camSelect, OUTPUT_RGB_565, CONTEXT_A);
+    CAMU_SetFrameRate(*camSelect, FRAME_RATE_30);
+    CAMU_SetNoiseFilter(*camSelect, true);
+    CAMU_SetAutoExposure(*camSelect, true);
+    CAMU_SetAutoWhiteBalance(*camSelect, true);
+    CAMU_SetTrimming(PORT_CAM1, false);
+    CAMU_SetTrimming(PORT_CAM2, false);
+
+    CAMU_GetMaxBytes(bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
+    CAMU_SetTransferBytes(PORT_BOTH, *bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
+    CAMU_Activate(*camSelect);
+
+    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
+    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
+    CAMU_ClearBuffer(PORT_BOTH);
+    if (!*selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+    CAMU_StartCapture(PORT_BOTH);
+    *captureInterrupted = false;
 }
