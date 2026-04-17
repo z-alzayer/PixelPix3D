@@ -85,7 +85,7 @@ void settings_load(FilterParams *p, int *save_scale) {
     if (p->dither_mode  < 0)              p->dither_mode  = 0;
     if (p->dither_mode  > 3)              p->dither_mode  = 3;
     if (*save_scale     < 1)              *save_scale     = 1;
-    if (*save_scale     > 2)              *save_scale     = 2;
+    if (*save_scale     > 4)              *save_scale     = 4;
     if (p->fx_mode      < 0)              p->fx_mode      = 0;
     if (p->fx_mode      > 6)              p->fx_mode      = 6;
     if (p->fx_intensity < 0)              p->fx_intensity = 0;

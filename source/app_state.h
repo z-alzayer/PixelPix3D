@@ -43,6 +43,8 @@ typedef struct WiggleState {
     int           crop_w;
     int           crop_h;
     int           dpad_repeat;
+    int           capture_w;      // resolution of captured pair (400 or 640)
+    int           capture_h;      // (240 or 480)
 } WiggleState;
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,8 @@ typedef struct {
     FilterRanges  ranges;
     int           palette_sel_pal;
     int           palette_sel_color;
+    int           cam_w;          // current camera capture width  (400 or 640)
+    int           cam_h;          // current camera capture height (240 or 480)
 } AppState;
 
 #endif

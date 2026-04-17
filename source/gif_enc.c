@@ -1,81 +1,219 @@
 // gif_enc.c — GIF89a encoder
-// Uniform 6x6x6 palette quantization (O(1) per pixel) + LZW compression.
+// Median-cut palette quantization + LZW compression.
 // Fast enough for real-time use on 3DS ARM11.
 
 #include "gif_enc.h"
+#include "camera.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 
 // ---------------------------------------------------------------------------
-// Palette: 216-entry 6x6x6 uniform RGB cube + 40 greyscale entries = 256
-// Each channel is quantized to one of {0,51,102,153,204,255} (6 levels).
+// Median-cut quantization — builds an optimal 256-colour palette from the
+// actual pixel data.  Uses a 15-bit colour space (5 bits/channel = 32768
+// buckets) so the working set stays small (~130KB static).
 // ---------------------------------------------------------------------------
 
-#define PAL_SIZE 256
+#define PAL_SIZE  256
+#define HIST_SIZE 32768  // 2^15
 
-// Build the palette once into a static array.
-// Indices 0-215: colour cube r*36 + g*6 + b  (r,g,b in 0..5)
-// Indices 216-255: greyscale steps 0..255 (every ~6.5 steps, filling the rest)
+// Histogram: count of pixels per 15-bit colour (R5G5B5).
+static uint16_t s_hist[HIST_SIZE];
+
+// Lookup table: 15-bit colour → palette index (filled after median-cut).
+static uint8_t s_lut[HIST_SIZE];
+
+// The palette itself (256 RGB triplets).
 static uint8_t s_palette[PAL_SIZE * 3];
-static bool    s_palette_built = false;
 
-static void build_palette(void)
+// Convert RGB888 to a 15-bit index.
+static inline int rgb_to_15(uint8_t r, uint8_t g, uint8_t b)
 {
-    if (s_palette_built) return;
-    // 6x6x6 colour cube
-    static const uint8_t lev[6] = {0, 51, 102, 153, 204, 255};
-    int idx = 0;
-    for (int r = 0; r < 6; r++)
-        for (int g = 0; g < 6; g++)
-            for (int b = 0; b < 6; b++) {
-                s_palette[idx*3+0] = lev[r];
-                s_palette[idx*3+1] = lev[g];
-                s_palette[idx*3+2] = lev[b];
-                idx++;
+    return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+}
+
+// A "box" in colour space for median-cut.
+typedef struct {
+    int rmin, rmax, gmin, gmax, bmin, bmax;
+    int count;  // total pixel count in this box
+} MCBox;
+
+// Compute the bounds and pixel count of a box by scanning the histogram.
+static void box_shrink(MCBox *box)
+{
+    int rmin = 31, rmax = 0, gmin = 31, gmax = 0, bmin = 31, bmax = 0;
+    int count = 0;
+    for (int r = box->rmin; r <= box->rmax; r++)
+        for (int g = box->gmin; g <= box->gmax; g++)
+            for (int b = box->bmin; b <= box->bmax; b++) {
+                int c = s_hist[(r << 10) | (g << 5) | b];
+                if (c) {
+                    if (r < rmin) rmin = r;
+                    if (r > rmax) rmax = r;
+                    if (g < gmin) gmin = g;
+                    if (g > gmax) gmax = g;
+                    if (b < bmin) bmin = b;
+                    if (b > bmax) bmax = b;
+                    count += c;
+                }
             }
-    // Fill remaining 40 entries with evenly-spaced greyscale
-    for (int i = 0; i < 40; i++) {
-        uint8_t v = (uint8_t)(i * 255 / 39);
-        s_palette[idx*3+0] = v;
-        s_palette[idx*3+1] = v;
-        s_palette[idx*3+2] = v;
-        idx++;
-    }
-    s_palette_built = true;
+    box->rmin = rmin; box->rmax = rmax;
+    box->gmin = gmin; box->gmax = gmax;
+    box->bmin = bmin; box->bmax = bmax;
+    box->count = count;
 }
 
-// 4×4 Bayer ordered dither matrix, values 0..15 scaled to 0..50 (half a palette step).
-// Applied per-channel before snapping to the nearest cube level.
-static const int8_t s_bayer4[16] = {
-    -25, 13, -19,  19,
-     19,-13,  25, -19,
-    -13, 25, -19,  13,
-     25,-25,  19, -13
-};
-
-// Map a single RGB888 pixel to its palette index using Bayer dithering.
-static inline uint8_t quantize_pixel_dither(uint8_t r, uint8_t g, uint8_t b, int dither)
+// Split a box along its longest axis at the median.
+// Returns true if split succeeded (box had >1 distinct colour).
+static bool box_split(MCBox *src, MCBox *dst)
 {
-    int rv = (int)r + dither; if (rv < 0) rv = 0; if (rv > 255) rv = 255;
-    int gv = (int)g + dither; if (gv < 0) gv = 0; if (gv > 255) gv = 255;
-    int bv = (int)b + dither; if (bv < 0) bv = 0; if (bv > 255) bv = 255;
-    int ri = rv / 51; if (ri > 5) ri = 5;
-    int gi = gv / 51; if (gi > 5) gi = 5;
-    int bi = bv / 51; if (bi > 5) bi = 5;
-    return (uint8_t)(ri * 36 + gi * 6 + bi);
+    int rdim = src->rmax - src->rmin;
+    int gdim = src->gmax - src->gmin;
+    int bdim = src->bmax - src->bmin;
+    if (rdim == 0 && gdim == 0 && bdim == 0) return false;
+
+    // Choose longest axis
+    int axis; // 0=R, 1=G, 2=B
+    if (rdim >= gdim && rdim >= bdim) axis = 0;
+    else if (gdim >= bdim)            axis = 1;
+    else                              axis = 2;
+
+    // Accumulate counts along the chosen axis to find the median split point
+    int total = src->count;
+    int half  = total / 2;
+    int accum = 0;
+    int split = 0;
+
+    int lo, hi;
+    if (axis == 0) { lo = src->rmin; hi = src->rmax; }
+    else if (axis == 1) { lo = src->gmin; hi = src->gmax; }
+    else { lo = src->bmin; hi = src->bmax; }
+
+    for (int v = lo; v <= hi; v++) {
+        int slice_count = 0;
+        if (axis == 0) {
+            for (int g = src->gmin; g <= src->gmax; g++)
+                for (int b = src->bmin; b <= src->bmax; b++)
+                    slice_count += s_hist[(v << 10) | (g << 5) | b];
+        } else if (axis == 1) {
+            for (int r = src->rmin; r <= src->rmax; r++)
+                for (int b = src->bmin; b <= src->bmax; b++)
+                    slice_count += s_hist[(r << 10) | (v << 5) | b];
+        } else {
+            for (int r = src->rmin; r <= src->rmax; r++)
+                for (int g = src->gmin; g <= src->gmax; g++)
+                    slice_count += s_hist[(r << 10) | (g << 5) | v];
+        }
+        accum += slice_count;
+        if (accum >= half) { split = v; break; }
+    }
+
+    // Ensure we don't produce an empty box
+    if (split >= hi) split = hi - 1;
+
+    // Create the two child boxes
+    *dst = *src;
+    if (axis == 0) { src->rmax = split; dst->rmin = split + 1; }
+    else if (axis == 1) { src->gmax = split; dst->gmin = split + 1; }
+    else { src->bmax = split; dst->bmin = split + 1; }
+
+    box_shrink(src);
+    box_shrink(dst);
+    return dst->count > 0;
 }
 
-// Map pixels to palette indices with Bayer dithering, stored in s_indexed.
-static uint8_t s_indexed[400 * 240];
+// Compute the average colour of a box → palette entry, and fill the LUT.
+static void box_to_palette(const MCBox *box, int pal_idx)
+{
+    long rsum = 0, gsum = 0, bsum = 0, total = 0;
+    for (int r = box->rmin; r <= box->rmax; r++)
+        for (int g = box->gmin; g <= box->gmax; g++)
+            for (int b = box->bmin; b <= box->bmax; b++) {
+                int c = s_hist[(r << 10) | (g << 5) | b];
+                if (c) {
+                    // Use centre of each 5-bit bucket (v*8+4) for accuracy
+                    rsum += (long)c * (r * 8 + 4);
+                    gsum += (long)c * (g * 8 + 4);
+                    bsum += (long)c * (b * 8 + 4);
+                    total += c;
+                }
+            }
+    if (total == 0) total = 1;
+    s_palette[pal_idx*3+0] = (uint8_t)(rsum / total);
+    s_palette[pal_idx*3+1] = (uint8_t)(gsum / total);
+    s_palette[pal_idx*3+2] = (uint8_t)(bsum / total);
 
-static void quantize_frame(const uint8_t *rgb, int n_pixels, int width)
+    // Fill LUT for all 15-bit colours in this box
+    for (int r = box->rmin; r <= box->rmax; r++)
+        for (int g = box->gmin; g <= box->gmax; g++)
+            for (int b = box->bmin; b <= box->bmax; b++)
+                s_lut[(r << 10) | (g << 5) | b] = (uint8_t)pal_idx;
+}
+
+// Static box array — avoids stack usage on 3DS save thread
+static MCBox s_boxes[PAL_SIZE];
+
+// Build palette from pixel data across all frames via median-cut.
+static void build_palette(const uint8_t * const *frames, int n_frames,
+                          int n_pixels)
+{
+    // Build histogram
+    memset(s_hist, 0, sizeof(s_hist));
+    for (int f = 0; f < n_frames; f++) {
+        const uint8_t *px = frames[f];
+        for (int i = 0; i < n_pixels; i++) {
+            int idx15 = rgb_to_15(px[i*3], px[i*3+1], px[i*3+2]);
+            if (s_hist[idx15] < 0xFFFF) s_hist[idx15]++;
+        }
+    }
+
+    // Start with one box covering the full colour space
+    s_boxes[0] = (MCBox){0, 31, 0, 31, 0, 31, 0};
+    box_shrink(&s_boxes[0]);
+    int n_boxes = 1;
+
+    // Split boxes until we have 256 (or can't split any more)
+    while (n_boxes < PAL_SIZE) {
+        // Find the box with the largest count that can be split
+        int best = -1, best_count = 0;
+        for (int i = 0; i < n_boxes; i++) {
+            int rdim = s_boxes[i].rmax - s_boxes[i].rmin;
+            int gdim = s_boxes[i].gmax - s_boxes[i].gmin;
+            int bdim = s_boxes[i].bmax - s_boxes[i].bmin;
+            if ((rdim > 0 || gdim > 0 || bdim > 0) && s_boxes[i].count > best_count) {
+                best = i;
+                best_count = s_boxes[i].count;
+            }
+        }
+        if (best < 0) break; // no splittable boxes left
+
+        MCBox new_box;
+        if (box_split(&s_boxes[best], &new_box)) {
+            s_boxes[n_boxes++] = new_box;
+        } else {
+            break;
+        }
+    }
+
+    // Convert each box to a palette entry + fill LUT
+    for (int i = 0; i < n_boxes; i++)
+        box_to_palette(&s_boxes[i], i);
+
+    // Fill any unused palette entries (if <256 distinct colours)
+    for (int i = n_boxes; i < PAL_SIZE; i++) {
+        s_palette[i*3+0] = 0;
+        s_palette[i*3+1] = 0;
+        s_palette[i*3+2] = 0;
+    }
+}
+
+// Map pixels to palette indices using the 15-bit LUT.
+static uint8_t s_indexed[VGA_WIDTH * VGA_HEIGHT];
+
+static void quantize_frame(const uint8_t *rgb, int n_pixels)
 {
     for (int i = 0; i < n_pixels; i++) {
-        int x = i % width;
-        int y = i / width;
-        int dither = s_bayer4[(y & 3) * 4 + (x & 3)];
-        s_indexed[i] = quantize_pixel_dither(rgb[i*3+0], rgb[i*3+1], rgb[i*3+2], dither);
+        s_indexed[i] = s_lut[rgb_to_15(rgb[i*3], rgb[i*3+1], rgb[i*3+2])];
     }
 }
 
@@ -233,9 +371,9 @@ size_t gif_encode(uint8_t *buf, size_t buf_cap,
                   int width, int height, int delay_ms)
 {
     if (!buf || buf_cap == 0 || n_frames < 1 || !frames_rgb888) return 0;
-    if (width * height > 400 * 240) return 0;
+    if (width * height > VGA_WIDTH * VGA_HEIGHT) return 0;
 
-    build_palette();
+    build_palette(frames_rgb888, n_frames, width * height);
 
     GIFOut g = { buf, buf_cap, 0 };
 
@@ -264,8 +402,8 @@ size_t gif_encode(uint8_t *buf, size_t buf_cap,
     for (int f = 0; f < n_frames; f++) {
         int n_pixels = width * height;
 
-        // Quantize to global palette with Bayer dithering
-        quantize_frame(frames_rgb888[f], n_pixels, width);
+        // Quantize to global palette
+        quantize_frame(frames_rgb888[f], n_pixels);
 
         // Graphic Control Extension
         gif_put(&g, 0x21); gif_put(&g, 0xF9); gif_put(&g, 0x04);

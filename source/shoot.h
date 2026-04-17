@@ -26,6 +26,8 @@ typedef struct SaveThreadState {
     bool          wiggle_has_align;
     int           wiggle_offset_dx;
     int           wiggle_offset_dy;
+    int           wiggle_cap_w;    // capture resolution (400 or 640)
+    int           wiggle_cap_h;    // (240 or 480)
     volatile bool busy;            // main sets true on trigger; worker clears on finish
     volatile bool quit;            // main sets true at shutdown
     LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start

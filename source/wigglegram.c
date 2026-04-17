@@ -1,6 +1,6 @@
 #include "wigglegram.h"
 #include "camera.h"
-#include "apng_enc.h"
+#include "gif_enc.h"
 #include "app_state.h"
 #include "shoot.h"
 #include "ui.h"
@@ -90,27 +90,12 @@ void wiggle_align(WiggleAlign *align,
 }
 
 // ---------------------------------------------------------------------------
-// crop_frame — copy the overlap region from src into dst (RGB565, row-major)
-// lx/ly: top-left corner in src to start reading from
-// out_w/out_h: dimensions of the output crop
-// src_stride: row stride of src (full image width)
-// ---------------------------------------------------------------------------
-static void crop_frame(const uint16_t *src, int src_stride,
-                       int lx, int ly, int out_w, int out_h, uint16_t *dst)
-{
-    for (int py = 0; py < out_h; py++) {
-        const uint16_t *row = src + (ly + py) * src_stride + lx;
-        memcpy(dst + py * out_w, row, out_w * sizeof(uint16_t));
-    }
-}
-
-// ---------------------------------------------------------------------------
 // build_wiggle_preview_frames — crop both frames to the overlap (AND) region
 // ---------------------------------------------------------------------------
-int build_wiggle_preview_frames(uint16_t dst[][400 * 240],
+int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
                                 const uint8_t *left_rgb565,
                                 const uint8_t *right_rgb565,
-                                int w, int h, int nf,
+                                int src_w, int src_h, int nf,
                                 const WiggleAlign *align,
                                 int offset_dx, int offset_dy,
                                 int *out_w, int *out_h)
@@ -123,26 +108,33 @@ int build_wiggle_preview_frames(uint16_t dst[][400 * 240],
     int fdx = (align ? align->global_dx : 0) + offset_dx;
     int fdy = (align ? align->global_dy : 0) + offset_dy;
 
-    // Overlap dimensions
-    int ow = w - (fdx < 0 ? -fdx : fdx);
-    int oh = h - (fdy < 0 ? -fdy : fdy);
+    // Overlap dimensions at full capture resolution
+    int ow = src_w - (fdx < 0 ? -fdx : fdx);
+    int oh = src_h - (fdy < 0 ? -fdy : fdy);
     if (ow <= 0) ow = 1;
     if (oh <= 0) oh = 1;
 
     // Source top-left for each frame
-    // When fdx > 0: right image is shifted right; L's overlap starts at x=fdx, R's at x=0
-    // When fdx < 0: right image is shifted left;  L's overlap starts at x=0,   R's at x=-fdx
     int lx = fdx > 0 ? fdx : 0;
     int ly = fdy > 0 ? fdy : 0;
     int rx = fdx < 0 ? -fdx : 0;
     int ry = fdy < 0 ? -fdy : 0;
 
-    // Crop L into dst[0], R into dst[2]; build blend into dst[1] and dst[3]
-    // Sequence: L(0), blend(1), R(2), blend(3)  — matches 3ds-mpo-gif order
-    crop_frame(L, w, lx, ly, ow, oh, dst[0]);
-    crop_frame(R, w, rx, ry, ow, oh, dst[2]);
+    // Downscale overlap to fit display resolution for preview
+    int dw = ow <= CAMERA_WIDTH  ? ow : CAMERA_WIDTH;
+    int dh = oh <= CAMERA_HEIGHT ? oh : CAMERA_HEIGHT;
 
-    int npix = ow * oh;
+    // Nearest-neighbor downscale from overlap region to display size
+    for (int py = 0; py < dh; py++) {
+        int sy = py * oh / dh;
+        for (int px = 0; px < dw; px++) {
+            int sx = px * ow / dw;
+            dst[0][py * dw + px] = L[(ly + sy) * src_w + (lx + sx)];
+            dst[2][py * dw + px] = R[(ry + sy) * src_w + (rx + sx)];
+        }
+    }
+
+    int npix = dw * dh;
     for (int i = 0; i < npix; i++) {
         uint16_t lp = dst[0][i], rp = dst[2][i];
         uint16_t r = (((lp >> 11) & 0x1f) + ((rp >> 11) & 0x1f)) >> 1;
@@ -152,24 +144,24 @@ int build_wiggle_preview_frames(uint16_t dst[][400 * 240],
     }
     memcpy(dst[3], dst[1], npix * sizeof(uint16_t));
 
-    if (out_w) *out_w = ow;
-    if (out_h) *out_h = oh;
+    if (out_w) *out_w = dw;
+    if (out_h) *out_h = dh;
     return 4;
 }
 
 // ---------------------------------------------------------------------------
-// save_wiggle_apng
+// save_wiggle_gif
 // ---------------------------------------------------------------------------
 
-#define APNG_BUF_CAP (4 * 1024 * 1024)
-static uint8_t s_apng_buf[APNG_BUF_CAP];
+#define GIF_BUF_CAP (4 * 1024 * 1024)
+static uint8_t s_gif_buf[GIF_BUF_CAP];
 
-int save_wiggle_apng(const char *path,
-                     const uint8_t *left_rgb565,  int w, int h,
-                     const uint8_t *right_rgb565,
-                     int n_frames, int delay_ms,
-                     const WiggleAlign *align,
-                     int offset_dx, int offset_dy)
+int save_wiggle_gif(const char *path,
+                    const uint8_t *left_rgb565,  int w, int h,
+                    const uint8_t *right_rgb565,
+                    int n_frames, int delay_ms,
+                    const WiggleAlign *align,
+                    int offset_dx, int offset_dy)
 {
     (void)n_frames;
 
@@ -224,17 +216,15 @@ int save_wiggle_apng(const char *path,
 
     // Sequence: L, blend, R, blend  (matches 3ds-mpo-gif animation order)
     const uint8_t *frame_ptrs[4] = { left_crop, blend_crop, right_crop, blend_crop };
-    uint16_t delay_num = (uint16_t)delay_ms;
-    uint16_t delay_den = 1000;
-    size_t apng_len = apng_encode(s_apng_buf, APNG_BUF_CAP,
-                                  frame_ptrs, 4,
-                                  ow, oh, delay_num, delay_den);
+    size_t gif_len = gif_encode(s_gif_buf, GIF_BUF_CAP,
+                                frame_ptrs, 4,
+                                ow, oh, delay_ms);
     free(left_crop); free(right_crop); free(blend_crop);
 
-    if (apng_len == 0) return 0;
+    if (gif_len == 0) return 0;
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
-    int ok = (fwrite(s_apng_buf, 1, apng_len, fp) == apng_len);
+    int ok = (fwrite(s_gif_buf, 1, gif_len, fp) == gif_len);
     fclose(fp);
     return ok;
 }
@@ -321,8 +311,9 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         if (next_wiggle_path(SAVE_DIR, apng_path, sizeof(apng_path))) {
             settings_save_file_counter(file_counter_next());
             // wiggle_left/right already hold the raw RGB565 snapshots
-            memcpy(save->snapshot_buf,  wiggle_left,  CAMERA_SCREEN_SIZE);
-            memcpy(save->snapshot_buf2, wiggle_right, CAMERA_SCREEN_SIZE);
+            int cap_size = wig->capture_w * wig->capture_h * 2;
+            memcpy(save->snapshot_buf,  wiggle_left,  cap_size);
+            memcpy(save->snapshot_buf2, wiggle_right, cap_size);
             memcpy(save->save_path, apng_path, sizeof(apng_path));
             save->wiggle_mode      = true;
             save->wiggle_n_frames  = wig->n_frames;
@@ -330,6 +321,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_has_align = wig->has_align;
             save->wiggle_offset_dx = wig->offset_dx;
             save->wiggle_offset_dy = wig->offset_dy;
+            save->wiggle_cap_w     = wig->capture_w;
+            save->wiggle_cap_h     = wig->capture_h;
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;
             *save_flash = 20;
@@ -351,7 +344,7 @@ void wiggle_preview_tick(WiggleState *wig,
     if (wig->rebuild) {
         wig->n_frames = build_wiggle_preview_frames(preview_frames,
                                         wiggle_left, wiggle_right,
-                                        CAMERA_WIDTH, CAMERA_HEIGHT,
+                                        wig->capture_w, wig->capture_h,
                                         wig->n_frames, NULL,
                                         wig->offset_dx, wig->offset_dy,
                                         &wig->crop_w, &wig->crop_h);

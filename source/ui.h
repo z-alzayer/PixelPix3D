@@ -211,12 +211,14 @@
 
 #define MORE_LABEL_Y       8
 
-// Save Scale row
-#define MORE_SCALE_Y      38
-#define MORE_STOG_H       24
-#define MORE_STOG_W       56
-#define MORE_STOG_X0     188
-#define MORE_STOG_X1     248
+// Save Scale row — 4 buttons: 1x / 2x / 3x / 4x
+#define MORE_SCALE_Y          38
+#define MORE_STOG_H           24
+#define MORE_STOG_W           56
+#define MORE_STOG_X0         188
+#define MORE_STOG_X1         248
+#define MORE_SCALE_BTN_W      28
+#define MORE_SCALE_BTN_GAP     4
 
 // Dither row
 #define MORE_DITH_Y       72

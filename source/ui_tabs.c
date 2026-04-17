@@ -1112,21 +1112,27 @@ void draw_more_tab(C2D_TextBuf staticBuf,
 
     C2D_DrawRectSolid(0, 26, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
-    // --- Save Scale row ---
-    C2D_TextParse(&t, staticBuf, "Save Scale");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)MORE_SCALE_Y - 8.0f, 0.5f, sc, sc, CLR_TEXT);
-    draw_pill((float)MORE_STOG_X0, MORE_SCALE_Y - MORE_STOG_H / 2,
-              MORE_STOG_W, MORE_STOG_H,
-              save_scale == 1 ? CLR_ACCENT : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "1x");
-    C2D_DrawText(&t, C2D_WithColor, MORE_STOG_X0 + 20.0f, MORE_SCALE_Y - 8.0f,
-                 0.5f, sc, sc, save_scale == 1 ? CLR_WHITE : CLR_TEXT);
-    draw_pill((float)MORE_STOG_X1, MORE_SCALE_Y - MORE_STOG_H / 2,
-              MORE_STOG_W, MORE_STOG_H,
-              save_scale == 2 ? CLR_ACCENT : CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "2x");
-    C2D_DrawText(&t, C2D_WithColor, MORE_STOG_X1 + 20.0f, MORE_SCALE_Y - 8.0f,
-                 0.5f, sc, sc, save_scale == 2 ? CLR_WHITE : CLR_TEXT);
+    // --- Save Scale row: 1x / 2x / 3x / 4x ---
+    {
+        static const char *scale_labels[4] = { "1x", "2x", "3x", "4x" };
+        C2D_TextParse(&t, staticBuf, "Save Scale");
+        C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)MORE_SCALE_Y - 8.0f, 0.5f, sc, sc, CLR_TEXT);
+        for (int si = 0; si < 4; si++) {
+            float bx = (float)(MORE_STOG_X0 + si * (MORE_SCALE_BTN_W + MORE_SCALE_BTN_GAP));
+            bool sel = (save_scale == si + 1);
+            draw_pill(bx, MORE_SCALE_Y - MORE_STOG_H / 2,
+                      MORE_SCALE_BTN_W, MORE_STOG_H,
+                      sel ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, scale_labels[si]);
+            float tw2 = 0, th2 = 0;
+            C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((float)MORE_SCALE_BTN_W - tw2) / 2.0f,
+                         (float)MORE_SCALE_Y - 8.0f,
+                         0.5f, 0.38f, 0.38f,
+                         sel ? CLR_WHITE : CLR_TEXT);
+        }
+    }
 
     // --- Dither row ---
     {

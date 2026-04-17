@@ -23,7 +23,7 @@ SaveThreadState s_save;
 static void save_thread_func(void *arg) {
     SaveThreadState *st = (SaveThreadState *)arg;
     uint8_t *rgb_priv     = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
-    uint8_t *upscale_priv = malloc(SAVE_SCALE * CAMERA_WIDTH * SAVE_SCALE * CAMERA_HEIGHT * 3);
+    uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH * MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
     if (!rgb_priv || !upscale_priv) {
         free(rgb_priv);
         free(upscale_priv);
@@ -37,8 +37,9 @@ static void save_thread_func(void *arg) {
         memcpy(path, st->save_path, sizeof(path));
 
         if (st->wiggle_mode) {
-            save_wiggle_apng(path,
-                             st->snapshot_buf,  CAMERA_WIDTH, CAMERA_HEIGHT,
+            save_wiggle_gif(path,
+                             st->snapshot_buf,
+                             st->wiggle_cap_w, st->wiggle_cap_h,
                              st->snapshot_buf2,
                              st->wiggle_n_frames,
                              st->wiggle_delay_ms,
@@ -90,15 +91,19 @@ void save_thread_stop(Thread thread) {
 
 static void begin_wiggle_capture(WiggleState *wig,
                                  u8 *buf, u8 *wiggle_left, u8 *wiggle_right,
-                                 uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT]) {
-    memcpy(wiggle_left,  buf,                      CAMERA_SCREEN_SIZE);
-    memcpy(wiggle_right, buf + CAMERA_SCREEN_SIZE, CAMERA_SCREEN_SIZE);
-    wig->has_align = false;
-    wig->offset_dx = 0;
-    wig->offset_dy = 0;
+                                 uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                                 int cam_w, int cam_h) {
+    int screen_size = cam_w * cam_h * 2;
+    memcpy(wiggle_left,  buf,               screen_size);
+    memcpy(wiggle_right, buf + screen_size, screen_size);
+    wig->has_align  = false;
+    wig->offset_dx  = 0;
+    wig->offset_dy  = 0;
+    wig->capture_w  = cam_w;
+    wig->capture_h  = cam_h;
     wig->n_frames = build_wiggle_preview_frames(wiggle_preview_frames,
                                 wiggle_left, wiggle_right,
-                                CAMERA_WIDTH, CAMERA_HEIGHT,
+                                cam_w, cam_h,
                                 wig->n_frames, NULL,
                                 wig->offset_dx, wig->offset_dy,
                                 &wig->crop_w, &wig->crop_h);
@@ -155,7 +160,8 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
 
     // Fire save using the mode that was active before switching to Timer
     if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
-        begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right, wiggle_preview_frames);
+        begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
+                             wiggle_preview_frames, app->cam_w, app->cam_h);
     } else if (!s_save.busy) {
         begin_jpeg_save(app, filtered_buf);
     }
@@ -175,7 +181,8 @@ void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
         shoot->timer_prev_tick    = svcGetSystemTick();
         shoot->timer_active       = true;
     } else if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
-        begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right, wiggle_preview_frames);
+        begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
+                             wiggle_preview_frames, app->cam_w, app->cam_h);
     } else {
         begin_jpeg_save(app, filtered_buf);
     }

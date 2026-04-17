@@ -56,14 +56,20 @@ void gallery_load_selected(GalleryState *gal) {
     gal->delay_ms   = 250;
     gal->anim_tick  = svcGetSystemTick();
     gal->anim_frame = 0;
-    if (ext > gpath && strcmp(ext, ".png") == 0) {
-        uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
+    uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
+    if (ext > gpath && (strcmp(ext, ".png") == 0 || strcmp(ext, ".gif") == 0)) {
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)
             fptrs[i] = gallery_thumbs[i];
-        load_apng_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
-                                   &gal->n_frames, &gal->delay_ms,
-                                   CAMERA_WIDTH, CAMERA_HEIGHT);
-        if (gal->n_frames < 1) {
+        int ok = 0;
+        if (strcmp(ext, ".gif") == 0)
+            ok = load_gif_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
+                                           &gal->n_frames, &gal->delay_ms,
+                                           CAMERA_WIDTH, CAMERA_HEIGHT);
+        else
+            ok = load_apng_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
+                                            &gal->n_frames, &gal->delay_ms,
+                                            CAMERA_WIDTH, CAMERA_HEIGHT);
+        if (!ok || gal->n_frames < 1) {
             load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
             gal->n_frames = 1;
         }

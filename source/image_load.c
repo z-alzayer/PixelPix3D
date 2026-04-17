@@ -186,11 +186,256 @@ int load_apng_frames_to_rgb565(const char *path,
     return (loaded > 0) ? 1 : 0;
 }
 
+// ---------------------------------------------------------------------------
+// load_gif_frames_to_rgb565 — minimal GIF decoder for gallery thumbnails
+// ---------------------------------------------------------------------------
+// Bypasses stbi's GIF decoder which allocates ~2.7MB intermediate buffers
+// (out + background + history at 4 bytes/pixel) that OOM/crash on 3DS.
+// Instead we parse the GIF structure directly: read the global palette,
+// LZW-decode each frame to palette indices in a static buffer, then map
+// palette entries → RGB565 with nearest-neighbor scaling into the output.
+// Peak allocation: only the static index buffer (VGA_WIDTH*VGA_HEIGHT bytes).
+
+static uint8_t s_gif_indices[VGA_WIDTH * VGA_HEIGHT];
+
+// Minimal LZW decoder for GIF — reads sub-blocks from a FILE stream.
+typedef struct {
+    FILE *fp;
+    uint8_t block[256];
+    int     block_len;
+    int     block_pos;
+    unsigned long accum;
+    int           a_bits;
+} GIFReader;
+
+static int gif_read_byte(GIFReader *r) {
+    if (r->block_pos >= r->block_len) {
+        int sz = fgetc(r->fp);
+        if (sz <= 0) return -1;
+        r->block_len = sz;
+        r->block_pos = 0;
+        if ((int)fread(r->block, 1, sz, r->fp) != sz) return -1;
+    }
+    return r->block[r->block_pos++];
+}
+
+static int gif_read_code(GIFReader *r, int n_bits) {
+    while (r->a_bits < n_bits) {
+        int b = gif_read_byte(r);
+        if (b < 0) return -1;
+        r->accum |= (unsigned long)b << r->a_bits;
+        r->a_bits += 8;
+    }
+    int code = (int)(r->accum & ((1 << n_bits) - 1));
+    r->accum >>= n_bits;
+    r->a_bits -= n_bits;
+    return code;
+}
+
+// Skip GIF sub-blocks (read block sizes + data until a zero-length block).
+static void gif_skip_blocks(FILE *fp) {
+    int sz;
+    while ((sz = fgetc(fp)) > 0) fseek(fp, sz, SEEK_CUR);
+}
+
+// Decode one LZW image from current file position into s_gif_indices.
+// Returns number of pixels decoded.
+#define GIF_LZW_MAX 4096
+static uint16_t s_lzw_prefix[GIF_LZW_MAX];
+static uint8_t  s_lzw_suffix[GIF_LZW_MAX];
+static uint8_t  s_lzw_stack[GIF_LZW_MAX];
+
+static int gif_lzw_decode(FILE *fp, int n_pixels) {
+    int min_code_size = fgetc(fp);
+    if (min_code_size < 2 || min_code_size > 8) return 0;
+
+    int clear_code = 1 << min_code_size;
+    int eoi_code   = clear_code + 1;
+
+    GIFReader reader = { fp, {0}, 0, 0, 0, 0 };
+
+    int n_bits    = min_code_size + 1;
+    int max_code  = 1 << n_bits;
+    int free_entry = eoi_code + 1;
+
+    // Initialise table with single-char entries
+    for (int i = 0; i < clear_code; i++) {
+        s_lzw_prefix[i] = 0;
+        s_lzw_suffix[i] = (uint8_t)i;
+    }
+
+    int out_pos = 0;
+    int old_code = -1;
+    int first_char = 0;
+
+    while (out_pos < n_pixels) {
+        int code = gif_read_code(&reader, n_bits);
+        if (code < 0 || code == eoi_code) break;
+
+        if (code == clear_code) {
+            n_bits     = min_code_size + 1;
+            max_code   = 1 << n_bits;
+            free_entry = eoi_code + 1;
+            old_code   = -1;
+            continue;
+        }
+
+        int in_code = code;
+        int sp = 0;
+
+        if (code >= free_entry) {
+            if (old_code < 0) break;
+            s_lzw_stack[sp++] = (uint8_t)first_char;
+            code = old_code;
+        }
+
+        while (code >= clear_code) {
+            if (sp >= GIF_LZW_MAX) goto done;
+            s_lzw_stack[sp++] = s_lzw_suffix[code];
+            code = s_lzw_prefix[code];
+        }
+        s_lzw_stack[sp++] = s_lzw_suffix[code];
+        first_char = s_lzw_suffix[code];
+
+        // Output in reverse order
+        for (int i = sp - 1; i >= 0 && out_pos < n_pixels; i--)
+            s_gif_indices[out_pos++] = s_lzw_stack[i];
+
+        // Add new entry to table
+        if (old_code >= 0 && free_entry < GIF_LZW_MAX) {
+            s_lzw_prefix[free_entry] = (uint16_t)old_code;
+            s_lzw_suffix[free_entry] = (uint8_t)first_char;
+            free_entry++;
+            if (free_entry >= max_code && n_bits < 12) {
+                n_bits++;
+                max_code = 1 << n_bits;
+            }
+        }
+        old_code = in_code;
+    }
+done:
+    // Skip remaining sub-blocks
+    gif_skip_blocks(fp);
+    return out_pos;
+}
+
+int load_gif_frames_to_rgb565(const char *path,
+                               uint16_t **frames, int max_frames,
+                               int *out_n_frames, int *out_delay_ms,
+                               int width, int height) {
+    *out_n_frames = 0;
+    *out_delay_ms = 250;
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return 0;
+
+    // GIF header (6 bytes) + Logical Screen Descriptor (7 bytes)
+    uint8_t hdr[13];
+    if (fread(hdr, 1, 13, fp) != 13) { fclose(fp); return 0; }
+    if (hdr[0] != 'G' || hdr[1] != 'I' || hdr[2] != 'F') { fclose(fp); return 0; }
+
+    int gw = hdr[6] | (hdr[7] << 8);
+    int gh = hdr[8] | (hdr[9] << 8);
+    int packed = hdr[10];
+    int has_gct = (packed >> 7) & 1;
+    int gct_size = has_gct ? (1 << ((packed & 7) + 1)) : 0;
+
+    if (gw <= 0 || gh <= 0 || gw > VGA_WIDTH || gh > VGA_HEIGHT) { fclose(fp); return 0; }
+
+    // Read global colour table
+    static uint8_t palette[256][3];
+    memset(palette, 0, sizeof(palette));
+    if (gct_size > 0) {
+        if ((int)fread(palette, 3, gct_size, fp) != gct_size) { fclose(fp); return 0; }
+    }
+
+    // Pre-compute palette → RGB565 LUT
+    static uint16_t pal565[256];
+    for (int i = 0; i < 256; i++) {
+        pal565[i] = ((uint16_t)(palette[i][0] >> 3) << 11)
+                   | ((uint16_t)(palette[i][1] >> 2) <<  5)
+                   |  (uint16_t)(palette[i][2] >> 3);
+    }
+
+    int n_pixels = gw * gh;
+    int loaded = 0;
+
+    // Walk blocks until we've decoded enough frames or hit the trailer
+    while (loaded < max_frames) {
+        int b = fgetc(fp);
+        if (b < 0 || b == 0x3B) break; // EOF or trailer
+
+        if (b == 0x21) { // Extension
+            int label = fgetc(fp);
+            if (label == 0xF9) { // Graphic Control Extension
+                int sz = fgetc(fp);
+                if (sz >= 4) {
+                    uint8_t gce[4];
+                    if (fread(gce, 1, 4, fp) != 4) break;
+                    uint16_t cs = gce[1] | (gce[2] << 8);
+                    int ms = cs * 10;
+                    if (loaded == 0) *out_delay_ms = ms < 10 ? 10 : ms;
+                    fgetc(fp); // block terminator
+                } else {
+                    gif_skip_blocks(fp);
+                }
+            } else {
+                gif_skip_blocks(fp);
+            }
+            continue;
+        }
+
+        if (b == 0x2C) { // Image Descriptor
+            uint8_t desc[9];
+            if (fread(desc, 1, 9, fp) != 9) break;
+            int iw = desc[4] | (desc[5] << 8);
+            int ih = desc[6] | (desc[7] << 8);
+            int ipacked = desc[8];
+            int has_lct = (ipacked >> 7) & 1;
+            int lct_size = has_lct ? (1 << ((ipacked & 7) + 1)) : 0;
+
+            // Skip local colour table if present (our encoder never uses one)
+            if (lct_size > 0) fseek(fp, lct_size * 3, SEEK_CUR);
+
+            if (iw != gw || ih != gh || iw * ih > VGA_WIDTH * VGA_HEIGHT) {
+                // Unexpected frame size — skip LZW data
+                fgetc(fp); // min code size
+                gif_skip_blocks(fp);
+                continue;
+            }
+
+            int decoded = gif_lzw_decode(fp, n_pixels);
+            if (decoded < n_pixels) {
+                // Partial decode — zero-fill the rest
+                for (int i = decoded; i < n_pixels; i++)
+                    s_gif_indices[i] = 0;
+            }
+
+            // Map indices → RGB565 with nearest-neighbor scaling
+            for (int y = 0; y < height; y++) {
+                int sy = y * gh / height;
+                for (int x = 0; x < width; x++) {
+                    int sx = x * gw / width;
+                    frames[loaded][y * width + x] = pal565[s_gif_indices[sy * gw + sx]];
+                }
+            }
+            loaded++;
+            continue;
+        }
+
+        // Unknown block — skip
+        gif_skip_blocks(fp);
+    }
+
+    fclose(fp);
+    *out_n_frames = loaded;
+    return (loaded > 0) ? 1 : 0;
+}
+
 // Static output buffer for JPEG encoding.
-// Real output is ~50–150 KB (palette-quantized images compress heavily).
-// 512 KB is a 3× safety margin over the largest observed file.
+// 1 MB covers 4x upscaled output (1600x960 at quality 90 is ~600-800 KB).
 // No runtime allocation during save; safe because saves are serialized via busy flag.
-#define JPEG_BUF_CAP (512 * 1024)
+#define JPEG_BUF_CAP (1024 * 1024)
 static uint8_t s_jpeg_buf[JPEG_BUF_CAP];
 static int     s_jpeg_len;
 
@@ -233,6 +478,7 @@ void file_counter_init(const char *dir, int ini_val) {
         while ((e = readdir(d)) != NULL) {
             int n = 0;
             if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1 && n > max_n) max_n = n;
+            if (sscanf(e->d_name, "GW_%d.gif", &n) == 1 && n > max_n) max_n = n;
             if (sscanf(e->d_name, "GW_%d.png", &n) == 1 && n > max_n) max_n = n;
         }
         closedir(d);
@@ -271,9 +517,13 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
             nums[count]  = n;
             types[count] = 0;
             count++;
-        } else if (sscanf(e->d_name, "GW_%d.png", &n) == 1) {
+        } else if (sscanf(e->d_name, "GW_%d.gif", &n) == 1) {
             nums[count]  = n;
             types[count] = 1;
+            count++;
+        } else if (sscanf(e->d_name, "GW_%d.png", &n) == 1) {
+            nums[count]  = n;
+            types[count] = 2;
             count++;
         }
     }
@@ -294,6 +544,8 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
     for (int i = 0; i < count; i++) {
         if (types[i] == 0)
             snprintf(paths[i], 64, "%s/GB_%04d.JPG", dir, nums[i]);
+        else if (types[i] == 1)
+            snprintf(paths[i], 64, "%s/GW_%04d.gif", dir, nums[i]);
         else
             snprintf(paths[i], 64, "%s/GW_%04d.png", dir, nums[i]);
     }
@@ -304,7 +556,7 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
 int next_wiggle_path(const char *dir, char *out_path, int out_len) {
     if (s_next_n < 0) file_counter_init(dir, 0);
     if (s_next_n > 9999) return 0;
-    snprintf(out_path, out_len, "%s/GW_%04d.png", dir, s_next_n);
+    snprintf(out_path, out_len, "%s/GW_%04d.gif", dir, s_next_n);
     s_next_n++;
     return 1;
 }

@@ -29,12 +29,6 @@ void rgb888_to_rgb565(uint16_t *dst, const uint8_t *src, int count) {
 // Nearest-neighbour upscale RGB888
 // ---------------------------------------------------------------------------
 
-static uint8_t upscale_buf[SAVE_SCALE * CAMERA_WIDTH * SAVE_SCALE * CAMERA_HEIGHT * 3];
-
-uint8_t *camera_get_upscale_buf(void) {
-    return upscale_buf;
-}
-
 void nn_upscale(uint8_t *dst, const uint8_t *src, int w, int h, int scale) {
     int dw = w * scale;
     for (int y = 0; y < h; y++) {
@@ -74,11 +68,38 @@ void writePictureToFramebufferRGB565(void *fb, void *img,
 }
 
 // ---------------------------------------------------------------------------
+// Camera resolution switch (SIZE_VGA ↔ SIZE_CTR_TOP_LCD)
+// ---------------------------------------------------------------------------
+
+void camera_set_resolution(int width, int height,
+                           u32 camSelect, u32 *bufSize,
+                           Handle camReceiveEvent[4], bool *captureInterrupted,
+                           bool selfie) {
+    CAMU_StopCapture(PORT_BOTH);
+    for (int i = 0; i < 4; i++) {
+        if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
+    }
+
+    CAMU_Size size = (width == VGA_WIDTH) ? SIZE_VGA : SIZE_CTR_TOP_LCD;
+    CAMU_SetSize(camSelect, size, CONTEXT_A);
+    CAMU_GetMaxBytes(bufSize, width, height);
+    CAMU_SetTransferBytes(PORT_BOTH, *bufSize, width, height);
+
+    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
+    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
+    CAMU_ClearBuffer(PORT_BOTH);
+    if (!selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+    CAMU_StartCapture(PORT_BOTH);
+    *captureInterrupted = false;
+}
+
+// ---------------------------------------------------------------------------
 // Camera toggle (swap front ↔ rear)
 // ---------------------------------------------------------------------------
 
 void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
-                   Handle camReceiveEvent[4], bool *captureInterrupted) {
+                   Handle camReceiveEvent[4], bool *captureInterrupted,
+                   int cam_w, int cam_h) {
     CAMU_StopCapture(PORT_BOTH);
     for (int i = 0; i < 4; i++) {
         if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
@@ -88,7 +109,8 @@ void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
     *selfie    = !*selfie;
     *camSelect = *selfie ? SELECT_IN1_OUT2 : SELECT_OUT1_OUT2;
 
-    CAMU_SetSize(*camSelect, SIZE_CTR_TOP_LCD, CONTEXT_A);
+    CAMU_Size size = (cam_w == VGA_WIDTH) ? SIZE_VGA : SIZE_CTR_TOP_LCD;
+    CAMU_SetSize(*camSelect, size, CONTEXT_A);
     CAMU_SetOutputFormat(*camSelect, OUTPUT_RGB_565, CONTEXT_A);
     CAMU_SetFrameRate(*camSelect, FRAME_RATE_30);
     CAMU_SetNoiseFilter(*camSelect, true);
@@ -97,8 +119,8 @@ void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
     CAMU_SetTrimming(PORT_CAM1, false);
     CAMU_SetTrimming(PORT_CAM2, false);
 
-    CAMU_GetMaxBytes(bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
-    CAMU_SetTransferBytes(PORT_BOTH, *bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
+    CAMU_GetMaxBytes(bufSize, cam_w, cam_h);
+    CAMU_SetTransferBytes(PORT_BOTH, *bufSize, cam_w, cam_h);
     CAMU_Activate(*camSelect);
 
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);

@@ -17,6 +17,16 @@ int load_apng_frames_to_rgb565(const char *path,
                                 int *out_n_frames, int *out_delay_ms,
                                 int width, int height);
 
+// Load all frames of an animated GIF. frames[i] must each point to a buffer of
+// (width * height) uint16_t values. Up to max_frames are loaded.
+// *out_n_frames: actual frame count loaded.
+// *out_delay_ms: per-frame delay in milliseconds from the first frame.
+// Returns 1 on success (at least one frame), 0 on failure.
+int load_gif_frames_to_rgb565(const char *path,
+                               uint16_t **frames, int max_frames,
+                               int *out_n_frames, int *out_delay_ms,
+                               int width, int height);
+
 // Save an RGB888 buffer as JPEG at path (quality 90).
 // Returns 1 on success, 0 on failure.
 int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height);
