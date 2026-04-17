@@ -21,13 +21,13 @@ No computer required once it's installed.
 
 ### Option A — Homebrew Launcher (easiest)
 
-1. Download `3ds_camera.3dsx` from the [releases page](https://github.com/z-alzayer/3ds_camera/releases)
+1. Download `3ds_camera.3dsx` from the [releases page](https://github.com/z-alzayer/PixelPix3D/releases)
 2. Copy it to the `/3ds/` folder on your SD card
 3. Launch it from the Homebrew Launcher
 
 ### Option B — Install as a full app (CIA)
 
-1. Download `3ds_camera.cia` from the [releases page](https://github.com/z-alzayer/3ds_camera/releases)
+1. Download `3ds_camera.cia` from the [releases page](https://github.com/z-alzayer/PixelPix3D/releases)
 2. Copy it anywhere on your SD card
 3. Open [FBI](https://github.com/Steveice10/FBI), navigate to the file, and install it
 4. The app will appear on your home menu like any normal game
