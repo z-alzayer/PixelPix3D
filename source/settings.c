@@ -9,6 +9,50 @@ static void ensure_settings_dir(void) {
     mkdir("sdmc:/3ds/pixelpix3d", 0777);
 }
 
+// ---------------------------------------------------------------------------
+// Helper: update or append a key=value in the INI file (no duplicates).
+// Reads the file, replaces the first matching line, writes it back.
+// ---------------------------------------------------------------------------
+static void ini_set_key(const char *key, const char *value) {
+    ensure_settings_dir();
+
+    char lines[128][64];
+    int n_lines = 0;
+    bool found = false;
+    int key_len = (int)strlen(key);
+
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (f) {
+        char tmp[64];
+        while (fgets(tmp, sizeof(tmp), f)) {
+            bool is_match = (strncmp(tmp, key, key_len) == 0 && tmp[key_len] == '=');
+            if (is_match && found)
+                continue;  // drop duplicate
+            if (n_lines >= 128)
+                continue;  // drop overflow lines
+            if (is_match) {
+                snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
+                found = true;
+            } else {
+                memcpy(lines[n_lines], tmp, 64);
+            }
+            n_lines++;
+        }
+        fclose(f);
+    }
+
+    if (!found && n_lines < 128) {
+        snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
+        n_lines++;
+    }
+
+    f = fopen(SETTINGS_PATH, "w");
+    if (!f) return;
+    for (int i = 0; i < n_lines; i++)
+        fputs(lines[i], f);
+    fclose(f);
+}
+
 void settings_save(const FilterParams *p, int save_scale) {
     ensure_settings_dir();
     FILE *f = fopen(SETTINGS_PATH, "w");
@@ -93,16 +137,16 @@ void settings_load(FilterParams *p, int *save_scale) {
 }
 
 void settings_save_palettes(const PaletteDef *user_palettes) {
-    ensure_settings_dir();
-    FILE *f = fopen(SETTINGS_PATH, "a");
-    if (!f) return;
     for (int n = 0; n < PALETTE_COUNT; n++)
-        for (int m = 0; m < user_palettes[n].size; m++)
-            fprintf(f, "palette_%d_%d=%02X%02X%02X\n", n, m,
-                    user_palettes[n].colors[m][0],
-                    user_palettes[n].colors[m][1],
-                    user_palettes[n].colors[m][2]);
-    fclose(f);
+        for (int m = 0; m < user_palettes[n].size; m++) {
+            char key[32], val[8];
+            snprintf(key, sizeof(key), "palette_%d_%d", n, m);
+            snprintf(val, sizeof(val), "%02X%02X%02X",
+                     user_palettes[n].colors[m][0],
+                     user_palettes[n].colors[m][1],
+                     user_palettes[n].colors[m][2]);
+            ini_set_key(key, val);
+        }
 }
 
 void settings_load_palettes(PaletteDef *user_palettes) {
@@ -151,30 +195,25 @@ int settings_load_file_counter(void) {
 }
 
 void settings_save_file_counter(int n) {
-    ensure_settings_dir();
-    FILE *f = fopen(SETTINGS_PATH, "a");
-    if (!f) return;
-    fprintf(f, "next_file_n=%d\n", n);
-    fclose(f);
+    char val[16];
+    snprintf(val, sizeof(val), "%d", n);
+    ini_set_key("next_file_n", val);
 }
 
 void settings_save_ranges(const FilterRanges *r) {
-    ensure_settings_dir();
-    FILE *f = fopen(SETTINGS_PATH, "a");
-    if (!f) return;
-    fprintf(f, "bright_min=%.2f\n",   (double)r->bright_min);
-    fprintf(f, "bright_max=%.2f\n",   (double)r->bright_max);
-    fprintf(f, "bright_def=%.2f\n",   (double)r->bright_def);
-    fprintf(f, "contrast_min=%.2f\n", (double)r->contrast_min);
-    fprintf(f, "contrast_max=%.2f\n", (double)r->contrast_max);
-    fprintf(f, "contrast_def=%.2f\n", (double)r->contrast_def);
-    fprintf(f, "sat_min=%.2f\n",      (double)r->sat_min);
-    fprintf(f, "sat_max=%.2f\n",      (double)r->sat_max);
-    fprintf(f, "sat_def=%.2f\n",      (double)r->sat_def);
-    fprintf(f, "gamma_min=%.2f\n",    (double)r->gamma_min);
-    fprintf(f, "gamma_max=%.2f\n",    (double)r->gamma_max);
-    fprintf(f, "gamma_def=%.2f\n",    (double)r->gamma_def);
-    fclose(f);
+    char val[16];
+    snprintf(val, sizeof(val), "%.2f", (double)r->bright_min);   ini_set_key("bright_min", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->bright_max);   ini_set_key("bright_max", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->bright_def);   ini_set_key("bright_def", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->contrast_min); ini_set_key("contrast_min", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->contrast_max); ini_set_key("contrast_max", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->contrast_def); ini_set_key("contrast_def", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->sat_min);      ini_set_key("sat_min", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->sat_max);      ini_set_key("sat_max", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->sat_def);      ini_set_key("sat_def", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->gamma_min);    ini_set_key("gamma_min", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->gamma_max);    ini_set_key("gamma_max", val);
+    snprintf(val, sizeof(val), "%.2f", (double)r->gamma_def);    ini_set_key("gamma_def", val);
 }
 
 void settings_load_ranges(FilterRanges *r) {
