@@ -43,9 +43,10 @@ static void save_thread_func(void *arg) {
                              st->snapshot_buf2,
                              st->wiggle_n_frames,
                              st->wiggle_delay_ms,
-                             NULL,
+                             st->wiggle_has_align ? &st->wiggle_align_result : NULL,
                              st->wiggle_offset_dx,
-                             st->wiggle_offset_dy);
+                             st->wiggle_offset_dy,
+                             st->wiggle_filter_active ? &st->wiggle_filter_params : NULL);
         } else {
             int scale = st->save_scale;
             rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
@@ -108,6 +109,7 @@ static void begin_wiggle_capture(WiggleState *wig,
                                 wig->offset_dx, wig->offset_dy,
                                 &wig->crop_w, &wig->crop_h);
     wig->preview           = true;
+    wig->rebuild           = true;  // trigger filter application on first tick
     wig->preview_frame     = 0;
     wig->preview_last_tick = svcGetSystemTick();
     play_shutter_click();

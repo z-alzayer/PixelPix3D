@@ -338,7 +338,8 @@ int main(void) {
         // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
         if (wig.preview) {
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
-                                  wiggle_left, wiggle_right, &app.save_flash);
+                                  wiggle_left, wiggle_right, &app.save_flash,
+                                  &app.params);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,
                          buf, filtered_buf, wiggle_left, wiggle_right,
@@ -383,9 +384,9 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
-            // Wiggle saves never read filtered_buf, so allow live view updates during them.
-            // Only pause filter processing during JPEG saves (which copy snapshot_buf).
-            if (!use3d && !comparing && (!s_save.busy || s_save.wiggle_mode)) {
+            // Pause filter processing when save thread uses static filter buffers.
+            // Unfiltered wiggle saves don't conflict, so allow live view updates.
+            if (!use3d && !comparing && (!s_save.busy || (s_save.wiggle_mode && !s_save.wiggle_filter_active))) {
                 if (shoot.shoot_mode == SHOOT_MODE_WIGGLE && app.cam_w == VGA_WIDTH) {
                     // VGA wiggle: downscale 640x480 to 400x240 for display (nearest-neighbor)
                     const uint16_t *vga = (const uint16_t *)buf;
@@ -396,6 +397,12 @@ int main(void) {
                             int sx = x * VGA_WIDTH / CAMERA_WIDTH;
                             disp[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
                         }
+                    }
+                    if (wig.filter_active) {
+                        rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
+                        apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
+                        apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
+                        rgb888_to_rgb565(disp, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                     }
                 } else {
                     rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
@@ -415,7 +422,10 @@ int main(void) {
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params, app.frame_count);
                     } else if (shoot.shoot_mode == SHOOT_MODE_WIGGLE) {
-                        // Wiggle at 400x240: true-colour preview — skip all filters
+                        if (wig.filter_active) {
+                            apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
+                            apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
+                        }
                     } else {
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
@@ -437,7 +447,8 @@ int main(void) {
 
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wig.preview) {
-            wiggle_preview_tick(&wig, wiggle_preview_frames, wiggle_left, wiggle_right);
+            wiggle_preview_tick(&wig, wiggle_preview_frames, wiggle_left, wiggle_right,
+                                &app.params, app.frame_count);
         }
 
         gallery_tick(&gal);

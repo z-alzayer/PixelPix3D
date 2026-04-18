@@ -1,4 +1,5 @@
 #include "filter.h"
+#include "camera.h"
 #include <stdlib.h>
 #include <math.h>
 
@@ -12,11 +13,11 @@ static uint8_t small_buf[SMALL_BUF_MAX];
 static int16_t fs_err[400 * 240 * 3];
 
 // --- FX post-processing scratch buffers -------------------------------------
-// One row buffer for chromatic aberration (400 pixels * 3 channels = 1200 bytes).
-static uint8_t chroma_row[400 * 3];
+// Sized for VGA (640x480) to support wiggle GIF saves at full crop resolution.
+static uint8_t chroma_row[VGA_WIDTH * 3];
 // Squared-distance LUT components for vignette — rebuilt when intensity changes.
-static int vig_lut_x[400];
-static int vig_lut_y[240];
+static int vig_lut_x[VGA_WIDTH];
+static int vig_lut_y[VGA_HEIGHT];
 static int vig_last_intensity = -1;
 
 // Mutable user palette pointer — set via filter_set_user_palettes().

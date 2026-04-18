@@ -31,6 +31,7 @@ typedef struct {
 
 typedef struct WiggleState {
     bool          preview;          // showing captured pair
+    bool          filter_active;    // palette/fx applied to wiggle output
     int           n_frames;         // requested frame count
     int           delay_ms;
     int           preview_frame;    // current cycling index

@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "gallery.h"
 #include "editor.h"
+#include "wigglegram.h"
 #include <string.h>
 
 // Scratch buffers owned by this module
@@ -31,9 +32,15 @@ void render_top_screen(bool use3d, bool timer_open,
                 memcpy(s_wiggle_compose_buf + (by + row) * CAMERA_WIDTH + bx,
                        src + row * wig->crop_w,
                        wig->crop_w * sizeof(uint16_t));
-            writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
-                                            s_wiggle_compose_buf, 0, 0,
+            u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
+            writePictureToFramebufferRGB565(fb, s_wiggle_compose_buf, 0, 0,
                                             CAMERA_WIDTH, CAMERA_HEIGHT);
+            // Dim the framebuffer while the filter is being applied
+            if (wiggle_filter_busy()) {
+                int fb_size = CAMERA_WIDTH * CAMERA_HEIGHT * 3;
+                for (int i = 0; i < fb_size; i++)
+                    fb[i] >>= 1;
+            }
         } else {
             void *blit_src;
             if (gal->mode && gal->count > 0)

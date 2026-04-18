@@ -245,7 +245,18 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 for (int i = 0; i < 7; i++) {
                     int sx = SHOOT_SWATCH_X0 + i * (SHOOT_SWATCH_W + SHOOT_SWATCH_GAP);
                     if (tx >= sx && tx < sx + SHOOT_SWATCH_W) {
-                        p->palette = (i < 6) ? i : PALETTE_NONE;
+                        int new_pal = (i < 6) ? i : PALETTE_NONE;
+                        if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
+                            if (wig->filter_active && p->palette == new_pal)
+                                wig->filter_active = false;
+                            else {
+                                p->palette = new_pal;
+                                wig->filter_active = true;
+                            }
+                            wig->rebuild = true;
+                        } else {
+                            p->palette = new_pal;
+                        }
                         return true;
                     }
                 }

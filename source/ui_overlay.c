@@ -245,8 +245,10 @@ void draw_ui(C3D_RenderTarget *bot,
                          (const char (*)[64])gal->paths,
                          gal->sel, gal->scroll);
     } else if (app->active_tab == TAB_SHOOT) {
+        int display_pal = (shoot->shoot_mode == SHOOT_MODE_WIGGLE && !wig->filter_active)
+                        ? PALETTE_NONE : app->params.palette;
         draw_shoot_tab(staticBuf, app->selfie, app->save_flash, app->user_palettes,
-                       app->params.palette, gal->mode, &app->params, &app->ranges,
+                       display_pal, gal->mode, &app->params, &app->ranges,
                        shoot->shoot_mode, shoot->shoot_mode_open,
                        shoot->shoot_timer_secs, shoot->timer_open,
                        wig->n_frames, wig->delay_ms,

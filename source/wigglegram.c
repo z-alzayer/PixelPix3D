@@ -1,5 +1,6 @@
 #include "wigglegram.h"
 #include "camera.h"
+#include "filter.h"
 #include "gif_enc.h"
 #include "app_state.h"
 #include "shoot.h"
@@ -161,7 +162,8 @@ int save_wiggle_gif(const char *path,
                     const uint8_t *right_rgb565,
                     int n_frames, int delay_ms,
                     const WiggleAlign *align,
-                    int offset_dx, int offset_dy)
+                    int offset_dx, int offset_dy,
+                    const FilterParams *filter)
 {
     (void)n_frames;
 
@@ -214,6 +216,47 @@ int save_wiggle_gif(const char *path,
         }
     }
 
+    // When filter is active and crop exceeds display resolution, downscale
+    // first so the filter's static buffers (sized for 400x240) aren't exceeded
+    // and the output matches what the user previewed.
+    int fw = ow, fh = oh;
+    if (filter && (ow > CAMERA_WIDTH || oh > CAMERA_HEIGHT)) {
+        fw = ow <= CAMERA_WIDTH  ? ow : CAMERA_WIDTH;
+        fh = oh <= CAMERA_HEIGHT ? oh : CAMERA_HEIGHT;
+        int fnpix = fw * fh;
+        uint8_t *tmp = malloc(fnpix * 3);
+        if (tmp) {
+            // Nearest-neighbor downscale each frame in-place via tmp
+            uint8_t *frames[3] = { left_crop, right_crop, blend_crop };
+            for (int f = 0; f < 3; f++) {
+                for (int py = 0; py < fh; py++) {
+                    int sy = py * oh / fh;
+                    for (int px = 0; px < fw; px++) {
+                        int sx = px * ow / fw;
+                        int si = (sy * ow + sx) * 3;
+                        int di = (py * fw + px) * 3;
+                        tmp[di+0] = frames[f][si+0];
+                        tmp[di+1] = frames[f][si+1];
+                        tmp[di+2] = frames[f][si+2];
+                    }
+                }
+                memcpy(frames[f], tmp, fnpix * 3);
+            }
+            free(tmp);
+        }
+        ow = fw; oh = fh;
+    }
+
+    // Apply palette/fx filter to each unique frame if requested
+    if (filter) {
+        apply_gameboy_filter(left_crop,  ow, oh, *filter);
+        apply_fx(left_crop,  ow, oh, *filter, 0);
+        apply_gameboy_filter(right_crop, ow, oh, *filter);
+        apply_fx(right_crop, ow, oh, *filter, 1);
+        apply_gameboy_filter(blend_crop, ow, oh, *filter);
+        apply_fx(blend_crop, ow, oh, *filter, 2);
+    }
+
     // Sequence: L, blend, R, blend  (matches 3ds-mpo-gif animation order)
     const uint8_t *frame_ptrs[4] = { left_crop, blend_crop, right_crop, blend_crop };
     size_t gif_len = gif_encode(s_gif_buf, GIF_BUF_CAP,
@@ -237,7 +280,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            u32 kDown, u32 kHeld,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
-                           int *save_flash) {
+                           int *save_flash,
+                           const FilterParams *params) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
     if (dpad) {
@@ -323,6 +367,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_offset_dy = wig->offset_dy;
             save->wiggle_cap_w     = wig->capture_w;
             save->wiggle_cap_h     = wig->capture_h;
+            save->wiggle_filter_active = wig->filter_active;
+            if (wig->filter_active) save->wiggle_filter_params = *params;
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;
             *save_flash = 20;
@@ -337,10 +383,25 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
 // wiggle_preview_tick — advance animation (rebuild if offsets changed)
 // ---------------------------------------------------------------------------
 
+// Scratch buffer for RGB888 conversion during preview filter application
+static uint8_t s_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
+
+// Tracks whether the current preview frames already have the filter baked in.
+static bool s_filter_applied = false;
+// Which frame to filter next (spread work across ticks: one frame per tick).
+static int  s_filter_next = 0;
+// Whether the filter is wanted but not yet done (drives the dimmed overlay).
+static bool s_filter_pending = false;
+
+bool wiggle_filter_busy(void) {
+    return s_filter_pending;
+}
+
 void wiggle_preview_tick(WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
-                         const u8 *wiggle_left, const u8 *wiggle_right) {
-    // Rebuild frames when user has adjusted H/V offsets
+                         const u8 *wiggle_left, const u8 *wiggle_right,
+                         const FilterParams *filter, int frame_count) {
+    // Rebuild raw frames when user has adjusted H/V offsets
     if (wig->rebuild) {
         wig->n_frames = build_wiggle_preview_frames(preview_frames,
                                         wiggle_left, wiggle_right,
@@ -348,7 +409,33 @@ void wiggle_preview_tick(WiggleState *wig,
                                         wig->n_frames, NULL,
                                         wig->offset_dx, wig->offset_dy,
                                         &wig->crop_w, &wig->crop_h);
+        s_filter_applied = false;
+        s_filter_next = 0;
+        // Mark pending if the filter will need to be applied
+        s_filter_pending = wig->filter_active && filter != NULL;
         wig->rebuild = false;
+    }
+
+    // Deferred filter: apply one frame per tick when d-pad is idle.
+    // This spreads the work across multiple frames to avoid stutter.
+    if (wig->filter_active && filter && !s_filter_applied && wig->dpad_repeat == 0) {
+        int npix = wig->crop_w * wig->crop_h;
+        int f = s_filter_next;
+        rgb565_to_rgb888(s_preview_rgb888, preview_frames[f], npix);
+        apply_gameboy_filter(s_preview_rgb888, wig->crop_w, wig->crop_h, *filter);
+        apply_fx(s_preview_rgb888, wig->crop_w, wig->crop_h, *filter, frame_count + f);
+        rgb888_to_rgb565(preview_frames[f], s_preview_rgb888, npix);
+        s_filter_next++;
+        if (s_filter_next >= wig->n_frames) {
+            s_filter_applied = true;
+            s_filter_pending = false;
+        }
+    } else if (!wig->filter_active && s_filter_applied) {
+        // Filter was toggled off — rebuild raw frames
+        wig->rebuild = true;
+        s_filter_applied = false;
+        s_filter_next = 0;
+        s_filter_pending = false;
     }
     u64 now = svcGetSystemTick();
     u64 period = (u64)wig->delay_ms * SYSCLOCK_ARM11 / 1000;
