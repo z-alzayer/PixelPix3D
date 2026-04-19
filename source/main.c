@@ -66,7 +66,7 @@ int main(void) {
     u32 camSelect = SELECT_OUT1_OUT2;
 
     camInit();
-    CAMU_SetSize(camSelect, SIZE_CTR_TOP_LCD, CONTEXT_A);
+    CAMU_SetSize(camSelect, SIZE_VGA, CONTEXT_A);
     CAMU_SetOutputFormat(camSelect, OUTPUT_RGB_565, CONTEXT_A);
     CAMU_SetFrameRate(camSelect, FRAME_RATE_30);
     CAMU_SetNoiseFilter(camSelect, true);
@@ -104,8 +104,8 @@ int main(void) {
         .ranges           = FILTER_RANGES_DEFAULTS,
         .palette_sel_pal  = 0,
         .palette_sel_color = 0,
-        .cam_w            = CAMERA_WIDTH,
-        .cam_h            = CAMERA_HEIGHT,
+        .cam_w            = VGA_WIDTH,
+        .cam_h            = VGA_HEIGHT,
     };
 
     // Shoot state
@@ -169,8 +169,8 @@ int main(void) {
     for (int i = 0; i < STICKER_MAX; i++) edit.placed[i].active = false;
 
     u32 bufSize;
-    CAMU_GetMaxBytes(&bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
-    CAMU_SetTransferBytes(PORT_BOTH, bufSize, CAMERA_WIDTH, CAMERA_HEIGHT);
+    CAMU_GetMaxBytes(&bufSize, VGA_WIDTH, VGA_HEIGHT);
+    CAMU_SetTransferBytes(PORT_BOTH, bufSize, VGA_WIDTH, VGA_HEIGHT);
     CAMU_Activate(SELECT_OUT1_OUT2);
 
     Handle camReceiveEvent[4] = {0};
@@ -312,20 +312,6 @@ int main(void) {
                               app.cam_w, app.cam_h);
             }
 
-            // Switch camera resolution when shoot mode changes (VGA for wiggle, CTR for others)
-            {
-                int want_w = (shoot.shoot_mode == SHOOT_MODE_WIGGLE) ? VGA_WIDTH  : CAMERA_WIDTH;
-                int want_h = (shoot.shoot_mode == SHOOT_MODE_WIGGLE) ? VGA_HEIGHT : CAMERA_HEIGHT;
-                if (want_w != app.cam_w || want_h != app.cam_h) {
-                    if (app.cam_active) {
-                        camera_set_resolution(want_w, want_h, camSelect, &bufSize,
-                                              camReceiveEvent, &captureInterrupted, app.selfie);
-                    }
-                    app.cam_w = want_w;
-                    app.cam_h = want_h;
-                }
-            }
-
             if (do_defaults_save) {
                 app.default_params = app.params;
                 settings_save(&app.default_params, app.save_scale);
@@ -394,17 +380,18 @@ int main(void) {
             // Pause filter processing when save thread uses static filter buffers.
             // Unfiltered wiggle saves don't conflict, so allow live view updates.
             if (!use3d && !comparing && (!s_save.busy || (s_save.wiggle_mode && !s_save.wiggle_filter_active))) {
-                if (shoot.shoot_mode == SHOOT_MODE_WIGGLE && app.cam_w == VGA_WIDTH) {
-                    // VGA wiggle: downscale 640x480 to 400x240 for display (nearest-neighbor)
-                    const uint16_t *vga = (const uint16_t *)buf;
-                    uint16_t *disp = (uint16_t *)filtered_buf;
-                    for (int y = 0; y < CAMERA_HEIGHT; y++) {
-                        int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
-                        for (int x = 0; x < CAMERA_WIDTH; x++) {
-                            int sx = x * VGA_WIDTH / CAMERA_WIDTH;
-                            disp[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
-                        }
+                // Downscale VGA 640x480 → 400x240 for display (nearest-neighbor)
+                const uint16_t *vga = (const uint16_t *)buf;
+                uint16_t *disp = (uint16_t *)filtered_buf;
+                for (int y = 0; y < CAMERA_HEIGHT; y++) {
+                    int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
+                    for (int x = 0; x < CAMERA_WIDTH; x++) {
+                        int sx = x * VGA_WIDTH / CAMERA_WIDTH;
+                        disp[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
                     }
+                }
+                // Apply per-mode filter pipeline at display resolution
+                if (shoot.shoot_mode == SHOOT_MODE_WIGGLE) {
                     if (wig.filter_active) {
                         rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
@@ -412,9 +399,8 @@ int main(void) {
                         rgb888_to_rgb565(disp, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                     }
                 } else {
-                    rgb565_to_rgb888(rgb_buf, (const uint16_t *)buf, CAMERA_WIDTH * CAMERA_HEIGHT);
+                    rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
                     if (shoot.shoot_mode == SHOOT_MODE_LOMO) {
-                        // Lomo: raw camera feed — apply tonal preset + FX only, no GB pixel filter
                         const LomoPreset *lp = &lomo_presets[shoot.lomo_preset];
                         FilterParams lp_params = app.params;
                         lp_params.brightness  = lp->brightness;
@@ -423,21 +409,16 @@ int main(void) {
                         lp_params.gamma       = lp->gamma;
                         lp_params.fx_mode     = lp->fx_mode;
                         lp_params.fx_intensity = lp->fx_intensity;
-                        lp_params.pixel_size  = 1;        // no pixelation
-                        lp_params.palette     = PALETTE_NONE;  // no palette quantisation
-                        lp_params.color_levels = 256;     // no posterisation
+                        lp_params.pixel_size  = 1;
+                        lp_params.palette     = PALETTE_NONE;
+                        lp_params.color_levels = 256;
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params, app.frame_count);
-                    } else if (shoot.shoot_mode == SHOOT_MODE_WIGGLE) {
-                        if (wig.filter_active) {
-                            apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
-                            apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
-                        }
                     } else {
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
                     }
-                    rgb888_to_rgb565((uint16_t *)filtered_buf, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
+                    rgb888_to_rgb565(disp, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                 }
             }
             break;
