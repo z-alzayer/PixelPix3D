@@ -288,8 +288,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         bool fire = (kDown & dpad) || (wig->dpad_repeat > 20 && wig->dpad_repeat % 4 == 0);
         wig->dpad_repeat++;
         if (fire) {
-            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -20) { wig->offset_dx--; wig->rebuild = true; }
-            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  20) { wig->offset_dx++; wig->rebuild = true; }
+            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -40) { wig->offset_dx--; wig->rebuild = true; }
+            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  40) { wig->offset_dx++; wig->rebuild = true; }
             if ((dpad & KEY_DUP)    && wig->offset_dy <  10) { wig->offset_dy++; wig->rebuild = true; }
             if ((dpad & KEY_DDOWN)  && wig->offset_dy > -10) { wig->offset_dy--; wig->rebuild = true; }
         }
@@ -317,7 +317,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             int row_y_y = SHOOT_CONTENT_Y + 32;
             int *val = NULL; int lo = 0, hi = 0;
             if (tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
-                { val = &wig->offset_dx; lo = -20; hi = 20; }
+                { val = &wig->offset_dx; lo = -40; hi = 40; }
             else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
                 { val = &wig->offset_dy; lo = -10; hi = 10; }
             if (val) {
