@@ -1103,7 +1103,7 @@ void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 
 void draw_more_tab(C2D_TextBuf staticBuf,
                    const FilterParams *p, int save_scale,
-                   bool settings_flash) {
+                   int shutter_button, bool settings_flash) {
     float sc = 0.46f;
     C2D_Text t;
 
@@ -1169,6 +1169,22 @@ void draw_more_tab(C2D_TextBuf staticBuf,
     C2D_TextParse(&t, staticBuf, "On");
     C2D_DrawText(&t, C2D_WithColor, MORE_INV_STOG_X1 + 22.0f, MORE_INV_Y - 8.0f,
                  0.5f, sc, sc, p->invert ? CLR_WHITE : CLR_TEXT);
+
+    // --- Shutter button row ---
+    C2D_TextParse(&t, staticBuf, "Shutter");
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)MORE_SHUT_Y - 8.0f, 0.5f, sc, sc, CLR_TEXT);
+    draw_pill((float)MORE_SHUT_STOG_X0, MORE_SHUT_Y - MORE_STOG_H / 2,
+              MORE_STOG_W, MORE_STOG_H,
+              !shutter_button ? CLR_ACCENT : CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "A");
+    C2D_DrawText(&t, C2D_WithColor, MORE_SHUT_STOG_X0 + 22.0f, MORE_SHUT_Y - 8.0f,
+                 0.5f, sc, sc, !shutter_button ? CLR_WHITE : CLR_TEXT);
+    draw_pill((float)MORE_SHUT_STOG_X1, MORE_SHUT_Y - MORE_STOG_H / 2,
+              MORE_STOG_W, MORE_STOG_H,
+              shutter_button ? CLR_ACCENT : CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "L/R");
+    C2D_DrawText(&t, C2D_WithColor, MORE_SHUT_STOG_X1 + 14.0f, MORE_SHUT_Y - 8.0f,
+                 0.5f, sc, sc, shutter_button ? CLR_WHITE : CLR_TEXT);
 
     C2D_DrawRectSolid(0, MORE_DIV_Y, 0.5f, BOT_W, 1, CLR_DIVIDER);
 

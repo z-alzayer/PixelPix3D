@@ -559,6 +559,16 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             p->invert = true;
             return true;
         }
+        // Shutter button: A
+        if (hit(tx, ty, MORE_SHUT_STOG_X0, MORE_SHUT_Y - MORE_STOG_H / 2, MORE_STOG_W, MORE_STOG_H)) {
+            app->shutter_button = 0;
+            return true;
+        }
+        // Shutter button: L/R
+        if (hit(tx, ty, MORE_SHUT_STOG_X1, MORE_SHUT_Y - MORE_STOG_H / 2, MORE_STOG_W, MORE_STOG_H)) {
+            app->shutter_button = 1;
+            return true;
+        }
         // Palette Editor button
         if (hit(tx, ty, MORE_PALED_X, MORE_POWED_Y, MORE_POWED_W, MORE_POWED_H)) {
             app->active_tab = TAB_PALETTE_ED;

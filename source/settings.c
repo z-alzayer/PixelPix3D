@@ -53,7 +53,7 @@ static void ini_set_key(const char *key, const char *value) {
     fclose(f);
 }
 
-void settings_save(const FilterParams *p, int save_scale) {
+void settings_save(const FilterParams *p, int save_scale, int shutter_button) {
     ensure_settings_dir();
     FILE *f = fopen(SETTINGS_PATH, "w");
     if (!f) return;
@@ -69,17 +69,19 @@ void settings_save(const FilterParams *p, int save_scale) {
     fprintf(f, "save_scale=%d\n",   save_scale);
     fprintf(f, "fx_mode=%d\n",      p->fx_mode);
     fprintf(f, "fx_intensity=%d\n", p->fx_intensity);
+    fprintf(f, "shutter_button=%d\n", shutter_button);
     fclose(f);
 }
 
-void settings_load(FilterParams *p, int *save_scale) {
+void settings_load(FilterParams *p, int *save_scale, int *shutter_button) {
     FilterParams defaults = FILTER_DEFAULTS;
-    *p          = defaults;
-    *save_scale = 2;
+    *p              = defaults;
+    *save_scale     = 2;
+    *shutter_button = 0;
 
     FILE *f = fopen(SETTINGS_PATH, "r");
     if (!f) {
-        settings_save(p, *save_scale);
+        settings_save(p, *save_scale, *shutter_button);
         return;
     }
 
@@ -108,6 +110,7 @@ void settings_load(FilterParams *p, int *save_scale) {
         else if (strcmp(key, "save_scale")   == 0) *save_scale     = atoi(val);
         else if (strcmp(key, "fx_mode")      == 0) p->fx_mode      = atoi(val);
         else if (strcmp(key, "fx_intensity") == 0) p->fx_intensity = atoi(val);
+        else if (strcmp(key, "shutter_button") == 0) *shutter_button = atoi(val);
     }
     fclose(f);
 
@@ -134,6 +137,8 @@ void settings_load(FilterParams *p, int *save_scale) {
     if (p->fx_mode      > 6)              p->fx_mode      = 6;
     if (p->fx_intensity < 0)              p->fx_intensity = 0;
     if (p->fx_intensity > 10)             p->fx_intensity = 10;
+    if (*shutter_button < 0)              *shutter_button = 0;
+    if (*shutter_button > 1)              *shutter_button = 1;
 }
 
 void settings_save_palettes(const PaletteDef *user_palettes) {

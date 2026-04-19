@@ -46,7 +46,7 @@ void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  const FilterParams *p, bool settings_flash);
 void draw_more_tab(C2D_TextBuf staticBuf,
                    const FilterParams *p, int save_scale,
-                   bool settings_flash);
+                   int shutter_button, bool settings_flash);
 
 // ---------------------------------------------------------------------------
 // Secondary overlay tabs (defined in ui_overlay.c)

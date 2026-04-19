@@ -106,6 +106,7 @@ int main(void) {
         .palette_sel_color = 0,
         .cam_w            = VGA_WIDTH,
         .cam_h            = VGA_HEIGHT,
+        .shutter_button   = 0,
     };
 
     // Shoot state
@@ -184,7 +185,7 @@ int main(void) {
     CAMU_StartCapture(PORT_BOTH);
 
     for (int i = 0; i < PALETTE_COUNT; i++) app.user_palettes[i] = palettes[i];
-    settings_load(&app.params, &app.save_scale);
+    settings_load(&app.params, &app.save_scale, &app.shutter_button);
     settings_load_palettes(app.user_palettes);
     settings_load_ranges(&app.ranges);
     app.default_params = app.params;
@@ -219,13 +220,24 @@ int main(void) {
         if (!captureInterrupted) {
             // Physical button fallbacks (skip in gallery/edit mode — buttons have different roles)
             if (!gal.mode && !edit.active) {
-            if (kDown & KEY_L) {
-                app.params.palette = (app.params.palette <= PALETTE_NONE)
-                               ? PALETTE_COUNT - 1 : app.params.palette - 1;
-            }
-            if (kDown & KEY_R) {
-                app.params.palette = (app.params.palette >= PALETTE_COUNT - 1)
-                               ? PALETTE_NONE : app.params.palette + 1;
+            // Shutter button remapping: when shutter_button==1, L/R fire the
+            // shutter and A cycles palettes; otherwise A is the shutter (below)
+            // and L/R cycle palettes.
+            if (app.shutter_button) {
+                // A cycles palette forward when L/R are the shutter
+                if (kDown & KEY_A) {
+                    app.params.palette = (app.params.palette >= PALETTE_COUNT - 1)
+                                   ? PALETTE_NONE : app.params.palette + 1;
+                }
+            } else {
+                if (kDown & KEY_L) {
+                    app.params.palette = (app.params.palette <= PALETTE_NONE)
+                                   ? PALETTE_COUNT - 1 : app.params.palette - 1;
+                }
+                if (kDown & KEY_R) {
+                    app.params.palette = (app.params.palette >= PALETTE_COUNT - 1)
+                                   ? PALETTE_NONE : app.params.palette + 1;
+                }
             }
             if (kDown & KEY_B) {
                 app.params.pixel_size = (app.params.pixel_size % PX_STOPS) + 1;
@@ -314,7 +326,7 @@ int main(void) {
 
             if (do_defaults_save) {
                 app.default_params = app.params;
-                settings_save(&app.default_params, app.save_scale);
+                settings_save(&app.default_params, app.save_scale, app.shutter_button);
                 settings_save_palettes(app.user_palettes);
                 settings_save_ranges(&app.ranges);
                 app.settings_flash = 20;
@@ -337,7 +349,7 @@ int main(void) {
             timer_update(&shoot, &wig, &app, kDown,
                          buf, filtered_buf, wiggle_left, wiggle_right,
                          wiggle_preview_frames);
-        } else if ((do_save || (kDown & KEY_A)) && !s_save.busy && !gal.mode && !edit.active) {
+        } else if ((do_save || (kDown & (app.shutter_button ? (KEY_L | KEY_R) : KEY_A))) && !s_save.busy && !gal.mode && !edit.active) {
             shoot_trigger(&shoot, &wig, &app,
                           buf, filtered_buf, wiggle_left, wiggle_right,
                           wiggle_preview_frames);

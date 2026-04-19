@@ -231,19 +231,24 @@
 #define MORE_INV_STOG_X0 188
 #define MORE_INV_STOG_X1 248
 
+// Shutter button row
+#define MORE_SHUT_Y      140
+#define MORE_SHUT_STOG_X0 188
+#define MORE_SHUT_STOG_X1 248
+
 // Divider
-#define MORE_DIV_Y       130
+#define MORE_DIV_Y       160
 
 // Power-user buttons row: Palette Editor | Calibrate
-#define MORE_POWED_Y     140
-#define MORE_POWED_H      26
+#define MORE_POWED_Y     164
+#define MORE_POWED_H      16
 #define MORE_POWED_W     150
 #define MORE_PALED_X       4
 #define MORE_CALIB_X     162
 
 // Save as Default button
-#define MORE_SAVEDEF_Y   174
-#define MORE_SAVEDEF_H    26
+#define MORE_SAVEDEF_Y   183
+#define MORE_SAVEDEF_H    16
 #define MORE_SAVEDEF_X    60
 #define MORE_SAVEDEF_W   200
 

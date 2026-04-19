@@ -268,7 +268,7 @@ void draw_ui(C3D_RenderTarget *bot,
     } else if (app->active_tab == TAB_FX) {
         draw_fx_tab(staticBuf, dynBuf, &app->params, settings_flash);
     } else if (app->active_tab == TAB_MORE) {
-        draw_more_tab(staticBuf, &app->params, app->save_scale, settings_flash);
+        draw_more_tab(staticBuf, &app->params, app->save_scale, app->shutter_button, settings_flash);
     } else if (app->active_tab == TAB_PALETTE_ED) {
         draw_palette_tab(staticBuf, dynBuf, app->user_palettes,
                          app->palette_sel_pal, app->palette_sel_color, settings_flash);

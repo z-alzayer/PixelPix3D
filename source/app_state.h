@@ -112,6 +112,7 @@ typedef struct {
     int           palette_sel_color;
     int           cam_w;          // current camera capture width  (400 or 640)
     int           cam_h;          // current camera capture height (240 or 480)
+    int           shutter_button; // 0 = A (default), 1 = L/R
 } AppState;
 
 #endif
