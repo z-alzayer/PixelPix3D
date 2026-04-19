@@ -177,12 +177,20 @@ void draw_calibrate_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     u32 def_txt = settings_flash ? CLR_WHITE   : CLR_TEXT;
     draw_pill((float)CAL_SAVEDEF_X, (float)CAL_SAVEDEF_Y,
               (float)CAL_SAVEDEF_W, (float)CAL_SAVEDEF_H, def_clr);
-    C2D_TextParse(&t, staticBuf, "Save as Default");
+    C2D_TextParse(&t, staticBuf, "Save Default");
     float tw = 0, th = 0;
     C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
                  CAL_SAVEDEF_X + (CAL_SAVEDEF_W - tw) / 2.0f, CAL_SAVEDEF_Y + 4.0f,
                  0.5f, 0.44f, 0.44f, def_txt);
+
+    draw_pill((float)CAL_RESET_X, (float)CAL_RESET_Y,
+              (float)CAL_RESET_W, (float)CAL_RESET_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Reset Default");
+    C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 CAL_RESET_X + (CAL_RESET_W - tw) / 2.0f, CAL_RESET_Y + 4.0f,
+                 0.5f, 0.44f, 0.44f, CLR_TEXT);
 }
 
 // ---------------------------------------------------------------------------

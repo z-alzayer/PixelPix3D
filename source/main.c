@@ -273,13 +273,14 @@ int main(void) {
             touchPosition touch;
             hidTouchRead(&touch);
 
-            bool do_cam = false, do_defaults_save = false;
+            bool do_cam = false, do_defaults_save = false, do_defaults_reset = false;
             bool do_gallery_toggle = false;
             bool do_edit_cancel = false, do_edit_savenew = false, do_edit_overwrite = false;
             bool do_edit_enter_or_place = false;
             handle_touch(touch, kDown, kHeld,
                          &app, &shoot, &wig, &gal, &edit,
                          &do_cam, &do_save, &do_defaults_save,
+                         &do_defaults_reset,
                          &do_gallery_toggle,
                          &do_edit_cancel, &do_edit_savenew, &do_edit_overwrite,
                          &do_edit_enter_or_place);
@@ -330,6 +331,12 @@ int main(void) {
                 settings_save(&app.default_params, app.save_scale);
                 settings_save_palettes(app.user_palettes);
                 settings_save_ranges(&app.ranges);
+                app.settings_flash = 20;
+            }
+
+            if (do_defaults_reset) {
+                FilterRanges defaults = FILTER_RANGES_DEFAULTS;
+                app.ranges = defaults;
                 app.settings_flash = 20;
             }
         }

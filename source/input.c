@@ -10,12 +10,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   AppState *app, ShootState *shoot, WiggleState *wig,
                   GalleryState *gal, EditState *edit,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
+                  bool *do_defaults_reset,
                   bool *do_gallery_toggle,
                   bool *do_edit_cancel, bool *do_edit_savenew,
                   bool *do_edit_overwrite, bool *do_edit_enter) {
     *do_cam_toggle    = false;
     *do_save          = false;
     *do_defaults_save = false;
+    *do_defaults_reset = false;
     *do_gallery_toggle = false;
     *do_edit_cancel   = false;
     *do_edit_savenew  = false;
@@ -692,6 +694,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         // Save as Default
         if (tapped && hit(tx, ty, CAL_SAVEDEF_X, CAL_SAVEDEF_Y, CAL_SAVEDEF_W, CAL_SAVEDEF_H)) {
             *do_defaults_save = true;
+            return true;
+        }
+        // Reset to Default
+        if (tapped && hit(tx, ty, CAL_RESET_X, CAL_RESET_Y, CAL_RESET_W, CAL_RESET_H)) {
+            *do_defaults_reset = true;
             return true;
         }
     }

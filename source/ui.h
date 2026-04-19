@@ -389,10 +389,15 @@
 #define CAL_GAMMA_ABS_MIN    0.1f
 #define CAL_GAMMA_ABS_MAX    4.0f
 
-#define CAL_SAVEDEF_X   60
-#define CAL_SAVEDEF_W  200
-#define CAL_SAVEDEF_H   24
-#define CAL_SAVEDEF_Y  185
+#define CAL_SAVEDEF_X   20
+#define CAL_SAVEDEF_W  130
+#define CAL_SAVEDEF_H   20
+#define CAL_SAVEDEF_Y  176
+
+#define CAL_RESET_X    (CAL_SAVEDEF_X + CAL_SAVEDEF_W + 8)
+#define CAL_RESET_W    130
+#define CAL_RESET_H    CAL_SAVEDEF_H
+#define CAL_RESET_Y    CAL_SAVEDEF_Y
 
 // ---------------------------------------------------------------------------
 // Helpers
