@@ -1195,7 +1195,7 @@ void draw_more_tab(C2D_TextBuf staticBuf,
     float tw = 0, th = 0;
     C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 MORE_PALED_X + (MORE_POWED_W - tw) / 2.0f, MORE_POWED_Y + 6.0f,
+                 MORE_PALED_X + (MORE_POWED_W - tw) / 2.0f, MORE_POWED_Y + 2.0f,
                  0.5f, 0.42f, 0.42f, CLR_TEXT);
 
     draw_pill((float)MORE_CALIB_X, MORE_POWED_Y,
@@ -1203,7 +1203,7 @@ void draw_more_tab(C2D_TextBuf staticBuf,
     C2D_TextParse(&t, staticBuf, "Calibrate");
     C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 MORE_CALIB_X + (MORE_POWED_W - tw) / 2.0f, MORE_POWED_Y + 6.0f,
+                 MORE_CALIB_X + (MORE_POWED_W - tw) / 2.0f, MORE_POWED_Y + 2.0f,
                  0.5f, 0.42f, 0.42f, CLR_TEXT);
 
     // --- Save as Default ---
@@ -1214,6 +1214,6 @@ void draw_more_tab(C2D_TextBuf staticBuf,
     C2D_TextParse(&t, staticBuf, "Save as Default");
     C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor,
-                 MORE_SAVEDEF_X + (MORE_SAVEDEF_W - tw) / 2.0f, MORE_SAVEDEF_Y + 5.0f,
+                 MORE_SAVEDEF_X + (MORE_SAVEDEF_W - tw) / 2.0f, MORE_SAVEDEF_Y + 1.0f,
                  0.5f, 0.44f, 0.44f, def_txt);
 }

@@ -216,37 +216,6 @@ int save_wiggle_gif(const char *path,
         }
     }
 
-    // When filter is active and crop exceeds display resolution, downscale
-    // first so the filter's static buffers (sized for 400x240) aren't exceeded
-    // and the output matches what the user previewed.
-    int fw = ow, fh = oh;
-    if (filter && (ow > CAMERA_WIDTH || oh > CAMERA_HEIGHT)) {
-        fw = ow <= CAMERA_WIDTH  ? ow : CAMERA_WIDTH;
-        fh = oh <= CAMERA_HEIGHT ? oh : CAMERA_HEIGHT;
-        int fnpix = fw * fh;
-        uint8_t *tmp = malloc(fnpix * 3);
-        if (tmp) {
-            // Nearest-neighbor downscale each frame in-place via tmp
-            uint8_t *frames[3] = { left_crop, right_crop, blend_crop };
-            for (int f = 0; f < 3; f++) {
-                for (int py = 0; py < fh; py++) {
-                    int sy = py * oh / fh;
-                    for (int px = 0; px < fw; px++) {
-                        int sx = px * ow / fw;
-                        int si = (sy * ow + sx) * 3;
-                        int di = (py * fw + px) * 3;
-                        tmp[di+0] = frames[f][si+0];
-                        tmp[di+1] = frames[f][si+1];
-                        tmp[di+2] = frames[f][si+2];
-                    }
-                }
-                memcpy(frames[f], tmp, fnpix * 3);
-            }
-            free(tmp);
-        }
-        ow = fw; oh = fh;
-    }
-
     // Apply palette/fx filter to each unique frame if requested
     if (filter) {
         apply_gameboy_filter(left_crop,  ow, oh, *filter);

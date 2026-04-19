@@ -52,7 +52,7 @@ int list_saved_photos(const char *dir, char paths[][64], int max);
 // Wiggle APNG functions (full 24-bit true colour, no quantization)
 // ---------------------------------------------------------------------------
 
-// Return the next free GW_XXXX.png path (O(1) after file_counter_init).
+// Return the next free GW_XXXX.gif path (O(1) after file_counter_init).
 int next_wiggle_path(const char *dir, char *out_path, int out_len);
 
 // Save an edited wiggle: composites stickers/frame onto each RGB565 thumb frame,

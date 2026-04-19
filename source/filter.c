@@ -4,13 +4,13 @@
 #include <math.h>
 
 // Static scratch buffer for the downsampled image — avoids per-frame malloc.
-// Sized for the smallest supported pixel_size (2), giving max (400/2)*(240/2)=200*120 pixels.
-#define SMALL_BUF_MAX (200 * 120 * 3)
+// Sized for VGA at smallest pixel_size (2): (640/2)*(480/2) = 320*240 pixels.
+#define SMALL_BUF_MAX (320 * 240 * 3)
 static uint8_t small_buf[SMALL_BUF_MAX];
 
 // Floyd-Steinberg error diffusion scratch buffer.
-// int16_t per channel, sized for the full 400x240 image (~563 KB in BSS).
-static int16_t fs_err[400 * 240 * 3];
+// int16_t per channel, sized for VGA 640x480 to support full-res wiggle saves.
+static int16_t fs_err[VGA_WIDTH * VGA_HEIGHT * 3];
 
 // --- FX post-processing scratch buffers -------------------------------------
 // Sized for VGA (640x480) to support wiggle GIF saves at full crop resolution.
