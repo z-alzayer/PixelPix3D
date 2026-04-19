@@ -219,7 +219,7 @@ int main(void) {
 
         if (!captureInterrupted) {
             // Physical button fallbacks (skip in gallery/edit mode — buttons have different roles)
-            if (!gal.mode && !edit.active) {
+            if (!gal.mode && !edit.active && !wig.preview) {
             // Shutter button remapping: when shutter_button==1, L/R fire the
             // shutter and A cycles palettes; otherwise A is the shutter (below)
             // and L/R cycle palettes.
