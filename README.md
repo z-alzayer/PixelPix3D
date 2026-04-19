@@ -8,6 +8,12 @@ A Game Boy-style camera app for the Nintendo 3DS. Point it at something, pick a 
 
 ---
 
+## Disclaimer
+
+This software is provided as-is. I am not responsible for any lost, corrupted, or overwritten files. **Always back up your SD card before installing or updating.**
+
+---
+
 ## What you need
 
 - A Nintendo 3DS (any model) with homebrew access
