@@ -314,7 +314,18 @@ static int gif_lzw_decode(FILE *fp, int n_pixels) {
         old_code = in_code;
     }
 done:
-    // Skip remaining sub-blocks
+    // The GIFReader may have buffered bytes beyond what the LZW decoder
+    // consumed.  Seek back by the unconsumed portion so gif_skip_blocks
+    // re-reads sub-block boundaries from the correct position.
+    {
+        int unconsumed = reader.block_len - reader.block_pos;
+        // Also account for any whole bits still in the accumulator that
+        // correspond to bytes already pulled from the stream.
+        // (a_bits can be negative after flush, clamp to 0)
+        if (unconsumed > 0)
+            fseek(fp, -unconsumed, SEEK_CUR);
+    }
+    // Skip remaining sub-blocks (reads until a zero-length terminator)
     gif_skip_blocks(fp);
     return out_pos;
 }
