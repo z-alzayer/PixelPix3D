@@ -1,5 +1,6 @@
 #include "input.h"
 #include "lomo.h"
+#include "bend.h"
 #include "settings.h"
 
 bool hit(int px, int py, int rx, int ry, int rw, int rh) {
@@ -284,9 +285,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             return true;
                         }
                     }
-                    // Timer button (4th slot)
+                    // Timer button (last slot, after all mode buttons)
                     {
-                        int bx = SHOOT_MODE_BTN_GAP + 3 * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        int bx = SHOOT_MODE_BTN_GAP + SHOOT_MODE_COUNT * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
                             shoot->timer_open = true;
                             return true;
@@ -360,6 +361,23 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
                                 if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
                                     shoot->lomo_preset = idx;
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                } else if (shoot->shoot_mode == SHOOT_MODE_BEND) {
+                    // 3×2 circuit-bend preset grid
+                    float cy = (float)SHOOT_CONTENT_Y;
+                    if (tapped) {
+                        for (int row = 0; row < BEND_GRID_ROWS; row++) {
+                            for (int col = 0; col < BEND_GRID_COLS; col++) {
+                                int idx = row * BEND_GRID_COLS + col;
+                                if (idx >= BEND_PRESET_COUNT) break;
+                                int bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
+                                int by = (int)(cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP));
+                                if (hit(tx, ty, bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H)) {
+                                    shoot->bend_preset = idx;
                                     return true;
                                 }
                             }

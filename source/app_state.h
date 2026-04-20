@@ -18,6 +18,7 @@ typedef struct {
     bool timer_open;       // timer picker visible
     int  shoot_timer_secs; // 0 = disabled
     int  lomo_preset;
+    int  bend_preset;
 
     // timer countdown
     bool timer_active;

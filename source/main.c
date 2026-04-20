@@ -10,6 +10,7 @@
 #include "input.h"
 #include "filter.h"
 #include "lomo.h"
+#include "bend.h"
 #include "image_load.h"
 #include "wigglegram.h"
 #include "settings.h"
@@ -116,6 +117,7 @@ int main(void) {
         .timer_open       = false,
         .shoot_timer_secs = 0,
         .lomo_preset      = 0,
+        .bend_preset      = 0,
         .timer_active     = false,
         .timer_remaining_ms = 0,
         .timer_prev_tick  = 0,
@@ -426,6 +428,9 @@ int main(void) {
                         lp_params.color_levels = 256;
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params, app.frame_count);
+                    } else if (shoot.shoot_mode == SHOOT_MODE_BEND) {
+                        apply_bend(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                                   shoot.bend_preset, app.frame_count);
                     } else {
                         apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
                         apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);

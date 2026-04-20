@@ -138,12 +138,13 @@
 #define SHOOT_MODE_GBCAM      0
 #define SHOOT_MODE_WIGGLE     1
 #define SHOOT_MODE_LOMO       2
-#define SHOOT_MODE_COUNT      3
+#define SHOOT_MODE_BEND       3
+#define SHOOT_MODE_COUNT      4
 
 // Mode grid geometry (y=44..82, 1 row of 3 capture modes + Timer settings button)
 #define SHOOT_MODE_ROW1_Y   44
 #define SHOOT_MODE_ROW_H    38
-#define SHOOT_MODE_BTN_W    75   // (320 - 5*4) / 4  (same spacing, Timer uses 4th slot)
+#define SHOOT_MODE_BTN_W    59   // (320 - 6*4) / 5  (4 modes + Timer button)
 #define SHOOT_MODE_BTN_GAP   4
 
 // Full contextual panel (replaces grid when a mode is "open")
@@ -181,6 +182,13 @@
 #define LOMO_GRID_GAP   4
 #define LOMO_GRID_BTN_W ((BOT_W - (LOMO_GRID_COLS + 1) * LOMO_GRID_GAP) / LOMO_GRID_COLS)
 #define LOMO_GRID_BTN_H 30
+
+// Bend preset grid (same 3×2 layout as Lomo)
+#define BEND_GRID_COLS  LOMO_GRID_COLS
+#define BEND_GRID_ROWS  LOMO_GRID_ROWS
+#define BEND_GRID_GAP   LOMO_GRID_GAP
+#define BEND_GRID_BTN_W LOMO_GRID_BTN_W
+#define BEND_GRID_BTN_H LOMO_GRID_BTN_H
 
 // Timer button values shared between draw and input
 #define SHOOT_TIMER_VAL_COUNT       4
