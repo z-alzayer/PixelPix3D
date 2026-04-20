@@ -5,6 +5,9 @@
 #include "app_state.h"
 #include "camera.h"
 
+// Raw display buffer — populated by main.c when comparing, read by render.
+extern uint16_t s_raw_display_buf[];
+
 // Render the top screen: edit preview, wiggle preview, gallery, or live camera.
 // Handles gfxSet3D, framebuffer blit, flush, and swap.
 void render_top_screen(bool use3d, bool timer_open,

@@ -8,7 +8,7 @@
 // Scratch buffers owned by this module
 static uint8_t  s_edit_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 static uint16_t s_wiggle_compose_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
-static uint16_t s_raw_display_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
+uint16_t s_raw_display_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
 
 void render_top_screen(bool use3d, bool timer_open,
                        const EditState *edit, const GalleryState *gal,
@@ -46,18 +46,9 @@ void render_top_screen(bool use3d, bool timer_open,
             void *blit_src;
             if (gal->mode && gal->count > 0)
                 blit_src = gallery_thumbs[gal->anim_frame];
-            else if (comparing) {
-                // Downscale VGA 640x480 raw buffer to 400x240 for display
-                const uint16_t *vga = (const uint16_t *)buf;
-                for (int y = 0; y < CAMERA_HEIGHT; y++) {
-                    int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
-                    for (int x = 0; x < CAMERA_WIDTH; x++) {
-                        int sx = x * VGA_WIDTH / CAMERA_WIDTH;
-                        s_raw_display_buf[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
-                    }
-                }
-                blit_src = s_raw_display_buf;
-            } else
+            else if (comparing)
+                blit_src = s_raw_display_buf;  // pre-populated in main.c case 2
+            else
                 blit_src = (void *)filtered_buf;
             writePictureToFramebufferRGB565(gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
                                             blit_src, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);

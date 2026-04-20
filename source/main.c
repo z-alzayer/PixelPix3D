@@ -391,6 +391,18 @@ int main(void) {
             break;
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
+            if (!use3d && comparing) {
+                // Downscale VGA → display into s_raw_display_buf while the
+                // camera frame is complete and won't be overwritten mid-read.
+                const uint16_t *vga = (const uint16_t *)buf;
+                for (int y = 0; y < CAMERA_HEIGHT; y++) {
+                    int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
+                    for (int x = 0; x < CAMERA_WIDTH; x++) {
+                        int sx = x * VGA_WIDTH / CAMERA_WIDTH;
+                        s_raw_display_buf[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
+                    }
+                }
+            }
             // Pause filter processing when save thread uses static filter buffers.
             // Unfiltered wiggle saves don't conflict, so allow live view updates.
             if (!use3d && !comparing && (!s_save.busy || (s_save.wiggle_mode && !s_save.wiggle_filter_active))) {
