@@ -1,16 +1,30 @@
 # PixelPix 3D
 
-A Game Boy-style camera app for the Nintendo 3DS. Point it at something, pick a palette, and save retro-filtered photos to your SD card.
+A Game Boy inspired camera app for the Nintendo 3DS. Point it at stuff and take pictures.
 
-| Shell palette | DB palette | GB Grays palette |
+| Main screen | Dither settings | Custom palettes |
 |:---:|:---:|:---:|
-| ![GB_0132](example_image/GB_0132.JPG) | ![GB_0124](example_image/GB_0124.JPG) | ![GB_0128](example_image/GB_0128.JPG) |
+| ![Main screen](example_image/main_screen.png) | ![Dither settings](example_image/dither_settings.png) | ![Custom palettes](example_image/custom_palettes.png) |
+
+| Lomo filters | Bending filters | Frames & stickers |
+|:---:|:---:|:---:|
+| ![Lomo filters](example_image/lomo_filters.png) | ![Bending filters](example_image/bending_filters.png) | ![Frames & stickers](example_image/frames_stickers.png) |
+
+| Gallery | Wiggles | Timer |
+|:---:|:---:|:---:|
+| ![Gallery](example_image/gallery.png) | ![Wiggles](example_image/wiggles.png) | ![Timer](example_image/timer.png) |
+
+**Wiggle GIFs**
+
+| | | |
+|:---:|:---:|:---:|
+| ![GW_0167](example_image/GW_0167.gif) | ![GW_0168](example_image/GW_0168.gif) | ![GW_0169](example_image/GW_0169.gif) |
 
 ---
 
 ## Disclaimer
 
-This software is provided as-is. I am not responsible for any lost, corrupted, or overwritten files. **Always back up your SD card before installing or updating.**
+This software is provided as-is. I am not responsible for any lost, corrupted, or overwritten files. **Always back up your images and or SD card before installing or updating.** Whilst I do try to avoid any data loss, this is a one person operation and I can't absolutely guarantee against data loss. 
 
 ---
 
@@ -18,8 +32,6 @@ This software is provided as-is. I am not responsible for any lost, corrupted, o
 
 - A Nintendo 3DS (any model) with homebrew access
 - An SD card
-
-No computer required once it's installed.
 
 ---
 
@@ -36,71 +48,50 @@ No computer required once it's installed.
 1. Download `3ds_camera.cia` from the [releases page](https://github.com/z-alzayer/PixelPix3D/releases)
 2. Copy it anywhere on your SD card
 3. Open [FBI](https://github.com/Steveice10/FBI), navigate to the file, and install it
-4. The app will appear on your home menu like any normal game
-
-
----
-
-## Taking a photo
-
-The live filtered view is always on the top screen. When you see something you like, just save it.
-
-- **A** (or tap the **Save** button) — saves the current frame to your SD card
-- **Y** (or tap the **Outer/Selfie** button) — switches between the rear and front camera
-
-Photos are saved to `sdmc:/DCIM/GameboyCamera/` as `GB_0001.JPG`, `GB_0002.JPG`, etc.
-
-> Hold **SELECT** at any time to temporarily see the raw, unfiltered camera feed.
+4. The app will appear on your home menu
 
 ---
 
 ## The interface
 
-The bottom screen has two tabs: **Camera** and **Settings**. Tap either label to switch.
+The bottom screen has tabs: **Camera**, **Settings**, **Gallery**, and more. Tap a label to switch.
 
 ### Camera tab
 
-![Camera tab](example_image/main_screen.png)
+Four sliders let you adjust the look in real time: **Brightness**, **Contrast**, **Saturation**, **Gamma**, and **Pixel Size**. Below the sliders are **6 palette buttons** — tap one or use **L / R** to cycle.
 
-Four sliders let you adjust the look in real time:
+### Filters
 
-| Slider | What it does |
-|--------|-------------|
-| Brightness | Lighter or darker overall |
-| Contrast | Pushes darks and lights further apart |
-| Saturation | Left = greyscale, right = vivid colour |
-| Gamma | Lifts or deepens the midtones |
-| Pixel Size | Adds a pixelation effect (snaps to 8 steps) |
+- **Lomo** — colour-shift and vignette effects
+- **Bending** — warps and distorts the image geometry
+- **Frames & Stickers** — overlay pixel-art frames and stickers on your photos
 
-Below the sliders are **6 palette buttons** — tap one to apply that colour palette. **L** / **R** cycle through them with buttons.
+### Wiggles
+
+Take a burst of frames and save them as an animated GIF. Great for lo-fi motion shots.
+
+### Timer
+
+Set a countdown before the shutter fires — useful for selfies or group shots.
 
 ### Settings tab
-
-![Settings tab](example_image/dither_settings.png)
 
 | Setting | What it does |
 |---------|-------------|
 | Save Scale | **1×** saves at 400×240, **2×** saves at 800×480 (default) |
-| Dither Mode | How colours blend at palette edges: **Bayer**, **Cluster**, **Atkinson**, or **Floyd-Steinberg** |
+| Dither Mode | **Bayer**, **Cluster**, **Atkinson**, or **Floyd-Steinberg** |
 | Invert | Flips all colours to their negative |
 
-From within the Settings tab, two extra tabs appear in the tab bar:
+From within Settings, two extra tabs appear:
 
-- **Calibrate** — adjust the min, max, and default value for each filter slider
+- **Calibrate** — adjust the min, max, and default value for each slider
+- **Palette** — edit each palette's colours with RGB sliders; top screen shows a live preview
 
-  ![Calibrate tab](example_image/custom_defaults.png)
-
-- **Palette** — edit each palette's colours with RGB sliders; the top screen shows a live preview
-
-  ![Palette editor](example_image/custom_palettes.png)
-
-When you've set things up the way you like, tap **Save as Default** to write your settings to the SD card. They'll be there the next time you open the app.
+Tap **Save as Default** to persist your settings to the SD card.
 
 ### Gallery
 
-![Gallery](example_image/gallery.png)
-
-Tap **Gallery** in the tab bar to browse photos you've already saved. Use the D-Pad to move between photos. The selected photo shows full-screen on the top screen.
+Browse saved photos with the D-Pad. The selected photo shows full-screen on the top screen.
 
 ---
 
@@ -112,8 +103,8 @@ Tap **Gallery** in the tab bar to browse photos you've already saved. Use the D-
 | **Y** | Toggle rear / front camera |
 | **L / R** | Previous / next palette |
 | **B** | Cycle pixel size |
-| **D-Pad Up / Down** | Brightness (in Camera tab) |
-| **D-Pad Left / Right** | Saturation (in Camera tab) |
+| **D-Pad Up / Down** | Brightness |
+| **D-Pad Left / Right** | Saturation |
 | **SELECT** (hold) | Compare — show raw unfiltered feed |
 | **START** | Quit |
 
@@ -130,49 +121,35 @@ Tap **Gallery** in the tab bar to browse photos you've already saved. Use the D-
 | 5 | GBA-like UI | Game Boy Advance UI colours |
 | 6 | DB Retro | Darkbox retro palette |
 
-You can customise any palette from the **Palette** editor in the Settings tab.
+All palettes are editable from the **Palette** tab in Settings.
 
 ---
 
 ## Resetting to defaults
 
-All your settings are stored in one plain-text file on the SD card:
-
-```
-sdmc:/3ds/pixelpix3d/settings.ini
-```
-
-To reset everything back to factory defaults, delete that file. The app will recreate it with defaults the next time you tap **Save as Default**.
-
-You can also open `settings.ini` on a computer and edit values manually — it's just `key=value` pairs.
+Delete `sdmc:/3ds/pixelpix3d/settings.ini` to reset everything. The app recreates it with defaults the next time you tap **Save as Default**. You can also edit the file manually — it's plain `key=value` pairs.
 
 ---
 
 ## Notes
 
-**3D depth slider** — raising it shows a red warning screen. This may be fixed in an update but currently outside the scope of the project, I'm happy to accept a PR if someone wants to put the time in.
+**3D depth slider** — raising it shows a red warning screen. Outside the current scope; happy to accept a PR.
 
 ---
 
 ## Credits
 
 ### Pixel art food stickers
-**Free Pixel Art Foods** by [alexkovacsart](https://alexkovacsart.itch.io/free-pixel-art-foods) — seriously great pixel art, go check it out!
-Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — attribution required.
+**Free Pixel Art Foods** by [alexkovacsart](https://alexkovacsart.itch.io/free-pixel-art-foods) — Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ### Emoji stickers
-**Emoji Comic Pack** by [Notokapixel / narehop](https://narehop.itch.io/emoji-comic-pack) — the comic-style emojis are awesome, worth a look!
-Licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (Public Domain).
+**Emoji Comic Pack** by [Notokapixel / narehop](https://narehop.itch.io/emoji-comic-pack) — Licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
 
 ---
 
 ## Building from source
 
-### Requirements
-
-- [devkitARM](https://devkitpro.org/) with 3DS support
-- libctru, citro2d, citro3d (via devkitPro)
-- `makerom` binary in the project root (for CIA builds)
+Requires [devkitARM](https://devkitpro.org/) with 3DS support, libctru, citro2d, citro3d, and `makerom` in the project root.
 
 ```bash
 make          # builds 3ds_camera.3dsx
