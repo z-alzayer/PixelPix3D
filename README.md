@@ -2,17 +2,9 @@
 
 A Game Boy inspired camera app for the Nintendo 3DS. Point it at stuff and take pictures.
 
-| Main screen | Dither settings | Custom palettes |
-|:---:|:---:|:---:|
-| ![Main screen](example_image/main_screen.png) | ![Dither settings](example_image/dither_settings.png) | ![Custom palettes](example_image/custom_palettes.png) |
-
-| Lomo filters | Bending filters | Frames & stickers |
-|:---:|:---:|:---:|
-| ![Lomo filters](example_image/lomo_filters.png) | ![Bending filters](example_image/bending_filters.png) | ![Frames & stickers](example_image/frames_stickers.png) |
-
-| Gallery | Wiggles | Timer |
-|:---:|:---:|:---:|
-| ![Gallery](example_image/gallery.png) | ![Wiggles](example_image/wiggles.png) | ![Timer](example_image/timer.png) |
+| | | | |
+|:---:|:---:|:---:|:---:|
+| ![GB_0124](example_image/GB_0124.JPG) | ![GB_0128](example_image/GB_0128.JPG) | ![GB_0132](example_image/GB_0132.JPG) | ![GB_0143](example_image/GB_0143.JPG) |
 
 **Wiggle GIFs**
 
@@ -24,7 +16,7 @@ A Game Boy inspired camera app for the Nintendo 3DS. Point it at stuff and take 
 
 ## Disclaimer
 
-This software is provided as-is. I am not responsible for any lost, corrupted, or overwritten files. **Always back up your images and or SD card before installing or updating.** Whilst I do try to avoid any data loss, this is a one person operation and I can't absolutely guarantee against data loss. 
+This software is provided as-is. I am not responsible for any lost, corrupted, or overwritten files. **Always back up your images and or SD card before installing or updating.** Whilst I do try to avoid any data loss, this is a one person operation and I can't absolutely guarantee against data loss.
 
 ---
 
@@ -58,9 +50,15 @@ The bottom screen has tabs: **Camera**, **Settings**, **Gallery**, and more. Tap
 
 ### Camera tab
 
+![Camera tab](example_image/main_screen.png)
+
 Four sliders let you adjust the look in real time: **Brightness**, **Contrast**, **Saturation**, **Gamma**, and **Pixel Size**. Below the sliders are **6 palette buttons** — tap one or use **L / R** to cycle.
 
 ### Filters
+
+| Lomo | Bending | Frames & stickers |
+|:---:|:---:|:---:|
+| ![Lomo filters](example_image/lomo_filters.png) | ![Bending filters](example_image/bending_filters.png) | ![Frames & stickers](example_image/frames_stickers.png) |
 
 - **Lomo** — colour-shift and vignette effects
 - **Bending** — warps and distorts the image geometry
@@ -68,13 +66,19 @@ Four sliders let you adjust the look in real time: **Brightness**, **Contrast**,
 
 ### Wiggles
 
+![Wiggles](example_image/wiggles.png)
+
 Take a burst of frames and save them as an animated GIF. Great for lo-fi motion shots.
 
 ### Timer
 
+![Timer](example_image/timer.png)
+
 Set a countdown before the shutter fires — useful for selfies or group shots.
 
 ### Settings tab
+
+![Settings tab](example_image/dither_settings.png)
 
 | Setting | What it does |
 |---------|-------------|
@@ -87,9 +91,13 @@ From within Settings, two extra tabs appear:
 - **Calibrate** — adjust the min, max, and default value for each slider
 - **Palette** — edit each palette's colours with RGB sliders; top screen shows a live preview
 
+![Custom palettes](example_image/custom_palettes.png)
+
 Tap **Save as Default** to persist your settings to the SD card.
 
 ### Gallery
+
+![Gallery](example_image/gallery.png)
 
 Browse saved photos with the D-Pad. The selected photo shows full-screen on the top screen.
 
@@ -131,12 +139,6 @@ Delete `sdmc:/3ds/pixelpix3d/settings.ini` to reset everything. The app recreate
 
 ---
 
-## Notes
-
-**3D depth slider** — raising it shows a red warning screen. Outside the current scope; happy to accept a PR.
-
----
-
 ## Credits
 
 ### Pixel art food stickers
@@ -144,6 +146,12 @@ Delete `sdmc:/3ds/pixelpix3d/settings.ini` to reset everything. The app recreate
 
 ### Emoji stickers
 **Emoji Comic Pack** by [Notokapixel / narehop](https://narehop.itch.io/emoji-comic-pack) — Licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
+
+---
+
+## Notes
+
+**3D depth slider** — raising it shows a red warning screen. Outside the current scope; happy to accept a PR.
 
 ---
 
