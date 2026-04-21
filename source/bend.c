@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
 {
-    (void)frame;
+    uint32_t rng = (uint32_t)(frame * 1597334677u + 97);
     for (int y = 0; y < h; y++) {
         int shift_r = (y % 5) + 1;
         int shift_g = ((y + 2) % 4) + 1;
@@ -21,9 +21,24 @@ static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
             uint8_t r = row[x*3+0];
             uint8_t g = row[x*3+1];
             uint8_t b = row[x*3+2];
-            row[x*3+0] = (r << shift_r) | (r >> (8 - shift_r));
-            row[x*3+1] = (g >> shift_g) | (g << (8 - shift_g));
-            row[x*3+2] = (b << shift_b) | (b >> (8 - shift_b));
+            // Rotated versions
+            uint8_t cr = (r << shift_r) | (r >> (8 - shift_r));
+            uint8_t cg = (g >> shift_g) | (g << (8 - shift_g));
+            uint8_t cb = (b << shift_b) | (b >> (8 - shift_b));
+            // Blend ~55% corrupted with original to soften
+            int mr = r + (((cr - r) * 140) >> 8);
+            int mg = g + (((cg - g) * 140) >> 8);
+            int mb = b + (((cb - b) * 140) >> 8);
+            // Random colour pop — pick a channel to boost based on
+            // which original channel is strongest
+            rng = rng * 1664525u + 1013904223u;
+            int boost = 20 + ((rng >> 12) & 0x1F); // 20..51
+            if (r >= g && r >= b)      { mr += boost; mg += boost >> 3; }
+            else if (g >= r && g >= b) { mg += boost; mb += boost >> 3; }
+            else                       { mb += boost; mr += boost >> 3; }
+            row[x*3+0] = (uint8_t)(mr & 0xFF);
+            row[x*3+1] = (uint8_t)(mg & 0xFF);
+            row[x*3+2] = (uint8_t)(mb & 0xFF);
         }
     }
 }
@@ -36,15 +51,27 @@ static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
 static void bend_overflow(uint8_t *rgb, int w, int h, int frame)
 {
     (void)frame;
+    // LCG state — seeded per-frame so the pattern varies across captures
+    uint32_t rng = (uint32_t)(frame * 2654435761u + 1);
     for (int y = 0; y < h; y++) {
-        // Gentler bias — drifts slowly across scanlines so the top of the
-        // image looks near-normal and corruption builds toward the bottom.
-        uint8_t bias_r = (uint8_t)((y * 3 + 17) & 0xFF);
-        uint8_t bias_g = (uint8_t)((y * 5 + 53) & 0xFF);
-        uint8_t bias_b = (uint8_t)((y * 7 + 97) & 0xFF);
+        // Slow drift across scanlines — top is mild, bottom is wild
+        int base_r = (y * 3 + 17) & 0xFF;
+        int base_g = (y * 5 + 53) & 0xFF;
+        int base_b = (y * 7 + 97) & 0xFF;
         uint8_t *row = rgb + y * w * 3;
         for (int x = 0; x < w; x++) {
-            // Wrapping add — overflow creates colour jumps
+            // LCG step — cheap pseudo-random jitter per pixel
+            rng = rng * 1664525u + 1013904223u;
+            int jitter = (int)((rng >> 16) & 0x3F) - 0x20; // -32..+31
+
+            // Second scramble for independent per-channel spread
+            uint32_t r2 = rng * 2891336453u + 1;
+            int ch_spread = (int)((r2 >> 16) & 0x1F);  // 0..31
+
+            uint8_t bias_r = (uint8_t)((base_r + jitter) & 0xFF);
+            uint8_t bias_g = (uint8_t)((base_g + jitter + ch_spread) & 0xFF);
+            uint8_t bias_b = (uint8_t)((base_b + jitter - ch_spread) & 0xFF);
+
             row[x*3+0] = (uint8_t)(row[x*3+0] + bias_r);
             row[x*3+1] = (uint8_t)(row[x*3+1] + bias_g);
             row[x*3+2] = (uint8_t)(row[x*3+2] + bias_b);
@@ -61,17 +88,39 @@ static uint8_t s_byteshift_tmp[400 * 3];  // one row scratch
 
 static void bend_byteshift(uint8_t *rgb, int w, int h, int frame)
 {
-    (void)frame;
     int row_bytes = w * 3;
-    // Byte offset grows with each scanline — top rows are nearly correct,
-    // bottom rows are wildly misaligned with XOR colour contamination.
+    uint32_t rng = (uint32_t)(frame * 3266489917u + 13);
     for (int y = 0; y < h; y++) {
         int shift = (y * y / 60) % row_bytes;  // quadratic growth, wrapping
         uint8_t *row = rgb + y * row_bytes;
         memcpy(s_byteshift_tmp, row, row_bytes);
-        for (int i = 0; i < row_bytes; i++) {
-            uint8_t src = s_byteshift_tmp[(i + shift) % row_bytes];
-            row[i] = src ^ (uint8_t)(y & 0xFF);
+        for (int i = 0; i < row_bytes; i += 3) {
+            int s0 = (i + shift) % row_bytes;
+            uint8_t src_r = s_byteshift_tmp[s0];
+            uint8_t src_g = s_byteshift_tmp[(s0 + 1) % row_bytes];
+            uint8_t src_b = s_byteshift_tmp[(s0 + 2) % row_bytes];
+            uint8_t orig_r = s_byteshift_tmp[i];
+            uint8_t orig_g = s_byteshift_tmp[i + 1];
+            uint8_t orig_b = s_byteshift_tmp[i + 2];
+            // Softer XOR — blend shifted with original (~50/50) then
+            // apply a mild XOR instead of the full-strength y mask
+            uint8_t xmask = (uint8_t)((y >> 1) & 0x7F); // half strength
+            int mr = ((int)orig_r + (int)src_r) >> 1;
+            int mg = ((int)orig_g + (int)src_g) >> 1;
+            int mb = ((int)orig_b + (int)src_b) >> 1;
+            mr ^= xmask;
+            mg ^= xmask;
+            mb ^= xmask;
+            // Random vibrant tint — varies per pixel
+            rng = rng * 1664525u + 1013904223u;
+            int sel = (rng >> 16) % 3;
+            int pop = 15 + ((rng >> 8) & 0x1F); // 15..46
+            if (sel == 0)      mr += pop;
+            else if (sel == 1) mg += pop;
+            else               mb += pop;
+            row[i+0] = (uint8_t)(mr & 0xFF);
+            row[i+1] = (uint8_t)(mg & 0xFF);
+            row[i+2] = (uint8_t)(mb & 0xFF);
         }
     }
 }
@@ -116,20 +165,38 @@ static void bend_solarize(uint8_t *rgb, int w, int h, int frame)
 // ---------------------------------------------------------------------------
 static void bend_scramble(uint8_t *rgb, int w, int h, int frame)
 {
-    (void)frame;
     int total = w * h * 3;
-    // Use a stride that is coprime with 3 to maximise channel misalignment.
-    // stride=7 means: pixel N's red comes from byte 7*N, which wraps through
-    // R/G/B of completely different pixels.
+    // Use a stride coprime with 3 to maximise channel misalignment.
     int stride = 7;
+    // LCG for per-pixel randomness
+    uint32_t rng = (uint32_t)(frame * 2246822519u + 3266489917u);
     for (int i = 0; i < total; i += 3) {
         int src = (i * stride) % total;
-        // Don't just copy — also add the original so the image is still
-        // recognisable but with wild colour overlay
         uint8_t r0 = rgb[i+0], g0 = rgb[i+1], b0 = rgb[i+2];
-        rgb[i+0] = (uint8_t)(r0 + rgb[(src + 0) % total]);
-        rgb[i+1] = (uint8_t)(g0 + rgb[(src + 1) % total]);
-        rgb[i+2] = (uint8_t)(b0 + rgb[(src + 2) % total]);
+        uint8_t rs = rgb[(src + 0) % total];
+        uint8_t gs = rgb[(src + 1) % total];
+        uint8_t bs = rgb[(src + 2) % total];
+
+        // Softer blend — mix ~40% scrambled instead of full add to tame
+        // the harsh scanline banding
+        int mr = r0 + ((rs * 100) >> 8);
+        int mg = g0 + ((gs * 100) >> 8);
+        int mb = b0 + ((bs * 100) >> 8);
+
+        // Vibrant colour tint derived from the original subject —
+        // boost the dominant channel and cross-contaminate slightly
+        // so the subject's hues punch through the glitch.
+        rng = rng * 1664525u + 1013904223u;
+        int sel = (rng >> 16) % 3;
+        int boost = 30 + ((rng >> 8) & 0x1F);  // 30..61
+
+        if (sel == 0)      { mr += boost; mg += boost >> 2; }
+        else if (sel == 1) { mg += boost; mb += boost >> 2; }
+        else               { mb += boost; mr += boost >> 2; }
+
+        rgb[i+0] = (uint8_t)(mr > 255 ? mr & 0xFF : mr);
+        rgb[i+1] = (uint8_t)(mg > 255 ? mg & 0xFF : mg);
+        rgb[i+2] = (uint8_t)(mb > 255 ? mb & 0xFF : mb);
     }
 }
 
