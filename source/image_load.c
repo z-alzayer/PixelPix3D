@@ -198,23 +198,34 @@ int load_apng_frames_to_rgb565(const char *path,
 
 static uint8_t s_gif_indices[VGA_WIDTH * VGA_HEIGHT];
 
+// Skip GIF sub-blocks (read block sizes + data until a zero-length block).
+// Uses fread exclusively (no fgetc) to avoid libctru buffering mismatch.
+static void gif_skip_blocks(FILE *fp) {
+    uint8_t sz;
+    while (fread(&sz, 1, 1, fp) == 1 && sz > 0)
+        fseek(fp, sz, SEEK_CUR);
+}
+
 // Minimal LZW decoder for GIF — reads sub-blocks from a FILE stream.
 typedef struct {
     FILE *fp;
     uint8_t block[256];
-    int     block_len;
-    int     block_pos;
-    unsigned long accum;
-    int           a_bits;
+    int      block_len;
+    int      block_pos;
+    uint32_t accum;
+    int      a_bits;
+    int      done;       // set when we hit the zero-length sub-block terminator
 } GIFReader;
 
 static int gif_read_byte(GIFReader *r) {
     if (r->block_pos >= r->block_len) {
-        int sz = fgetc(r->fp);
-        if (sz <= 0) return -1;
+        uint8_t sz_byte;
+        if (fread(&sz_byte, 1, 1, r->fp) != 1) { r->done = 1; return -1; }
+        int sz = sz_byte;
+        if (sz == 0) { r->done = 1; return -1; }  // hit sub-block terminator
         r->block_len = sz;
         r->block_pos = 0;
-        if ((int)fread(r->block, 1, sz, r->fp) != sz) return -1;
+        if ((int)fread(r->block, 1, sz, r->fp) != sz) { r->done = 1; return -1; }
     }
     return r->block[r->block_pos++];
 }
@@ -223,19 +234,13 @@ static int gif_read_code(GIFReader *r, int n_bits) {
     while (r->a_bits < n_bits) {
         int b = gif_read_byte(r);
         if (b < 0) return -1;
-        r->accum |= (unsigned long)b << r->a_bits;
+        r->accum |= (uint32_t)b << r->a_bits;
         r->a_bits += 8;
     }
-    int code = (int)(r->accum & ((1 << n_bits) - 1));
+    int code = (int)(r->accum & ((1u << n_bits) - 1));
     r->accum >>= n_bits;
     r->a_bits -= n_bits;
     return code;
-}
-
-// Skip GIF sub-blocks (read block sizes + data until a zero-length block).
-static void gif_skip_blocks(FILE *fp) {
-    int sz;
-    while ((sz = fgetc(fp)) > 0) fseek(fp, sz, SEEK_CUR);
 }
 
 // Decode one LZW image from current file position into s_gif_indices.
@@ -246,13 +251,17 @@ static uint8_t  s_lzw_suffix[GIF_LZW_MAX];
 static uint8_t  s_lzw_stack[GIF_LZW_MAX];
 
 static int gif_lzw_decode(FILE *fp, int n_pixels) {
-    int min_code_size = fgetc(fp);
+    uint8_t mcs;
+    if (fread(&mcs, 1, 1, fp) != 1) return 0;
+    int min_code_size = mcs;
     if (min_code_size < 2 || min_code_size > 8) return 0;
 
     int clear_code = 1 << min_code_size;
     int eoi_code   = clear_code + 1;
 
-    GIFReader reader = { fp, {0}, 0, 0, 0, 0 };
+    GIFReader reader;
+    memset(&reader, 0, sizeof(reader));
+    reader.fp = fp;
 
     int n_bits    = min_code_size + 1;
     int max_code  = 1 << n_bits;
@@ -314,19 +323,12 @@ static int gif_lzw_decode(FILE *fp, int n_pixels) {
         old_code = in_code;
     }
 done:
-    // The GIFReader may have buffered bytes beyond what the LZW decoder
-    // consumed.  Seek back by the unconsumed portion so gif_skip_blocks
-    // re-reads sub-block boundaries from the correct position.
-    {
-        int unconsumed = reader.block_len - reader.block_pos;
-        // Also account for any whole bits still in the accumulator that
-        // correspond to bytes already pulled from the stream.
-        // (a_bits can be negative after flush, clamp to 0)
-        if (unconsumed > 0)
-            fseek(fp, -unconsumed, SEEK_CUR);
-    }
-    // Skip remaining sub-blocks (reads until a zero-length terminator)
-    gif_skip_blocks(fp);
+    // Only drain remaining sub-blocks if decoder didn't already hit the
+    // zero-length terminator.  No seek-back — the reader consumed whole
+    // sub-blocks, so after hitting terminator the file is already positioned
+    // at the next GIF block.
+    if (!reader.done)
+        gif_skip_blocks(fp);
     return out_pos;
 }
 
@@ -373,22 +375,21 @@ int load_gif_frames_to_rgb565(const char *path,
 
     // Walk blocks until we've decoded enough frames or hit the trailer
     while (loaded < max_frames) {
-        int b = fgetc(fp);
-        if (b < 0 || b == 0x3B) break; // EOF or trailer
+        uint8_t block_id;
+        if (fread(&block_id, 1, 1, fp) != 1) break;
+        if (block_id == 0x3B) break; // GIF trailer
 
-        if (b == 0x21) { // Extension
-            int label = fgetc(fp);
+        if (block_id == 0x21) { // Extension
+            uint8_t label;
+            if (fread(&label, 1, 1, fp) != 1) break;
             if (label == 0xF9) { // Graphic Control Extension
-                int sz = fgetc(fp);
-                if (sz >= 4) {
-                    uint8_t gce[4];
-                    if (fread(gce, 1, 4, fp) != 4) break;
-                    uint16_t cs = gce[1] | (gce[2] << 8);
+                // Read entire GCE as one block: size(1) + data(4) + terminator(1)
+                uint8_t gce_block[6];
+                if (fread(gce_block, 1, 6, fp) != 6) break;
+                if (gce_block[0] >= 4) {
+                    uint16_t cs = gce_block[2] | (gce_block[3] << 8);
                     int ms = cs * 10;
                     if (loaded == 0) *out_delay_ms = ms < 10 ? 10 : ms;
-                    fgetc(fp); // block terminator
-                } else {
-                    gif_skip_blocks(fp);
                 }
             } else {
                 gif_skip_blocks(fp);
@@ -396,7 +397,7 @@ int load_gif_frames_to_rgb565(const char *path,
             continue;
         }
 
-        if (b == 0x2C) { // Image Descriptor
+        if (block_id == 0x2C) { // Image Descriptor
             uint8_t desc[9];
             if (fread(desc, 1, 9, fp) != 9) break;
             int iw = desc[4] | (desc[5] << 8);
@@ -410,7 +411,8 @@ int load_gif_frames_to_rgb565(const char *path,
 
             if (iw != gw || ih != gh || iw * ih > VGA_WIDTH * VGA_HEIGHT) {
                 // Unexpected frame size — skip LZW data
-                fgetc(fp); // min code size
+                uint8_t mcs_skip;
+                fread(&mcs_skip, 1, 1, fp);
                 gif_skip_blocks(fp);
                 continue;
             }
@@ -422,12 +424,51 @@ int load_gif_frames_to_rgb565(const char *path,
                     s_gif_indices[i] = 0;
             }
 
-            // Map indices → RGB565 with nearest-neighbor scaling
-            for (int y = 0; y < height; y++) {
-                int sy = y * gh / height;
-                for (int x = 0; x < width; x++) {
-                    int sx = x * gw / width;
-                    frames[loaded][y * width + x] = pal565[s_gif_indices[sy * gw + sx]];
+            // Two-pass pixel-art downscale: clean 2×2 average → center on output.
+            // Pass 1: 2×2 block average into top-left of output buffer.
+            // This halves the source (e.g. 638×478 → 319×239) with no
+            // fractional sampling, destroying dither patterns cleanly.
+            int hw = gw / 2;  // half dimensions (truncate odd pixel)
+            int hh = gh / 2;
+            // Clamp to output buffer size (should always fit)
+            if (hw > width)  hw = width;
+            if (hh > height) hh = height;
+
+            for (int y = 0; y < hh; y++) {
+                int sy = y * 2;
+                for (int x = 0; x < hw; x++) {
+                    int sx = x * 2;
+                    uint16_t c00 = pal565[s_gif_indices[sy       * gw + sx    ]];
+                    uint16_t c01 = pal565[s_gif_indices[sy       * gw + sx + 1]];
+                    uint16_t c10 = pal565[s_gif_indices[(sy + 1) * gw + sx    ]];
+                    uint16_t c11 = pal565[s_gif_indices[(sy + 1) * gw + sx + 1]];
+                    int r = (((c00>>11)&0x1F) + ((c01>>11)&0x1F)
+                           + ((c10>>11)&0x1F) + ((c11>>11)&0x1F) + 2) >> 2;
+                    int g = (((c00>>5)&0x3F) + ((c01>>5)&0x3F)
+                           + ((c10>>5)&0x3F) + ((c11>>5)&0x3F) + 2) >> 2;
+                    int b = ((c00&0x1F) + (c01&0x1F)
+                           + (c10&0x1F) + (c11&0x1F) + 2) >> 2;
+                    frames[loaded][y * width + x] =
+                        (uint16_t)((r << 11) | (g << 5) | b);
+                }
+            }
+
+            // Pass 2: center the hw×hh image within width×height output.
+            // Shift rows right and down, filling borders with black.
+            int ox = (width  - hw) / 2;
+            int oy = (height - hh) / 2;
+            if (ox > 0 || oy > 0) {
+                // Work bottom-up to avoid overwriting uncopied data
+                for (int y = height - 1; y >= 0; y--) {
+                    int src_y = y - oy;
+                    for (int x = width - 1; x >= 0; x--) {
+                        int src_x = x - ox;
+                        if (src_y >= 0 && src_y < hh && src_x >= 0 && src_x < hw)
+                            frames[loaded][y * width + x] =
+                                frames[loaded][src_y * width + src_x];
+                        else
+                            frames[loaded][y * width + x] = 0;
+                    }
                 }
             }
             loaded++;
