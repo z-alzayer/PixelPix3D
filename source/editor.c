@@ -7,6 +7,7 @@
 #include "ui.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // ---------------------------------------------------------------------------
 // edit_enter_or_place — enter edit mode or pick up sticker
@@ -70,6 +71,44 @@ static void edit_composite_cb(uint8_t *rgb888, int w, int h, void *ud) {
         composite_frame_rgb888(rgb888, w, h, ctx->frame_path);
 }
 
+static int round_to_int(float v) {
+    return (int)(v >= 0.0f ? v + 0.5f : v - 0.5f);
+}
+
+static void remap_stickers_for_save(PlacedSticker *dst,
+                                    const PlacedSticker *src,
+                                    int src_w, int src_h,
+                                    bool wiggle_source) {
+    int crop_x = 0, crop_y = 0, crop_w = src_w, crop_h = src_h;
+    if (wiggle_source) {
+        if ((long long)src_w * CAMERA_HEIGHT > (long long)src_h * CAMERA_WIDTH) {
+            crop_h = src_h;
+            crop_w = (src_h * CAMERA_WIDTH) / CAMERA_HEIGHT;
+            if (crop_w < 1) crop_w = 1;
+            crop_x = (src_w - crop_w) / 2;
+            crop_y = 0;
+        } else {
+            crop_w = src_w;
+            crop_h = (src_w * CAMERA_HEIGHT) / CAMERA_WIDTH;
+            if (crop_h < 1) crop_h = 1;
+            crop_x = 0;
+            crop_y = (src_h - crop_h) / 2;
+        }
+    }
+
+    float scale_x = (float)crop_w / (float)CAMERA_WIDTH;
+    float scale_y = (float)crop_h / (float)CAMERA_HEIGHT;
+    float sticker_scale = (scale_x + scale_y) * 0.5f;
+
+    for (int i = 0; i < STICKER_MAX; i++) {
+        dst[i] = src[i];
+        if (!src[i].active) continue;
+        dst[i].x = crop_x + round_to_int((float)src[i].x * scale_x);
+        dst[i].y = crop_y + round_to_int((float)src[i].y * scale_y);
+        dst[i].scale = src[i].scale * sticker_scale;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // edit_save — save edited photo and refresh gallery
 // ---------------------------------------------------------------------------
@@ -80,46 +119,80 @@ void edit_save(EditState *edit, GalleryState *gal,
 
     static const char *s_frame_paths_save[FRAME_COUNT] = FRAME_PATHS_INIT;
     char out_path[80];
+    const char *src_path = gal->paths[gal->sel];
+    const char *src_ext = strrchr(src_path, '.');
 
+    PlacedSticker remapped[STICKER_MAX];
     EditCompositeCtx ctx = {
-        edit->placed, STICKER_MAX,
+        remapped, STICKER_MAX,
         edit->gallery_frame,
         (edit->gallery_frame >= 0 && edit->gallery_frame < FRAME_COUNT)
             ? s_frame_paths_save[edit->gallery_frame] : NULL
     };
+    bool saved = false;
 
     if (gal->n_frames > 1) {
-        // Wiggle: composite onto every frame, save as APNG
+        // Wiggle: reload native-size frames, map preview-space edits back onto
+        // the full overlap image, then save in the original animation format.
+        uint16_t *native_frames[GALLERY_WIGGLE_MAX_FRAMES] = {0};
         const uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
-        for (int i = 0; i < gal->n_frames; i++)
-            fptrs[i] = gallery_thumbs[i];
+        int src_w = 0, src_h = 0;
+        int n_frames = 0, delay_ms = 250;
+
+        for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++) {
+            native_frames[i] = malloc(VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
+            if (!native_frames[i]) goto cleanup_wiggle;
+            fptrs[i] = native_frames[i];
+        }
+
+        if (!load_animation_rgb565_native(src_path, native_frames,
+                                          GALLERY_WIGGLE_MAX_FRAMES,
+                                          &n_frames, &delay_ms,
+                                          &src_w, &src_h)) {
+            goto cleanup_wiggle;
+        }
+
+        remap_stickers_for_save(remapped, edit->placed, src_w, src_h, true);
 
         if (overwrite) {
-            snprintf(out_path, sizeof(out_path), "%s", gal->paths[gal->sel]);
+            snprintf(out_path, sizeof(out_path), "%s", src_path);
         } else {
-            next_wiggle_path(SAVE_DIR, out_path, sizeof(out_path));
+            if (!next_wiggle_path_ext(SAVE_DIR, src_ext, out_path, sizeof(out_path)))
+                goto cleanup_wiggle;
             settings_save_file_counter(file_counter_next());
         }
-        save_edited_apng(out_path, fptrs,
-                         gal->n_frames, gal->delay_ms,
-                         CAMERA_WIDTH, CAMERA_HEIGHT,
-                         edit_composite_cb, &ctx);
+        saved = save_edited_apng(out_path, fptrs,
+                                 n_frames, delay_ms,
+                                 src_w, src_h,
+                                 edit_composite_cb, &ctx);
+cleanup_wiggle:
+        for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)
+            free(native_frames[i]);
     } else {
-        // Still image: composite once, save as JPEG
-        static uint8_t save_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
-        rgb565_to_rgb888(save_rgb888,
-                         (const uint16_t *)gallery_thumbs[0],
-                         CAMERA_WIDTH * CAMERA_HEIGHT);
-        edit_composite_cb(save_rgb888, CAMERA_WIDTH, CAMERA_HEIGHT, &ctx);
+        // Still image: reload native-size source, map preview-space edits back
+        // onto it, then save at the original resolution.
+        uint8_t *save_rgb888 = NULL;
+        int src_w = 0, src_h = 0;
+        if (!load_image_rgb888_native(src_path, &save_rgb888, &src_w, &src_h))
+            return;
+
+        remap_stickers_for_save(remapped, edit->placed, src_w, src_h, false);
+        edit_composite_cb(save_rgb888, src_w, src_h, &ctx);
 
         if (overwrite) {
-            snprintf(out_path, sizeof(out_path), "%s", gal->paths[gal->sel]);
+            snprintf(out_path, sizeof(out_path), "%s", src_path);
         } else {
-            next_save_path(SAVE_DIR, out_path, sizeof(out_path));
+            if (!next_save_path(SAVE_DIR, out_path, sizeof(out_path))) {
+                free_loaded_image(save_rgb888);
+                return;
+            }
             settings_save_file_counter(file_counter_next());
         }
-        save_jpeg(out_path, save_rgb888, CAMERA_WIDTH, CAMERA_HEIGHT);
+        saved = save_jpeg(out_path, save_rgb888, src_w, src_h);
+        free_loaded_image(save_rgb888);
     }
+
+    if (!saved) return;
 
     // Refresh gallery list and exit edit mode
     gal->count  = list_saved_photos(SAVE_DIR, gal->paths, GALLERY_MAX);

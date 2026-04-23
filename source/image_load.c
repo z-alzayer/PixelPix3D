@@ -8,6 +8,7 @@
 #include "camera.h"
 #include "filter.h"
 #include "apng_enc.h"
+#include "gif_enc.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -41,6 +42,21 @@ int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height) 
     pixels_to_rgb565(pixels, img_w, img_h, dst, width, height);
     stbi_image_free(pixels);
     return 1;
+}
+
+int load_image_rgb888_native(const char *path,
+                             uint8_t **out_rgb888, int *out_w, int *out_h) {
+    int img_w, img_h, channels;
+    uint8_t *pixels = stbi_load(path, &img_w, &img_h, &channels, 3);
+    if (!pixels) return 0;
+    if (out_rgb888) *out_rgb888 = pixels;
+    if (out_w) *out_w = img_w;
+    if (out_h) *out_h = img_h;
+    return 1;
+}
+
+void free_loaded_image(void *pixels) {
+    stbi_image_free(pixels);
 }
 
 // ---------------------------------------------------------------------------
@@ -424,50 +440,55 @@ int load_gif_frames_to_rgb565(const char *path,
                     s_gif_indices[i] = 0;
             }
 
-            // Two-pass pixel-art downscale: clean 2×2 average → center on output.
-            // Pass 1: 2×2 block average into top-left of output buffer.
-            // This halves the source (e.g. 638×478 → 319×239) with no
-            // fractional sampling, destroying dither patterns cleanly.
-            int hw = gw / 2;  // half dimensions (truncate odd pixel)
-            int hh = gh / 2;
-            // Clamp to output buffer size (should always fit)
-            if (hw > width)  hw = width;
-            if (hh > height) hh = height;
-
-            for (int y = 0; y < hh; y++) {
-                int sy = y * 2;
-                for (int x = 0; x < hw; x++) {
-                    int sx = x * 2;
-                    uint16_t c00 = pal565[s_gif_indices[sy       * gw + sx    ]];
-                    uint16_t c01 = pal565[s_gif_indices[sy       * gw + sx + 1]];
-                    uint16_t c10 = pal565[s_gif_indices[(sy + 1) * gw + sx    ]];
-                    uint16_t c11 = pal565[s_gif_indices[(sy + 1) * gw + sx + 1]];
-                    int r = (((c00>>11)&0x1F) + ((c01>>11)&0x1F)
-                           + ((c10>>11)&0x1F) + ((c11>>11)&0x1F) + 2) >> 2;
-                    int g = (((c00>>5)&0x3F) + ((c01>>5)&0x3F)
-                           + ((c10>>5)&0x3F) + ((c11>>5)&0x3F) + 2) >> 2;
-                    int b = ((c00&0x1F) + (c01&0x1F)
-                           + (c10&0x1F) + (c11&0x1F) + 2) >> 2;
-                    frames[loaded][y * width + x] =
-                        (uint16_t)((r << 11) | (g << 5) | b);
+            if (width == gw && height == gh) {
+                // Native decode path for edit/save: preserve the full source
+                // frame without the gallery-specific preview shrink.
+                for (int y = 0; y < gh; y++) {
+                    for (int x = 0; x < gw; x++) {
+                        frames[loaded][y * width + x] =
+                            pal565[s_gif_indices[y * gw + x]];
+                    }
                 }
-            }
+            } else {
+                // Gallery preview path: 2×2 average then center in the 400×240
+                // buffer to keep large dithered wiggles readable.
+                int hw = gw / 2;  // half dimensions (truncate odd pixel)
+                int hh = gh / 2;
+                if (hw > width)  hw = width;
+                if (hh > height) hh = height;
 
-            // Pass 2: center the hw×hh image within width×height output.
-            // Shift rows right and down, filling borders with black.
-            int ox = (width  - hw) / 2;
-            int oy = (height - hh) / 2;
-            if (ox > 0 || oy > 0) {
-                // Work bottom-up to avoid overwriting uncopied data
-                for (int y = height - 1; y >= 0; y--) {
-                    int src_y = y - oy;
-                    for (int x = width - 1; x >= 0; x--) {
-                        int src_x = x - ox;
-                        if (src_y >= 0 && src_y < hh && src_x >= 0 && src_x < hw)
-                            frames[loaded][y * width + x] =
-                                frames[loaded][src_y * width + src_x];
-                        else
-                            frames[loaded][y * width + x] = 0;
+                for (int y = 0; y < hh; y++) {
+                    int sy = y * 2;
+                    for (int x = 0; x < hw; x++) {
+                        int sx = x * 2;
+                        uint16_t c00 = pal565[s_gif_indices[sy       * gw + sx    ]];
+                        uint16_t c01 = pal565[s_gif_indices[sy       * gw + sx + 1]];
+                        uint16_t c10 = pal565[s_gif_indices[(sy + 1) * gw + sx    ]];
+                        uint16_t c11 = pal565[s_gif_indices[(sy + 1) * gw + sx + 1]];
+                        int r = (((c00>>11)&0x1F) + ((c01>>11)&0x1F)
+                               + ((c10>>11)&0x1F) + ((c11>>11)&0x1F) + 2) >> 2;
+                        int g = (((c00>>5)&0x3F) + ((c01>>5)&0x3F)
+                               + ((c10>>5)&0x3F) + ((c11>>5)&0x3F) + 2) >> 2;
+                        int b = ((c00&0x1F) + (c01&0x1F)
+                               + (c10&0x1F) + (c11&0x1F) + 2) >> 2;
+                        frames[loaded][y * width + x] =
+                            (uint16_t)((r << 11) | (g << 5) | b);
+                    }
+                }
+
+                int ox = (width  - hw) / 2;
+                int oy = (height - hh) / 2;
+                if (ox > 0 || oy > 0) {
+                    for (int y = height - 1; y >= 0; y--) {
+                        int src_y = y - oy;
+                        for (int x = width - 1; x >= 0; x--) {
+                            int src_x = x - ox;
+                            if (src_y >= 0 && src_y < hh && src_x >= 0 && src_x < hw)
+                                frames[loaded][y * width + x] =
+                                    frames[loaded][src_y * width + src_x];
+                            else
+                                frames[loaded][y * width + x] = 0;
+                        }
                     }
                 }
             }
@@ -482,6 +503,33 @@ int load_gif_frames_to_rgb565(const char *path,
     fclose(fp);
     *out_n_frames = loaded;
     return (loaded > 0) ? 1 : 0;
+}
+
+int load_animation_rgb565_native(const char *path,
+                                 uint16_t **frames, int max_frames,
+                                 int *out_n_frames, int *out_delay_ms,
+                                 int *out_w, int *out_h) {
+    int w, h, channels;
+    if (!stbi_info(path, &w, &h, &channels)) return 0;
+
+    const char *ext = strrchr(path, '.');
+    if (!ext) return 0;
+
+    int ok = 0;
+    if (strcmp(ext, ".gif") == 0) {
+        ok = load_gif_frames_to_rgb565(path, frames, max_frames,
+                                       out_n_frames, out_delay_ms,
+                                       w, h);
+    } else if (strcmp(ext, ".png") == 0) {
+        ok = load_apng_frames_to_rgb565(path, frames, max_frames,
+                                        out_n_frames, out_delay_ms,
+                                        w, h);
+    }
+
+    if (!ok) return 0;
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+    return 1;
 }
 
 // Static output buffer for JPEG encoding.
@@ -606,20 +654,28 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
 }
 
 int next_wiggle_path(const char *dir, char *out_path, int out_len) {
+    return next_wiggle_path_ext(dir, ".gif", out_path, out_len);
+}
+
+int next_wiggle_path_ext(const char *dir, const char *ext,
+                         char *out_path, int out_len) {
     if (s_next_n < 0) file_counter_init(dir, 0);
     if (s_next_n > 9999) return 0;
-    snprintf(out_path, out_len, "%s/GW_%04d.gif", dir, s_next_n);
+    const char *suffix = (ext && strcmp(ext, ".png") == 0) ? ".png" : ".gif";
+    snprintf(out_path, out_len, "%s/GW_%04d%s", dir, s_next_n, suffix);
     s_next_n++;
     return 1;
 }
 
 // ---------------------------------------------------------------------------
-// Save an edited wiggle APNG — composite stickers/frame onto each animation
-// frame then encode as APNG, preserving the original frame count and timing.
+// Save an edited wiggle animation — composite stickers/frame onto each frame,
+// then encode using the format implied by the destination extension.
 // ---------------------------------------------------------------------------
 
 #define APNG_BUF_CAP (4 * 1024 * 1024)
 static uint8_t s_apng_buf[APNG_BUF_CAP];
+#define EDIT_GIF_BUF_CAP (4 * 1024 * 1024)
+static uint8_t s_edit_gif_buf[EDIT_GIF_BUF_CAP];
 
 int save_edited_apng(const char *path,
                      const uint16_t * const *frames_rgb565,
@@ -642,18 +698,29 @@ int save_edited_apng(const char *path,
         frame_ptrs[f] = rgb_bufs[f];
     }
 
-    uint16_t delay_num = (uint16_t)delay_ms;
-    uint16_t delay_den = 1000;
-    size_t apng_len = apng_encode(s_apng_buf, APNG_BUF_CAP,
-                                  frame_ptrs, n_frames,
-                                  w, h, delay_num, delay_den);
+    const char *ext = strrchr(path, '.');
+    size_t out_len = 0;
+    const uint8_t *out_buf = NULL;
+    if (ext && strcmp(ext, ".gif") == 0) {
+        out_len = gif_encode(s_edit_gif_buf, EDIT_GIF_BUF_CAP,
+                             frame_ptrs, n_frames,
+                             w, h, delay_ms);
+        out_buf = s_edit_gif_buf;
+    } else {
+        uint16_t delay_num = (uint16_t)delay_ms;
+        uint16_t delay_den = 1000;
+        out_len = apng_encode(s_apng_buf, APNG_BUF_CAP,
+                              frame_ptrs, n_frames,
+                              w, h, delay_num, delay_den);
+        out_buf = s_apng_buf;
+    }
 
     for (int f = 0; f < n_frames; f++) free(rgb_bufs[f]);
 
-    if (apng_len == 0) return 0;
+    if (out_len == 0) return 0;
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
-    int ok = (fwrite(s_apng_buf, 1, apng_len, fp) == apng_len);
+    int ok = (fwrite(out_buf, 1, out_len, fp) == out_len);
     fclose(fp);
     return ok;
 
