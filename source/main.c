@@ -392,30 +392,20 @@ int main(void) {
         case 2:
             svcCloseHandle(camReceiveEvent[2]); camReceiveEvent[2] = 0;
             if (!use3d && comparing) {
-                // Downscale VGA → display into s_raw_display_buf while the
-                // camera frame is complete and won't be overwritten mid-read.
-                const uint16_t *vga = (const uint16_t *)buf;
-                for (int y = 0; y < CAMERA_HEIGHT; y++) {
-                    int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
-                    for (int x = 0; x < CAMERA_WIDTH; x++) {
-                        int sx = x * VGA_WIDTH / CAMERA_WIDTH;
-                        s_raw_display_buf[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
-                    }
-                }
+                // Preview-only crop-to-fill: preserve aspect without altering
+                // capture data or saved image dimensions.
+                const uint16_t *preview_src = (const uint16_t *)buf;
+                crop_fill_rgb565(s_raw_display_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                                 preview_src, app.cam_w, app.cam_h);
             }
             // Pause filter processing when save thread uses static filter buffers.
             // Unfiltered wiggle saves don't conflict, so allow live view updates.
             if (!use3d && !comparing && (!s_save.busy || (s_save.wiggle_mode && !s_save.wiggle_filter_active))) {
-                // Downscale VGA 640x480 → 400x240 for display (nearest-neighbor)
-                const uint16_t *vga = (const uint16_t *)buf;
+                // Preview-only crop-to-fill for the live viewfinder.
+                const uint16_t *preview_src = (const uint16_t *)buf;
                 uint16_t *disp = (uint16_t *)filtered_buf;
-                for (int y = 0; y < CAMERA_HEIGHT; y++) {
-                    int sy = y * VGA_HEIGHT / CAMERA_HEIGHT;
-                    for (int x = 0; x < CAMERA_WIDTH; x++) {
-                        int sx = x * VGA_WIDTH / CAMERA_WIDTH;
-                        disp[y * CAMERA_WIDTH + x] = vga[sy * VGA_WIDTH + sx];
-                    }
-                }
+                crop_fill_rgb565(disp, CAMERA_WIDTH, CAMERA_HEIGHT,
+                                 preview_src, app.cam_w, app.cam_h);
                 // Apply per-mode filter pipeline at display resolution
                 if (shoot.shoot_mode == SHOOT_MODE_WIGGLE) {
                     if (wig.filter_active) {

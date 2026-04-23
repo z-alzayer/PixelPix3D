@@ -121,15 +121,31 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
     int rx = fdx < 0 ? -fdx : 0;
     int ry = fdy < 0 ? -fdy : 0;
 
-    // Downscale overlap to fit display resolution for preview
-    int dw = ow <= CAMERA_WIDTH  ? ow : CAMERA_WIDTH;
-    int dh = oh <= CAMERA_HEIGHT ? oh : CAMERA_HEIGHT;
+    // Preview-only crop-to-fill: crop the overlap to the top-screen aspect
+    // before scaling so the wiggle preview matches the live viewfinder.
+    int preview_ow, preview_oh, preview_ox, preview_oy;
+    if ((long long)ow * CAMERA_HEIGHT > (long long)oh * CAMERA_WIDTH) {
+        preview_oh = oh;
+        preview_ow = (oh * CAMERA_WIDTH) / CAMERA_HEIGHT;
+        if (preview_ow < 1) preview_ow = 1;
+        preview_ox = (ow - preview_ow) / 2;
+        preview_oy = 0;
+    } else {
+        preview_ow = ow;
+        preview_oh = (ow * CAMERA_HEIGHT) / CAMERA_WIDTH;
+        if (preview_oh < 1) preview_oh = 1;
+        preview_ox = 0;
+        preview_oy = (oh - preview_oh) / 2;
+    }
 
-    // Nearest-neighbor downscale from overlap region to display size
+    int dw = CAMERA_WIDTH;
+    int dh = CAMERA_HEIGHT;
+
+    // Nearest-neighbor crop+scale from the overlap region to full preview size
     for (int py = 0; py < dh; py++) {
-        int sy = py * oh / dh;
+        int sy = preview_oy + (py * preview_oh) / dh;
         for (int px = 0; px < dw; px++) {
-            int sx = px * ow / dw;
+            int sx = preview_ox + (px * preview_ow) / dw;
             dst[0][py * dw + px] = L[(ly + sy) * src_w + (lx + sx)];
             dst[2][py * dw + px] = R[(ry + sy) * src_w + (rx + sx)];
         }

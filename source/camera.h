@@ -41,6 +41,11 @@ void nn_upscale(uint8_t *dst, const uint8_t *src, int w, int h, int scale);
 void writePictureToFramebufferRGB565(void *fb, void *img,
                                      u16 x, u16 y, u16 w, u16 h);
 
+// Preview-only scaler: center-crop source to match destination aspect,
+// then downscale to fill the destination without stretching.
+void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
+                      const uint16_t *src, int src_w, int src_h);
+
 // ---------------------------------------------------------------------------
 // Camera resolution switch (SIZE_VGA ↔ SIZE_CTR_TOP_LCD)
 // ---------------------------------------------------------------------------

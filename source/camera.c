@@ -67,6 +67,34 @@ void writePictureToFramebufferRGB565(void *fb, void *img,
     }
 }
 
+void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
+                      const uint16_t *src, int src_w, int src_h) {
+    int crop_w, crop_h, crop_x, crop_y;
+
+    // Match destination aspect using a centered source crop.
+    if ((long long)src_w * dst_h > (long long)src_h * dst_w) {
+        crop_h = src_h;
+        crop_w = (src_h * dst_w) / dst_h;
+        if (crop_w < 1) crop_w = 1;
+        crop_x = (src_w - crop_w) / 2;
+        crop_y = 0;
+    } else {
+        crop_w = src_w;
+        crop_h = (src_w * dst_h) / dst_w;
+        if (crop_h < 1) crop_h = 1;
+        crop_x = 0;
+        crop_y = (src_h - crop_h) / 2;
+    }
+
+    for (int y = 0; y < dst_h; y++) {
+        int sy = crop_y + (y * crop_h) / dst_h;
+        for (int x = 0; x < dst_w; x++) {
+            int sx = crop_x + (x * crop_w) / dst_w;
+            dst[y * dst_w + x] = src[sy * src_w + sx];
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Camera resolution switch (SIZE_VGA ↔ SIZE_CTR_TOP_LCD)
 // ---------------------------------------------------------------------------
