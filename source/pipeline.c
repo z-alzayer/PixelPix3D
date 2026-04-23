@@ -37,7 +37,7 @@ void pipeline_state_init(EffectPipeline *pipe, const FilterParams *defaults) {
     pipe->panel_open = false;
     pipe->base.enabled = false;
     pipe->base.preset = 0;
-    pipe->gb.enabled = true;
+    pipe->gb.enabled = false;
     pipe->gb.params = *defaults;
     pipe->bend.enabled = false;
     pipe->bend.preset = 0;

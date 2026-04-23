@@ -312,6 +312,57 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                     *val = 0; wig->rebuild = true;
                 }
             }
+
+            // Delay controls live on the right half of the wiggle preview UI.
+            if (tx >= 160) {
+                float py0 = (float)SHOOT_CONTENT_Y + 20.0f;
+                #define DPILL_W   32
+                #define DPILL_H   16
+                #define DPILL_GAP  3
+                static const int presets[4] = {50, 100, 200, 500};
+                float total_pw = 4 * DPILL_W + 3 * DPILL_GAP;
+                float px0 = 160.0f + (160.0f - total_pw) * 0.5f;
+                if (ty >= (int)py0 && ty < (int)(py0 + DPILL_H)) {
+                    for (int i = 0; i < 4; i++) {
+                        float bx = px0 + i * (DPILL_W + DPILL_GAP);
+                        if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
+                            wig->delay_ms = presets[i];
+                            wig->preview_last_tick = svcGetSystemTick();
+                            break;
+                        }
+                    }
+                }
+                #undef DPILL_W
+                #undef DPILL_H
+                #undef DPILL_GAP
+
+                float sy = (float)SHOOT_CONTENT_Y + 44.0f;
+                #define DSTEP_BTN_W  22
+                #define DSTEP_BTN_H  18
+                #define DSTEP_VAL_W  54
+                float total_sw = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
+                float sx0 = 160.0f + (160.0f - total_sw) * 0.5f;
+                if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
+                    if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
+                        wig->delay_ms -= 10;
+                        if (wig->delay_ms < 10) wig->delay_ms = 10;
+                        wig->preview_last_tick = svcGetSystemTick();
+                    }
+                    float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
+                    if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
+                        wig->delay_ms += 10;
+                        if (wig->delay_ms > 1000) wig->delay_ms = 1000;
+                        wig->preview_last_tick = svcGetSystemTick();
+                    }
+                }
+                #undef DSTEP_BTN_W
+                #undef DSTEP_BTN_H
+                #undef DSTEP_VAL_W
+            }
+
+            if (ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
+                do_save = true;
+
             #undef WBTW
             #undef WBTH
             #undef WVALW

@@ -253,17 +253,19 @@ void draw_ui(C3D_RenderTarget *bot,
                          (const char (*)[64])gal->paths,
                          gal->sel, gal->scroll);
     } else if (app->active_tab == TAB_SHOOT) {
-        int display_pal = (shoot->capture_mode == CAPTURE_MODE_WIGGLE && !wig->filter_active)
+        int display_pal = ((shoot->capture_mode == CAPTURE_MODE_WIGGLE && !wig->filter_active) ||
+                           (shoot->capture_mode != CAPTURE_MODE_WIGGLE && !shoot->gb_enabled))
                         ? PALETTE_NONE : app->params.palette;
         draw_shoot_tab(staticBuf, app->selfie, app->save_flash, app->user_palettes,
                        display_pal, gal->mode, &app->params, &app->ranges,
                        shoot->shoot_mode, shoot->capture_mode, shoot->shoot_mode_open,
+                       shoot->gb_enabled,
                        shoot->shoot_timer_secs, shoot->timer_open,
                        wig->n_frames, wig->delay_ms,
                        wig->preview,
                        wig->offset_dx, wig->offset_dy,
-                       shoot->lomo_enabled ? shoot->lomo_preset : -1,
-                       shoot->bend_enabled ? shoot->bend_preset : -1);
+                       shoot->lomo_enabled, shoot->lomo_preset,
+                       shoot->bend_enabled, shoot->bend_preset);
     } else if (app->active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf, &app->params, &app->ranges);
     } else if (app->active_tab == TAB_FX) {

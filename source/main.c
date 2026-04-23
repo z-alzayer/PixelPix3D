@@ -24,7 +24,6 @@
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
-
 static jmp_buf exitJmp;
 
 // ---------------------------------------------------------------------------
@@ -39,6 +38,19 @@ void cleanup(void) {
     gfxExit();
     acExit();
     romfsExit();
+}
+
+static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
+                                   AppState *app) {
+    shoot->gb_enabled = false;
+    shoot->lomo_enabled = false;
+    shoot->bend_enabled = false;
+    app->params.fx_mode = FX_NONE;
+    wig->filter_active = false;
+    wig->rebuild = true;
+    shoot->shoot_mode = (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+                      ? SHOOT_MODE_WIGGLE : SHOOT_MODE_GBCAM;
+    shoot->shoot_mode_open = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +130,7 @@ int main(void) {
         .capture_mode     = CAPTURE_MODE_STILL,
         .timer_open       = false,
         .shoot_timer_secs = 0,
+        .gb_enabled       = true,
         .lomo_preset      = 0,
         .lomo_enabled     = false,
         .bend_preset      = 0,
@@ -184,7 +197,6 @@ int main(void) {
     Handle camReceiveEvent[4] = {0};
     bool captureInterrupted = false;
     s32 index = 0;
-
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
     CAMU_ClearBuffer(PORT_BOTH);
@@ -220,7 +232,9 @@ int main(void) {
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
 
-        if (kDown & KEY_START) break;
+        if ((kDown & KEY_START) && !gal.mode && !edit.active) {
+            clear_processing_stack(&shoot, &wig, &app);
+        }
 
         bool do_save = false;
 
@@ -349,7 +363,7 @@ int main(void) {
         pipeline_state_sync_legacy(&shoot.pipeline,
                                    shoot.capture_mode,
                                    (shoot.capture_mode == CAPTURE_MODE_WIGGLE)
-                                       ? wig.filter_active : true,
+                                       ? wig.filter_active : shoot.gb_enabled,
                                    &app.params,
                                    shoot.lomo_enabled, shoot.lomo_preset,
                                    shoot.bend_enabled, shoot.bend_preset,

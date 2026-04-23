@@ -26,12 +26,13 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool gallery_mode,
                     const FilterParams *p, const FilterRanges *ranges,
                     int shoot_mode, int capture_mode, bool shoot_mode_open,
+                    bool gb_enabled,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
                     int wiggle_offset_dx, int wiggle_offset_dy,
-                    int lomo_preset,
-                    int bend_preset);
+                    bool lomo_enabled, int lomo_preset,
+                    bool bend_enabled, int bend_preset);
 void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
                       int gallery_sel, int gallery_scroll);

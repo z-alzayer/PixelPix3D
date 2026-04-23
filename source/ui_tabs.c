@@ -78,12 +78,13 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool gallery_mode,
                     const FilterParams *p, const FilterRanges *ranges,
                     int shoot_mode, int capture_mode, bool shoot_mode_open,
+                    bool gb_enabled,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
                     int wiggle_offset_dx, int wiggle_offset_dy,
-                    int lomo_preset,
-                    int bend_preset) {
+                    bool lomo_enabled, int lomo_preset,
+                    bool bend_enabled, int bend_preset) {
     C2D_Text t;
 
     // Background for strip area
@@ -146,16 +147,26 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
     // Middle area: mode grid OR full contextual panel
     // -----------------------------------------------------------------------
     if (!gallery_mode) {
+        C2D_TextParse(&t, staticBuf, "START Clear");
+        float ctw = 0, cth = 0;
+        C2D_TextGetDimensions(&t, 0.28f, 0.28f, &ctw, &cth);
+        C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)SHOOT_SAVE_Y + 5.0f, 0.5f,
+                     0.28f, 0.28f, CLR_DIM);
         if (!shoot_mode_open && !timer_open) {
-            // ---- Mode grid: 3 capture mode buttons + Timer settings button ----
-            static const char *mode_labels[SHOOT_MODE_COUNT] = {
-                "Still", "Wiggle", "Lomo", "Bend"
+            // ---- Quick-access row: capture selectors + effect stages ----
+            static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
+                "Still", "Wiggle", "GB", "Lomo", "Bend"
             };
 
-            for (int i = 0; i < SHOOT_MODE_COUNT; i++) {
+            for (int i = 0; i < SHOOT_STAGE_BTN_COUNT; i++) {
                 float bx = SHOOT_MODE_BTN_GAP + i * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                 float by = (float)SHOOT_MODE_ROW1_Y;
-                bool sel = (shoot_mode == i);
+                bool sel = false;
+                if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
+                else if (i == 1) sel = (capture_mode == CAPTURE_MODE_WIGGLE);
+                else if (i == 2) sel = gb_enabled;
+                else if (i == 3) sel = lomo_enabled;
+                else if (i == 4) sel = bend_enabled;
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
                           sel ? CLR_ACCENT : CLR_BTN);
@@ -170,23 +181,23 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                              sel ? CLR_WHITE : CLR_TEXT);
             }
 
-            // Timer button (4th slot) — highlighted if timer is on
+            // Timer pill remains visible without taking up a stage slot.
             {
-                float bx = SHOOT_MODE_BTN_GAP + SHOOT_MODE_COUNT * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                float by = (float)SHOOT_MODE_ROW1_Y;
+                float bx = (BOT_W - SHOOT_TIMER_PILL_W) * 0.5f;
+                float by = (float)SHOOT_TIMER_ROW_Y;
                 bool tim_on = (shoot_timer_secs > 0);
-                draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
+                draw_pill(bx, by, SHOOT_TIMER_PILL_W, SHOOT_TIMER_PILL_H,
                           tim_on ? CLR_CONFIRM : CLR_BTN);
-                char tlbl[16];
-                if (tim_on) snprintf(tlbl, sizeof(tlbl), "%ds", shoot_timer_secs);
-                else        snprintf(tlbl, sizeof(tlbl), "Timer");
+                char tlbl[24];
+                if (tim_on) snprintf(tlbl, sizeof(tlbl), "Timer %ds", shoot_timer_secs);
+                else        snprintf(tlbl, sizeof(tlbl), "Timer Off");
                 C2D_TextParse(&t, staticBuf, tlbl);
                 float tw2 = 0, th2 = 0;
-                C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw2, &th2);
+                C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
                 C2D_DrawText(&t, C2D_WithColor,
-                             bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
-                             by + (SHOOT_MODE_ROW_H - th2) / 2.0f - 1.0f,
-                             0.5f, 0.42f, 0.42f,
+                             bx + (SHOOT_TIMER_PILL_W - tw2) / 2.0f,
+                             by + (SHOOT_TIMER_PILL_H - th2) / 2.0f - 1.0f,
+                             0.5f, 0.38f, 0.38f,
                              tim_on ? CLR_WHITE : CLR_TEXT);
             }
 
@@ -247,9 +258,23 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                          (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
                          0.5f, 0.40f, 0.40f, CLR_TEXT);
 
+            if (shoot_mode == SHOOT_MODE_GBCAM) {
+                draw_pill((float)SHOOT_GB_TOGGLE_X, (float)SHOOT_GB_TOGGLE_Y,
+                          (float)SHOOT_GB_TOGGLE_W, (float)SHOOT_GB_TOGGLE_H,
+                          gb_enabled ? CLR_ACCENT : CLR_BTN);
+                C2D_TextParse(&t, staticBuf, gb_enabled ? "GB On" : "GB Off");
+                float gtw = 0, gth = 0;
+                C2D_TextGetDimensions(&t, 0.32f, 0.32f, &gtw, &gth);
+                C2D_DrawText(&t, C2D_WithColor,
+                             SHOOT_GB_TOGGLE_X + (SHOOT_GB_TOGGLE_W - gtw) * 0.5f,
+                             SHOOT_GB_TOGGLE_Y + (SHOOT_GB_TOGGLE_H - gth) * 0.5f - 1.0f,
+                             0.5f, 0.32f, 0.32f,
+                             gb_enabled ? CLR_WHITE : CLR_TEXT);
+            }
+
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Filter", "Wiggle", "Lomo", "Bend"
+                "GB Filter", "Wiggle", "Base Look", "Bend"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -276,7 +301,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 #define VTRACK_W  4
                 #define VHANDLE_W 14
                 #define VHANDLE_H  8
-                float vtrack_top = cy + 14.0f;  // leave room for label above
+                float vtrack_top = cy + 14.0f;
                 float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
                 float vtrack_h   = vtrack_bot - vtrack_top;
                 for (int i = 0; i < 4; i++) {
@@ -517,7 +542,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         if (idx >= LOMO_PRESET_COUNT) break;
                         float bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
                         float by = cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP);
-                        bool sel = (lomo_preset == idx);
+                        bool sel = lomo_enabled && (lomo_preset == idx);
                         draw_pill(bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H,
                                   sel ? CLR_ACCENT : CLR_BTN);
                         C2D_TextParse(&t, staticBuf, lomo_presets[idx].name);
@@ -538,7 +563,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         if (idx >= BEND_PRESET_COUNT) break;
                         float bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
                         float by = cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP);
-                        bool sel = (bend_preset == idx);
+                        bool sel = bend_enabled && (bend_preset == idx);
                         draw_pill(bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H,
                                   sel ? CLR_ACCENT : CLR_BTN);
                         C2D_TextParse(&t, staticBuf, bend_presets[idx].name);

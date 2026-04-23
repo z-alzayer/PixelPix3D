@@ -19,6 +19,7 @@ typedef struct {
     int  capture_mode;     // still or wiggle capture selection
     bool timer_open;       // timer picker visible
     int  shoot_timer_secs; // 0 = disabled
+    bool gb_enabled;
     int  lomo_preset;
     bool lomo_enabled;
     int  bend_preset;

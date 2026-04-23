@@ -141,11 +141,15 @@
 #define SHOOT_MODE_BEND       3
 #define SHOOT_MODE_COUNT      4
 
-// Mode grid geometry (y=44..82, 1 row of 3 capture modes + Timer settings button)
-#define SHOOT_MODE_ROW1_Y   44
-#define SHOOT_MODE_ROW_H    38
-#define SHOOT_MODE_BTN_W    59   // (320 - 6*4) / 5  (4 modes + Timer button)
-#define SHOOT_MODE_BTN_GAP   4
+// Shoot quick-access row: capture selectors + effect stage entry points.
+#define SHOOT_STAGE_BTN_COUNT  5
+#define SHOOT_MODE_ROW1_Y     44
+#define SHOOT_MODE_ROW_H      30
+#define SHOOT_MODE_BTN_W      59
+#define SHOOT_MODE_BTN_GAP     4
+#define SHOOT_TIMER_ROW_Y    (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + 8)
+#define SHOOT_TIMER_PILL_W   108
+#define SHOOT_TIMER_PILL_H    22
 
 // Full contextual panel (replaces grid when a mode is "open")
 // Occupies y=43..157: below top strip, above save button
@@ -155,6 +159,10 @@
 #define SHOOT_BACK_Y        43
 #define SHOOT_BACK_H        20
 #define SHOOT_BACK_W        64
+#define SHOOT_GB_TOGGLE_X   (SHOOT_BACK_W + 8)
+#define SHOOT_GB_TOGGLE_Y   (SHOOT_BACK_Y + 2)
+#define SHOOT_GB_TOGGLE_W   56
+#define SHOOT_GB_TOGGLE_H   (SHOOT_BACK_H - 4)
 #define SHOOT_CONTENT_Y    (SHOOT_BACK_Y + SHOOT_BACK_H + 4)  // ~67
 #define SHOOT_CONTENT_H    (SHOOT_SAVE_Y - SHOOT_CONTENT_Y)   // ~91
 

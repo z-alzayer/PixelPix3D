@@ -234,6 +234,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // SHOOT tab inputs (content area, y < NAV_Y) — only when NOT in gallery
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_SHOOT && !gal->mode && ty < NAV_Y) {
+        if (wig->preview) {
+            // Wiggle preview uses its own touch handler so it still responds
+            // while camera capture is interrupted.
+            return false;
+        }
 
         // Shoot strip (y < SHOOT_STRIP_H)
         if (ty < SHOOT_STRIP_H) {
@@ -258,6 +263,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             }
                             wig->rebuild = true;
                         } else {
+                            shoot->gb_enabled = true;
                             p->palette = new_pal;
                         }
                         return true;
@@ -274,27 +280,36 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
         {
             if (!shoot->shoot_mode_open && !shoot->timer_open) {
-                // ---- Mode grid taps ----
+                // ---- Quick-access row taps ----
                 if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
-                    // Capture / stage buttons
-                    for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
+                    for (int col = 0; col < SHOOT_STAGE_BTN_COUNT; col++) {
                         int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
-                            shoot->shoot_mode = col;
-                            if (col == SHOOT_MODE_GBCAM) shoot->capture_mode = CAPTURE_MODE_STILL;
-                            else if (col == SHOOT_MODE_WIGGLE) shoot->capture_mode = CAPTURE_MODE_WIGGLE;
+                            if (col == 0) {
+                                shoot->capture_mode = CAPTURE_MODE_STILL;
+                                shoot->shoot_mode = SHOOT_MODE_GBCAM;
+                            } else if (col == 1) {
+                                shoot->capture_mode = CAPTURE_MODE_WIGGLE;
+                                shoot->shoot_mode = SHOOT_MODE_WIGGLE;
+                            } else if (col == 2) {
+                                shoot->shoot_mode = SHOOT_MODE_GBCAM;
+                            } else if (col == 3) {
+                                shoot->shoot_mode = SHOOT_MODE_LOMO;
+                            } else if (col == 4) {
+                                shoot->shoot_mode = SHOOT_MODE_BEND;
+                            }
                             shoot->shoot_mode_open = true;
                             return true;
                         }
                     }
-                    // Timer button (last slot, after all mode buttons)
-                    {
-                        int bx = SHOOT_MODE_BTN_GAP + SHOOT_MODE_COUNT * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
-                            shoot->timer_open = true;
-                            return true;
-                        }
-                    }
+                }
+                if (tapped && hit(tx, ty,
+                                  (BOT_W - SHOOT_TIMER_PILL_W) / 2,
+                                  SHOOT_TIMER_ROW_Y,
+                                  SHOOT_TIMER_PILL_W,
+                                  SHOOT_TIMER_PILL_H)) {
+                    shoot->timer_open = true;
+                    return true;
                 }
             } else if (shoot->timer_open) {
                 // ---- Timer settings panel ----
@@ -326,6 +341,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
 
                 if (shoot->shoot_mode == SHOOT_MODE_GBCAM) {
+                    if (tapped && hit(tx, ty,
+                                      SHOOT_GB_TOGGLE_X, SHOOT_GB_TOGGLE_Y,
+                                      SHOOT_GB_TOGGLE_W, SHOOT_GB_TOGGLE_H)) {
+                        shoot->gb_enabled = !shoot->gb_enabled;
+                        return true;
+                    }
+
                     #define VCOL_W   80
                     #define VHANDLE_W 14
                     #define VHANDLE_H  8
@@ -344,6 +366,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
                             else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
                             else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
+                            shoot->gb_enabled = true;
                             *field = mn + t_val * (mx - mn);
                             return true;
                         }
