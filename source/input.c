@@ -249,7 +249,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     int sx = SHOOT_SWATCH_X0 + i * (SHOOT_SWATCH_W + SHOOT_SWATCH_GAP);
                     if (tx >= sx && tx < sx + SHOOT_SWATCH_W) {
                         int new_pal = (i < 6) ? i : PALETTE_NONE;
-                        if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
+                        if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
                             if (wig->filter_active && p->palette == new_pal)
                                 wig->filter_active = false;
                             else {
@@ -276,11 +276,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             if (!shoot->shoot_mode_open && !shoot->timer_open) {
                 // ---- Mode grid taps ----
                 if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
-                    // 3 capture mode buttons
+                    // Capture / stage buttons
                     for (int col = 0; col < SHOOT_MODE_COUNT; col++) {
                         int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
                             shoot->shoot_mode = col;
+                            if (col == SHOOT_MODE_GBCAM) shoot->capture_mode = CAPTURE_MODE_STILL;
+                            else if (col == SHOOT_MODE_WIGGLE) shoot->capture_mode = CAPTURE_MODE_WIGGLE;
                             shoot->shoot_mode_open = true;
                             return true;
                         }
@@ -360,7 +362,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 int bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
                                 int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
                                 if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
-                                    shoot->lomo_preset = idx;
+                                    if (shoot->lomo_enabled && shoot->lomo_preset == idx)
+                                        shoot->lomo_enabled = false;
+                                    else {
+                                        shoot->lomo_preset = idx;
+                                        shoot->lomo_enabled = true;
+                                    }
                                     return true;
                                 }
                             }
@@ -377,7 +384,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 int bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
                                 int by = (int)(cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP));
                                 if (hit(tx, ty, bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H)) {
-                                    shoot->bend_preset = idx;
+                                    if (shoot->bend_enabled && shoot->bend_preset == idx)
+                                        shoot->bend_enabled = false;
+                                    else {
+                                        shoot->bend_preset = idx;
+                                        shoot->bend_enabled = true;
+                                    }
                                     return true;
                                 }
                             }

@@ -6,6 +6,7 @@
 #include "shoot.h"
 #include "ui.h"
 #include "image_load.h"
+#include "pipeline.h"
 #include "settings.h"
 #include "sound.h"
 #include <stdlib.h>
@@ -179,7 +180,7 @@ int save_wiggle_gif(const char *path,
                     int n_frames, int delay_ms,
                     const WiggleAlign *align,
                     int offset_dx, int offset_dy,
-                    const FilterParams *filter)
+                    const EffectRecipe *recipe)
 {
     (void)n_frames;
 
@@ -232,14 +233,11 @@ int save_wiggle_gif(const char *path,
         }
     }
 
-    // Apply palette/fx filter to each unique frame if requested
-    if (filter) {
-        apply_gameboy_filter(left_crop,  ow, oh, *filter);
-        apply_fx(left_crop,  ow, oh, *filter, 0);
-        apply_gameboy_filter(right_crop, ow, oh, *filter);
-        apply_fx(right_crop, ow, oh, *filter, 1);
-        apply_gameboy_filter(blend_crop, ow, oh, *filter);
-        apply_fx(blend_crop, ow, oh, *filter, 2);
+    // Apply the active processing pipeline to each unique frame if requested.
+    if (pipeline_recipe_has_effects(recipe)) {
+        pipeline_apply(left_crop,  ow, oh, recipe, 0);
+        pipeline_apply(right_crop, ow, oh, recipe, 1);
+        pipeline_apply(blend_crop, ow, oh, recipe, 2);
     }
 
     // Sequence: L, blend, R, blend  (matches 3ds-mpo-gif animation order)
@@ -266,7 +264,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
-                           const FilterParams *params) {
+                           const EffectRecipe *recipe) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
     if (dpad) {
@@ -352,8 +350,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_offset_dy = wig->offset_dy;
             save->wiggle_cap_w     = wig->capture_w;
             save->wiggle_cap_h     = wig->capture_h;
-            save->wiggle_filter_active = wig->filter_active;
-            if (wig->filter_active) save->wiggle_filter_params = *params;
+            save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;
             *save_flash = 20;
@@ -385,7 +382,8 @@ bool wiggle_filter_busy(void) {
 void wiggle_preview_tick(WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
-                         const FilterParams *filter, int frame_count) {
+                         const EffectRecipe *recipe, int frame_count) {
+    bool effects_wanted = pipeline_recipe_has_effects(recipe);
     // Rebuild raw frames when user has adjusted H/V offsets
     if (wig->rebuild) {
         wig->n_frames = build_wiggle_preview_frames(preview_frames,
@@ -396,27 +394,24 @@ void wiggle_preview_tick(WiggleState *wig,
                                         &wig->crop_w, &wig->crop_h);
         s_filter_applied = false;
         s_filter_next = 0;
-        // Mark pending if the filter will need to be applied
-        s_filter_pending = wig->filter_active && filter != NULL;
+        s_filter_pending = effects_wanted;
         wig->rebuild = false;
     }
 
     // Deferred filter: apply one frame per tick when d-pad is idle.
     // This spreads the work across multiple frames to avoid stutter.
-    if (wig->filter_active && filter && !s_filter_applied && wig->dpad_repeat == 0) {
+    if (effects_wanted && !s_filter_applied && wig->dpad_repeat == 0) {
         int npix = wig->crop_w * wig->crop_h;
         int f = s_filter_next;
         rgb565_to_rgb888(s_preview_rgb888, preview_frames[f], npix);
-        apply_gameboy_filter(s_preview_rgb888, wig->crop_w, wig->crop_h, *filter);
-        apply_fx(s_preview_rgb888, wig->crop_w, wig->crop_h, *filter, frame_count + f);
+        pipeline_apply(s_preview_rgb888, wig->crop_w, wig->crop_h, recipe, frame_count + f);
         rgb888_to_rgb565(preview_frames[f], s_preview_rgb888, npix);
         s_filter_next++;
         if (s_filter_next >= wig->n_frames) {
             s_filter_applied = true;
             s_filter_pending = false;
         }
-    } else if (!wig->filter_active && s_filter_applied) {
-        // Filter was toggled off — rebuild raw frames
+    } else if (!effects_wanted && s_filter_applied) {
         wig->rebuild = true;
         s_filter_applied = false;
         s_filter_next = 0;

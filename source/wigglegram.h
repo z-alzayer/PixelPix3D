@@ -6,6 +6,7 @@
 #include <3ds.h>
 #include "camera.h"
 #include "filter.h"
+#include "pipeline.h"
 
 // Forward declarations (avoid circular include with app_state.h / shoot.h)
 struct WiggleState;
@@ -53,7 +54,7 @@ void wiggle_preview_update(struct WiggleState *wig,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
-                           const FilterParams *params);
+                           const EffectRecipe *recipe);
 
 // Advance the wiggle preview animation: rebuild frames if offsets changed,
 // then cycle to the next frame based on wall-clock time.
@@ -62,7 +63,7 @@ void wiggle_preview_update(struct WiggleState *wig,
 void wiggle_preview_tick(struct WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
-                         const FilterParams *filter, int frame_count);
+                         const EffectRecipe *recipe, int frame_count);
 
 // Returns true while the wiggle preview filter is being applied frame-by-frame.
 bool wiggle_filter_busy(void);
@@ -80,6 +81,6 @@ int save_wiggle_gif(const char *path,
                     int n_frames, int delay_ms,
                     const WiggleAlign *align,
                     int offset_dx, int offset_dy,
-                    const FilterParams *filter);
+                    const EffectRecipe *recipe);
 
 #endif

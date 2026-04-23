@@ -77,7 +77,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int active_palette,
                     bool gallery_mode,
                     const FilterParams *p, const FilterRanges *ranges,
-                    int shoot_mode, bool shoot_mode_open,
+                    int shoot_mode, int capture_mode, bool shoot_mode_open,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
@@ -149,7 +149,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open && !timer_open) {
             // ---- Mode grid: 3 capture mode buttons + Timer settings button ----
             static const char *mode_labels[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Wiggle", "Lomo", "Bend"
+                "Still", "Wiggle", "Lomo", "Bend"
             };
 
             for (int i = 0; i < SHOOT_MODE_COUNT; i++) {
@@ -249,7 +249,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Cam", "Wiggle", "Lomo", "Bend"
+                "GB Filter", "Wiggle", "Lomo", "Bend"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -572,7 +572,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         } else {
             save_bg  = CLR_ACCENT;
             save_txt = CLR_WHITE;
-            save_label = (shoot_mode == SHOOT_MODE_WIGGLE) ? "Capture" : "Save";
+            save_label = (capture_mode == CAPTURE_MODE_WIGGLE) ? "Capture" : "Save";
         }
         C2D_DrawRectSolid(0, SHOOT_SAVE_Y, 0.5f, BOT_W, SHOOT_SAVE_H, save_bg);
         C2D_TextParse(&t, staticBuf, save_label);

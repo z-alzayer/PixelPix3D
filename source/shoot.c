@@ -9,6 +9,7 @@
 #include "wigglegram.h"
 #include "settings.h"
 #include "sound.h"
+#include "pipeline.h"
 
 // ---------------------------------------------------------------------------
 // Global save thread state
@@ -46,7 +47,7 @@ static void save_thread_func(void *arg) {
                              st->wiggle_has_align ? &st->wiggle_align_result : NULL,
                              st->wiggle_offset_dx,
                              st->wiggle_offset_dy,
-                             st->wiggle_filter_active ? &st->wiggle_filter_params : NULL);
+                             &st->wiggle_recipe);
         } else {
             int scale = st->save_scale;
             rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
@@ -70,6 +71,7 @@ static void save_thread_func(void *arg) {
 Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.snapshot_buf  = snapshot_buf;
     s_save.snapshot_buf2 = snapshot_buf2;
+    s_save.wiggle_recipe = (EffectRecipe){0};
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
     LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
     s_save.busy = false;
@@ -161,7 +163,7 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
     shoot->timer_active = false;
 
     // Fire save using the mode that was active before switching to Timer
-    if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
+    if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h);
     } else if (!s_save.busy) {
@@ -182,7 +184,7 @@ void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
         shoot->timer_remaining_ms = shoot->shoot_timer_secs * 1000;
         shoot->timer_prev_tick    = svcGetSystemTick();
         shoot->timer_active       = true;
-    } else if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
+    } else if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h);
     } else {

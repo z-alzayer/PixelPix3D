@@ -20,6 +20,7 @@
 #include "gallery.h"
 #include "editor.h"
 #include "render.h"
+#include "pipeline.h"
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -114,14 +115,18 @@ int main(void) {
     ShootState shoot = {
         .shoot_mode       = SHOOT_MODE_GBCAM,
         .shoot_mode_open  = false,
+        .capture_mode     = CAPTURE_MODE_STILL,
         .timer_open       = false,
         .shoot_timer_secs = 0,
         .lomo_preset      = 0,
+        .lomo_enabled     = false,
         .bend_preset      = 0,
+        .bend_enabled     = false,
         .timer_active     = false,
         .timer_remaining_ms = 0,
         .timer_prev_tick  = 0,
     };
+    pipeline_state_init(&shoot.pipeline, &app.params);
 
     // Wiggle state
     WiggleState wig = {
@@ -341,12 +346,23 @@ int main(void) {
             }
         }
 
+        pipeline_state_sync_legacy(&shoot.pipeline,
+                                   shoot.capture_mode,
+                                   (shoot.capture_mode == CAPTURE_MODE_WIGGLE)
+                                       ? wig.filter_active : true,
+                                   &app.params,
+                                   shoot.lomo_enabled, shoot.lomo_preset,
+                                   shoot.bend_enabled, shoot.bend_preset,
+                                   app.params.fx_mode, app.params.fx_intensity,
+                                   shoot.shoot_mode, shoot.shoot_mode_open);
+        EffectRecipe live_recipe;
+        pipeline_build_recipe(&live_recipe, &shoot.pipeline);
         // Wiggle preview: B cancels, Save button confirms and writes APNG
         // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
         if (wig.preview) {
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
-                                  &app.params);
+                                  &live_recipe);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,
                          buf, filtered_buf, wiggle_left, wiggle_right,
@@ -400,43 +416,17 @@ int main(void) {
             }
             // Pause filter processing when save thread uses static filter buffers.
             // Unfiltered wiggle saves don't conflict, so allow live view updates.
-            if (!use3d && !comparing && (!s_save.busy || (s_save.wiggle_mode && !s_save.wiggle_filter_active))) {
+            if (!use3d && !comparing &&
+                (!s_save.busy || (s_save.wiggle_mode && !pipeline_recipe_has_effects(&s_save.wiggle_recipe)))) {
                 // Preview-only crop-to-fill for the live viewfinder.
                 const uint16_t *preview_src = (const uint16_t *)buf;
                 uint16_t *disp = (uint16_t *)filtered_buf;
                 crop_fill_rgb565(disp, CAMERA_WIDTH, CAMERA_HEIGHT,
                                  preview_src, app.cam_w, app.cam_h);
-                // Apply per-mode filter pipeline at display resolution
-                if (shoot.shoot_mode == SHOOT_MODE_WIGGLE) {
-                    if (wig.filter_active) {
-                        rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
-                        apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
-                        apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
-                        rgb888_to_rgb565(disp, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
-                    }
-                } else {
+                if (pipeline_recipe_has_effects(&live_recipe)) {
                     rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
-                    if (shoot.shoot_mode == SHOOT_MODE_LOMO) {
-                        const LomoPreset *lp = &lomo_presets[shoot.lomo_preset];
-                        FilterParams lp_params = app.params;
-                        lp_params.brightness  = lp->brightness;
-                        lp_params.contrast    = lp->contrast;
-                        lp_params.saturation  = lp->saturation;
-                        lp_params.gamma       = lp->gamma;
-                        lp_params.fx_mode     = lp->fx_mode;
-                        lp_params.fx_intensity = lp->fx_intensity;
-                        lp_params.pixel_size  = 1;
-                        lp_params.palette     = PALETTE_NONE;
-                        lp_params.color_levels = 256;
-                        apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params);
-                        apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, lp_params, app.frame_count);
-                    } else if (shoot.shoot_mode == SHOOT_MODE_BEND) {
-                        apply_bend(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
-                                   shoot.bend_preset, app.frame_count);
-                    } else {
-                        apply_gameboy_filter(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params);
-                        apply_fx(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT, app.params, app.frame_count);
-                    }
+                    pipeline_apply(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                                   &live_recipe, app.frame_count);
                     rgb888_to_rgb565(disp, rgb_buf, CAMERA_WIDTH * CAMERA_HEIGHT);
                 }
             }
@@ -455,7 +445,7 @@ int main(void) {
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wig.preview) {
             wiggle_preview_tick(&wig, wiggle_preview_frames, wiggle_left, wiggle_right,
-                                &app.params, app.frame_count);
+                                &live_recipe, app.frame_count);
         }
 
         gallery_tick(&gal);

@@ -7,6 +7,7 @@
 #include "sticker.h"
 #include "wigglegram.h"
 #include "camera.h"
+#include "pipeline.h"
 
 // ---------------------------------------------------------------------------
 // Shoot mode state (GB Cam / Wiggle / Lomo + timer)
@@ -15,10 +16,14 @@
 typedef struct {
     int  shoot_mode;       // SHOOT_MODE_GBCAM / WIGGLE / LOMO
     bool shoot_mode_open;  // dropdown visible
+    int  capture_mode;     // still or wiggle capture selection
     bool timer_open;       // timer picker visible
     int  shoot_timer_secs; // 0 = disabled
     int  lomo_preset;
+    bool lomo_enabled;
     int  bend_preset;
+    bool bend_enabled;
+    EffectPipeline pipeline;
 
     // timer countdown
     bool timer_active;

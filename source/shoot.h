@@ -7,6 +7,7 @@
 #include "app_state.h"
 #include "camera.h"
 #include "wigglegram.h"
+#include "pipeline.h"
 
 // ---------------------------------------------------------------------------
 // Background save thread state
@@ -28,8 +29,7 @@ typedef struct SaveThreadState {
     int           wiggle_offset_dy;
     int           wiggle_cap_w;    // capture resolution (400 or 640)
     int           wiggle_cap_h;    // (240 or 480)
-    bool          wiggle_filter_active;
-    FilterParams  wiggle_filter_params;  // snapshot at save time
+    EffectRecipe  wiggle_recipe;   // snapshot of the active processing recipe
     volatile bool busy;            // main sets true on trigger; worker clears on finish
     volatile bool quit;            // main sets true at shutdown
     LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start
