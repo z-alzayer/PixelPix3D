@@ -25,6 +25,7 @@ typedef struct {
     int  bend_preset;
     bool bend_enabled;
     EffectPipeline pipeline;
+    PipelinePreset presets[PIPELINE_PRESET_COUNT];
 
     // timer countdown
     bool timer_active;

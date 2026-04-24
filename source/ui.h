@@ -139,13 +139,14 @@
 #define SHOOT_MODE_WIGGLE     1
 #define SHOOT_MODE_LOMO       2
 #define SHOOT_MODE_BEND       3
-#define SHOOT_MODE_COUNT      4
+#define SHOOT_MODE_FX         4
+#define SHOOT_MODE_COUNT      5
 
 // Shoot quick-access row: capture selectors + effect stage entry points.
-#define SHOOT_STAGE_BTN_COUNT  5
+#define SHOOT_STAGE_BTN_COUNT  6
 #define SHOOT_MODE_ROW1_Y     44
 #define SHOOT_MODE_ROW_H      30
-#define SHOOT_MODE_BTN_W      59
+#define SHOOT_MODE_BTN_W      48
 #define SHOOT_MODE_BTN_GAP     4
 #define SHOOT_TIMER_ROW_Y    (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + 8)
 #define SHOOT_TIMER_PILL_W   108

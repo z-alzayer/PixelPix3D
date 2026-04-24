@@ -277,3 +277,126 @@ void settings_load_ranges(FilterRanges *r) {
     if (r->gamma_def    < r->gamma_min)    r->gamma_def    = r->gamma_min;
     if (r->gamma_def    > r->gamma_max)    r->gamma_def    = r->gamma_max;
 }
+
+void settings_save_pipeline_presets(const PipelinePreset presets[PIPELINE_PRESET_COUNT]) {
+    char key[32], val[64];
+    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+        snprintf(key, sizeof(key), "preset_%d_name", i);
+        ini_set_key(key, presets[i].name);
+
+        snprintf(key, sizeof(key), "preset_%d_gb_enabled", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_enabled ? 1 : 0);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_base_enabled", i);
+        snprintf(val, sizeof(val), "%d", presets[i].base_enabled ? 1 : 0);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_base_preset", i);
+        snprintf(val, sizeof(val), "%d", presets[i].base_preset);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_bend_enabled", i);
+        snprintf(val, sizeof(val), "%d", presets[i].bend_enabled ? 1 : 0);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_bend_preset", i);
+        snprintf(val, sizeof(val), "%d", presets[i].bend_preset);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_fx_mode", i);
+        snprintf(val, sizeof(val), "%d", presets[i].fx_mode);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_fx_intensity", i);
+        snprintf(val, sizeof(val), "%d", presets[i].fx_intensity);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_pixel_size", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_params.pixel_size);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_color_levels", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_params.color_levels);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_brightness", i);
+        snprintf(val, sizeof(val), "%.2f", (double)presets[i].gb_params.brightness);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_contrast", i);
+        snprintf(val, sizeof(val), "%.2f", (double)presets[i].gb_params.contrast);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_gamma", i);
+        snprintf(val, sizeof(val), "%.2f", (double)presets[i].gb_params.gamma);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_saturation", i);
+        snprintf(val, sizeof(val), "%.2f", (double)presets[i].gb_params.saturation);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_palette", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_params.palette);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_dither_mode", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_params.dither_mode);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_invert", i);
+        snprintf(val, sizeof(val), "%d", presets[i].gb_params.invert ? 1 : 0);
+        ini_set_key(key, val);
+    }
+}
+
+void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT]) {
+    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+        pipeline_preset_default(&presets[i], i);
+    }
+
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) {
+        settings_save_pipeline_presets(presets);
+        return;
+    }
+
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '#' || line[0] == '\0') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = line;
+        const char *val = eq + 1;
+
+        int idx = -1;
+        char field[32];
+        if (sscanf(key, "preset_%d_%31s", &idx, field) != 2) continue;
+        if (idx < 0 || idx >= PIPELINE_PRESET_COUNT) continue;
+
+        PipelinePreset *p = &presets[idx];
+        if      (strcmp(field, "name") == 0)          snprintf(p->name, sizeof(p->name), "%s", val);
+        else if (strcmp(field, "gb_enabled") == 0)    p->gb_enabled = atoi(val) != 0;
+        else if (strcmp(field, "base_enabled") == 0)  p->base_enabled = atoi(val) != 0;
+        else if (strcmp(field, "base_preset") == 0)   p->base_preset = atoi(val);
+        else if (strcmp(field, "bend_enabled") == 0)  p->bend_enabled = atoi(val) != 0;
+        else if (strcmp(field, "bend_preset") == 0)   p->bend_preset = atoi(val);
+        else if (strcmp(field, "fx_mode") == 0)       p->fx_mode = atoi(val);
+        else if (strcmp(field, "fx_intensity") == 0)  p->fx_intensity = atoi(val);
+        else if (strcmp(field, "pixel_size") == 0)    p->gb_params.pixel_size = atoi(val);
+        else if (strcmp(field, "color_levels") == 0)  p->gb_params.color_levels = atoi(val);
+        else if (strcmp(field, "brightness") == 0)    p->gb_params.brightness = strtof(val, NULL);
+        else if (strcmp(field, "contrast") == 0)      p->gb_params.contrast = strtof(val, NULL);
+        else if (strcmp(field, "gamma") == 0)         p->gb_params.gamma = strtof(val, NULL);
+        else if (strcmp(field, "saturation") == 0)    p->gb_params.saturation = strtof(val, NULL);
+        else if (strcmp(field, "palette") == 0)       p->gb_params.palette = atoi(val);
+        else if (strcmp(field, "dither_mode") == 0)   p->gb_params.dither_mode = atoi(val);
+        else if (strcmp(field, "invert") == 0)        p->gb_params.invert = atoi(val) != 0;
+    }
+    fclose(f);
+}

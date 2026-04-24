@@ -7,6 +7,80 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
+static bool handle_fx_tab_touch(int tx, int ty, bool tapped, bool touched,
+                                FilterParams *p) {
+    if (tapped && ty >= FXTAB_BTN_Y1 && ty < FXTAB_BTN_Y1 + FXTAB_BTN_H) {
+        for (int i = 0; i < 4; i++) {
+            int bx = FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP);
+            if (tx >= bx && tx < bx + FXTAB_R1_W) {
+                p->fx_mode = i;
+                return true;
+            }
+        }
+    }
+    if (tapped && ty >= FXTAB_BTN_Y2 && ty < FXTAB_BTN_Y2 + FXTAB_BTN_H) {
+        for (int i = 0; i < 3; i++) {
+            int bx = FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP);
+            if (tx >= bx && tx < bx + FXTAB_R2_W) {
+                p->fx_mode = 4 + i;
+                return true;
+            }
+        }
+    }
+    if (touched && p->fx_mode != FX_NONE &&
+        ty >= FXTAB_SLIDER_Y - 14 && ty < FXTAB_SLIDER_Y + 14 &&
+        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
+        if (p->fx_intensity < 0)  p->fx_intensity = 0;
+        if (p->fx_intensity > 10) p->fx_intensity = 10;
+        return true;
+    }
+    return false;
+}
+
+static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
+                                    FilterParams *p, float cy) {
+    const int fx_btn_w = 100;
+    const int fx_btn_h = 22;
+    const int fx_btn_gap_x = 6;
+    const int fx_btn_gap_y = 6;
+    const int fx_grid_x = 4;
+    const int fx_row2_y = (int)cy + fx_btn_h + fx_btn_gap_y;
+    static const int fx_modes[6] = {
+        FX_SCAN_H, FX_SCAN_V, FX_LCD,
+        FX_VIGNETTE, FX_CHROMA, FX_GRAIN
+    };
+
+    if (tapped) {
+        for (int i = 0; i < 6; i++) {
+            int row = i / 3;
+            int col = i % 3;
+            int bx = fx_grid_x + col * (fx_btn_w + fx_btn_gap_x);
+            int by = (row == 0) ? (int)cy : fx_row2_y;
+            if (hit(tx, ty, bx, by, fx_btn_w, fx_btn_h)) {
+                if (p->fx_mode == fx_modes[i]) p->fx_mode = FX_NONE;
+                else p->fx_mode = fx_modes[i];
+                return true;
+            }
+        }
+    }
+    if (touched && p->fx_mode != FX_NONE &&
+        ty >= (int)(cy + 84.0f - 14.0f) && ty < (int)(cy + 84.0f + 14.0f) &&
+        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
+        if (p->fx_intensity < 0)  p->fx_intensity = 0;
+        if (p->fx_intensity > 10) p->fx_intensity = 10;
+        return true;
+    }
+    return false;
+}
+
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   AppState *app, ShootState *shoot, WiggleState *wig,
                   GalleryState *gal, EditState *edit,
@@ -297,6 +371,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 shoot->shoot_mode = SHOOT_MODE_LOMO;
                             } else if (col == 4) {
                                 shoot->shoot_mode = SHOOT_MODE_BEND;
+                            } else if (col == 5) {
+                                shoot->shoot_mode = SHOOT_MODE_FX;
                             }
                             shoot->shoot_mode_open = true;
                             return true;
@@ -344,7 +420,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     if (tapped && hit(tx, ty,
                                       SHOOT_GB_TOGGLE_X, SHOOT_GB_TOGGLE_Y,
                                       SHOOT_GB_TOGGLE_W, SHOOT_GB_TOGGLE_H)) {
-                        shoot->gb_enabled = !shoot->gb_enabled;
+                        if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
+                            wig->filter_active = !wig->filter_active;
+                            wig->rebuild = true;
+                        } else {
+                            shoot->gb_enabled = !shoot->gb_enabled;
+                        }
                         return true;
                     }
 
@@ -366,7 +447,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
                             else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
                             else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
-                            shoot->gb_enabled = true;
+                            if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
+                                wig->filter_active = true;
+                                wig->rebuild = true;
+                            } else {
+                                shoot->gb_enabled = true;
+                            }
                             *field = mn + t_val * (mx - mn);
                             return true;
                         }
@@ -418,6 +504,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             }
                         }
                     }
+                } else if (shoot->shoot_mode == SHOOT_MODE_FX) {
+                    float cy = (float)SHOOT_CONTENT_Y;
+                    if (handle_fx_compact_touch(tx, ty, tapped, touched, p, cy))
+                        return true;
                 } else if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
                     #define WIG_BTN_W  28
                     #define WIG_BTN_H  22
@@ -548,38 +638,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // FX tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_FX && ty < NAV_Y) {
-        // Mode buttons row 1
-        if (tapped && ty >= FXTAB_BTN_Y1 && ty < FXTAB_BTN_Y1 + FXTAB_BTN_H) {
-            for (int i = 0; i < 4; i++) {
-                int bx = FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP);
-                if (tx >= bx && tx < bx + FXTAB_R1_W) {
-                    p->fx_mode = i;
-                    return true;
-                }
-            }
-        }
-        // Mode buttons row 2
-        if (tapped && ty >= FXTAB_BTN_Y2 && ty < FXTAB_BTN_Y2 + FXTAB_BTN_H) {
-            for (int i = 0; i < 3; i++) {
-                int bx = FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP);
-                if (tx >= bx && tx < bx + FXTAB_R2_W) {
-                    p->fx_mode = 4 + i;
-                    return true;
-                }
-            }
-        }
-        // Intensity slider
-        if (touched && p->fx_mode != FX_NONE &&
-            ty >= FXTAB_SLIDER_Y - 14 && ty < FXTAB_SLIDER_Y + 14 &&
-            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
-            float t_val = (float)(tx - TRACK_X) / TRACK_W;
-            if (t_val < 0.0f) t_val = 0.0f;
-            if (t_val > 1.0f) t_val = 1.0f;
-            p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
-            if (p->fx_intensity < 0)  p->fx_intensity = 0;
-            if (p->fx_intensity > 10) p->fx_intensity = 10;
+        if (handle_fx_tab_touch(tx, ty, tapped, touched, p))
             return true;
-        }
     }
 
     // -----------------------------------------------------------------------

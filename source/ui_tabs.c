@@ -16,6 +16,120 @@ static const char *frame_names[FRAME_COUNT] = {
 };
 // (paths used only in main.c compositing; names shown here in picker)
 
+static const char *s_fx_labels_full[7] = {
+    "None", "Scan-H", "Scan-V", "LCD", "Vignette", "Chroma", "Grain"
+};
+
+static const int s_fx_modes_compact[6] = {
+    FX_SCAN_H, FX_SCAN_V, FX_LCD, FX_VIGNETTE, FX_CHROMA, FX_GRAIN
+};
+
+static const char *s_fx_labels_compact[6] = {
+    "Scan-H", "Scan-V", "LCD", "Vignette", "Chroma", "Grain"
+};
+
+static void draw_fx_intensity_row(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  const FilterParams *p, float divider_y,
+                                  float label_y, float slider_y, float value_y,
+                                  bool compact_handle) {
+    C2D_DrawRectSolid(0, divider_y, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    C2D_TextParse(t, staticBuf, "Intensity");
+    C2D_DrawText(t, C2D_WithColor, 4.0f, label_y, 0.5f, 0.38f, 0.38f,
+                 (p->fx_mode == FX_NONE) ? CLR_TRACK : CLR_TEXT);
+
+    if (p->fx_mode != FX_NONE) {
+        if (compact_handle) {
+            const float handle_w = 10.0f;
+            const float handle_h = 10.0f;
+            C2D_DrawRectSolid(TRACK_X, slider_y - TRACK_H / 2.0f,
+                              0.5f, TRACK_W, TRACK_H, CLR_TRACK);
+            float hx = slider_val_to_x((float)p->fx_intensity, 0.0f, 10.0f);
+            float fill_w = hx - TRACK_X;
+            if (fill_w > 0.0f) {
+                C2D_DrawRectSolid(TRACK_X, slider_y - TRACK_H / 2.0f,
+                                  0.5f, fill_w, TRACK_H, CLR_FILL);
+            }
+            draw_rounded_rect(hx - handle_w / 2.0f, slider_y - handle_h / 2.0f,
+                              handle_w, handle_h, 3.0f, CLR_HANDLE);
+        } else {
+            draw_slider(0, slider_y, 0.0f, 10.0f, (float)p->fx_intensity);
+        }
+    } else {
+        C2D_DrawRectSolid(TRACK_X, slider_y - TRACK_H / 2.0f,
+                          0.5f, TRACK_W, TRACK_H, CLR_TRACK);
+    }
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", p->fx_intensity);
+    C2D_TextParse(t, staticBuf, buf);
+    C2D_DrawText(t, C2D_WithColor, 284.0f, value_y, 0.5f, 0.38f, 0.38f, CLR_DIM);
+}
+
+static void draw_fx_panel_full(C2D_TextBuf staticBuf, C2D_Text *t,
+                               const FilterParams *p) {
+    float sc = 0.44f;
+    for (int i = 0; i < 4; i++) {
+        float bx = (float)(FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP));
+        bool sel = (p->fx_mode == i);
+        draw_pill(bx, (float)FXTAB_BTN_Y1, FXTAB_R1_W, FXTAB_BTN_H,
+                  sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(t, staticBuf, s_fx_labels_full[i]);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
+                     bx + (FXTAB_R1_W - tw) / 2.0f,
+                     (float)FXTAB_BTN_Y1 + (FXTAB_BTN_H - th) / 2.0f - 1.0f,
+                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
+    }
+
+    for (int i = 0; i < 3; i++) {
+        float bx = (float)(FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP));
+        bool sel = (p->fx_mode == 4 + i);
+        draw_pill(bx, (float)FXTAB_BTN_Y2, FXTAB_R2_W, FXTAB_BTN_H,
+                  sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(t, staticBuf, s_fx_labels_full[4 + i]);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
+                     bx + (FXTAB_R2_W - tw) / 2.0f,
+                     (float)FXTAB_BTN_Y2 + (FXTAB_BTN_H - th) / 2.0f - 1.0f,
+                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
+    }
+
+    draw_fx_intensity_row(staticBuf, t, p, 96.0f, (float)FXTAB_SLIDER_Y - 18.0f,
+                          (float)FXTAB_SLIDER_Y, (float)FXTAB_SLIDER_Y - 18.0f, false);
+}
+
+static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  const FilterParams *p, float cy) {
+    float sc = 0.40f;
+    const float btn_w = 100.0f;
+    const float btn_h = 22.0f;
+    const float gap_x = 6.0f;
+    const float gap_y = 6.0f;
+    const float grid_x = 4.0f;
+    const float row2_y = cy + btn_h + gap_y;
+
+    for (int i = 0; i < 6; i++) {
+        int row = i / 3;
+        int col = i % 3;
+        float bx = grid_x + col * (btn_w + gap_x);
+        float by = (row == 0) ? cy : row2_y;
+        bool sel = (p->fx_mode == s_fx_modes_compact[i]);
+        draw_pill(bx, by, btn_w, btn_h, sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(t, staticBuf, s_fx_labels_compact[i]);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
+                     bx + (btn_w - tw) * 0.5f,
+                     by + (btn_h - th) * 0.5f - 1.0f,
+                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
+    }
+
+    draw_fx_intensity_row(staticBuf, t, p, cy + 62.0f, cy + 66.0f, cy + 84.0f,
+                          cy + 66.0f, true);
+}
+
 // ---------------------------------------------------------------------------
 // Bottom nav bar (always visible at y=200)
 // ---------------------------------------------------------------------------
@@ -155,7 +269,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open && !timer_open) {
             // ---- Quick-access row: capture selectors + effect stages ----
             static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
-                "Still", "Wiggle", "GB", "Lomo", "Bend"
+                "Still", "Wiggle", "GB", "Lomo", "Bend", "FX"
             };
 
             for (int i = 0; i < SHOOT_STAGE_BTN_COUNT; i++) {
@@ -167,6 +281,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 else if (i == 2) sel = gb_enabled;
                 else if (i == 3) sel = lomo_enabled;
                 else if (i == 4) sel = bend_enabled;
+                else if (i == 5) sel = (p->fx_mode != FX_NONE);
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
                           sel ? CLR_ACCENT : CLR_BTN);
@@ -274,7 +389,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Filter", "Wiggle", "Base Look", "Bend"
+                "GB Filter", "Wiggle", "Base Look", "Bend", "Post FX"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -576,6 +691,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                      sel ? CLR_WHITE : CLR_TEXT);
                     }
                 }
+            } else if (shoot_mode == SHOOT_MODE_FX) {
+                draw_fx_panel_compact(staticBuf, &t, p, cy);
             }
         }
 
@@ -1070,63 +1187,11 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  const FilterParams *p, bool settings_flash) {
-    float sc = 0.44f;
     C2D_Text t;
-    char buf_str[8];
 
     C2D_TextParse(&t, staticBuf, "Effects");
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)FXTAB_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
-
-    // Row 1: None, Scan-H, Scan-V, LCD
-    static const char *mode_labels_r1[4] = { "None", "Scan-H", "Scan-V", "LCD" };
-    for (int i = 0; i < 4; i++) {
-        float bx = (float)(FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP));
-        bool sel = (p->fx_mode == i);
-        draw_pill(bx, (float)FXTAB_BTN_Y1, FXTAB_R1_W, FXTAB_BTN_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, mode_labels_r1[i]);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(&t, sc, sc, &tw, &th);
-        float tlx = bx + (FXTAB_R1_W - tw) / 2.0f;
-        float tly = (float)FXTAB_BTN_Y1 + (FXTAB_BTN_H - th) / 2.0f - 1.0f;
-        C2D_DrawText(&t, C2D_WithColor, tlx, tly, 0.5f, sc, sc,
-                     sel ? CLR_WHITE : CLR_TEXT);
-    }
-
-    // Row 2: Vignette, Chroma, Grain
-    static const char *mode_labels_r2[3] = { "Vignette", "Chroma", "Grain" };
-    for (int i = 0; i < 3; i++) {
-        float bx = (float)(FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP));
-        bool sel = (p->fx_mode == 4 + i);
-        draw_pill(bx, (float)FXTAB_BTN_Y2, FXTAB_R2_W, FXTAB_BTN_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, mode_labels_r2[i]);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(&t, sc, sc, &tw, &th);
-        float tlx = bx + (FXTAB_R2_W - tw) / 2.0f;
-        float tly = (float)FXTAB_BTN_Y2 + (FXTAB_BTN_H - th) / 2.0f - 1.0f;
-        C2D_DrawText(&t, C2D_WithColor, tlx, tly, 0.5f, sc, sc,
-                     sel ? CLR_WHITE : CLR_TEXT);
-    }
-
-    C2D_DrawRectSolid(0, 96, 0.5f, BOT_W, 1, CLR_DIVIDER);
-    u32 label_clr = (p->fx_mode == FX_NONE) ? CLR_TRACK : CLR_TEXT;
-    C2D_TextParse(&t, staticBuf, "Intensity");
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)FXTAB_SLIDER_Y - 18.0f,
-                 0.5f, sc, sc, label_clr);
-
-    if (p->fx_mode != FX_NONE) {
-        draw_slider(0, (float)FXTAB_SLIDER_Y, 0.0f, 10.0f, (float)p->fx_intensity);
-    } else {
-        C2D_DrawRectSolid(TRACK_X, (float)FXTAB_SLIDER_Y - TRACK_H / 2.0f,
-                          0.5f, TRACK_W, TRACK_H, CLR_TRACK);
-    }
-
-    C2D_TextBufClear(dynBuf);
-    snprintf(buf_str, sizeof(buf_str), "%d", p->fx_intensity);
-    C2D_TextParse(&t, dynBuf, buf_str);
-    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)FXTAB_SLIDER_Y - 18.0f,
-                 0.5f, sc, sc, CLR_DIM);
+    draw_fx_panel_full(staticBuf, &t, p);
 
     C2D_DrawRectSolid(0, 144, 0.5f, BOT_W, 1, CLR_DIVIDER);
     static const char *mode_descs[7] = {
@@ -1143,6 +1208,7 @@ void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  0.5f, 0.40f, 0.40f, CLR_DIM);
 
     (void)settings_flash;
+    (void)dynBuf;
 }
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,22 @@ typedef enum {
     PIPELINE_PANEL_WIGGLE = 1,
     PIPELINE_PANEL_LOMO = 2,
     PIPELINE_PANEL_BEND = 3,
+    PIPELINE_PANEL_FX = 4,
 } PipelinePanel;
+
+#define PIPELINE_PRESET_COUNT 4
+
+typedef struct {
+    char name[24];
+    bool gb_enabled;
+    FilterParams gb_params;
+    bool base_enabled;
+    int  base_preset;
+    bool bend_enabled;
+    int  bend_preset;
+    int  fx_mode;
+    int  fx_intensity;
+} PipelinePreset;
 
 typedef struct {
     bool enabled;
@@ -76,5 +91,9 @@ bool pipeline_recipe_has_effects(const EffectRecipe *recipe);
 void pipeline_apply(uint8_t *rgb, int w, int h,
                     const EffectRecipe *recipe,
                     int frame_count);
+void pipeline_preset_default(PipelinePreset *preset, int slot);
+void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
+                             const char *name);
+void pipeline_preset_apply(EffectPipeline *pipe, const PipelinePreset *preset);
 
 #endif

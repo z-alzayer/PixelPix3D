@@ -2,6 +2,7 @@
 #define SETTINGS_H
 
 #include "filter.h"
+#include "pipeline.h"
 
 #define SETTINGS_PATH "sdmc:/3ds/pixelpix3d/settings.ini"
 
@@ -34,5 +35,8 @@ void settings_load_ranges(FilterRanges *r);
 int  settings_load_file_counter(void);
 // Writes next_file_n=n to SETTINGS_PATH (appends).
 void settings_save_file_counter(int n);
+
+void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT]);
+void settings_save_pipeline_presets(const PipelinePreset presets[PIPELINE_PRESET_COUNT]);
 
 #endif

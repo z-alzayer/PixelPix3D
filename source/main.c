@@ -207,6 +207,7 @@ int main(void) {
     settings_load(&app.params, &app.save_scale, &app.shutter_button);
     settings_load_palettes(app.user_palettes);
     settings_load_ranges(&app.ranges);
+    settings_load_pipeline_presets(shoot.presets);
     app.default_params = app.params;
     filter_set_user_palettes(app.user_palettes);
     // Clamp live params to loaded ranges

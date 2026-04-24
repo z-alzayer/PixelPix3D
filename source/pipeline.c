@@ -2,6 +2,8 @@
 #include "lomo.h"
 #include "bend.h"
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 static void apply_basic_adjustments(uint8_t *pixels, int width, int height,
                                     float brightness, float contrast,
@@ -127,4 +129,66 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
         post.fx_intensity = recipe->fallback_post_fx_intensity;
         apply_fx(rgb, w, h, post, frame_count);
     }
+}
+
+void pipeline_preset_default(PipelinePreset *preset, int slot) {
+    static const char *default_names[PIPELINE_PRESET_COUNT] = {
+        "Classic GB",
+        "LC-A GB",
+        "Wiggle Corrupt",
+        "Mono Grain",
+    };
+    FilterParams defaults = FILTER_DEFAULTS;
+    memset(preset, 0, sizeof(*preset));
+    snprintf(preset->name, sizeof(preset->name), "%s",
+             default_names[(slot >= 0 && slot < PIPELINE_PRESET_COUNT) ? slot : 0]);
+    preset->gb_enabled = true;
+    preset->gb_params = defaults;
+
+    switch (slot) {
+        case 1:
+            preset->base_enabled = true;
+            preset->base_preset = 0;
+            break;
+        case 2:
+            preset->bend_enabled = true;
+            preset->bend_preset = 0;
+            preset->fx_mode = FX_CHROMA;
+            preset->fx_intensity = 6;
+            break;
+        case 3:
+            preset->gb_params.palette = 1;
+            preset->fx_mode = FX_GRAIN;
+            preset->fx_intensity = 7;
+            break;
+        default:
+            break;
+    }
+}
+
+void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
+                             const char *name) {
+    memset(preset, 0, sizeof(*preset));
+    if (name && name[0]) snprintf(preset->name, sizeof(preset->name), "%s", name);
+    else snprintf(preset->name, sizeof(preset->name), "Custom");
+    preset->gb_enabled = pipe->gb.enabled;
+    preset->gb_params = pipe->gb.params;
+    preset->base_enabled = pipe->base.enabled;
+    preset->base_preset = pipe->base.preset;
+    preset->bend_enabled = pipe->bend.enabled;
+    preset->bend_preset = pipe->bend.preset;
+    preset->fx_mode = pipe->post.enabled ? pipe->post.fx_mode : FX_NONE;
+    preset->fx_intensity = pipe->post.fx_intensity;
+}
+
+void pipeline_preset_apply(EffectPipeline *pipe, const PipelinePreset *preset) {
+    pipe->gb.enabled = preset->gb_enabled;
+    pipe->gb.params = preset->gb_params;
+    pipe->base.enabled = preset->base_enabled;
+    pipe->base.preset = preset->base_preset;
+    pipe->bend.enabled = preset->bend_enabled;
+    pipe->bend.preset = preset->bend_preset;
+    pipe->post.enabled = preset->fx_mode != FX_NONE;
+    pipe->post.fx_mode = preset->fx_mode;
+    pipe->post.fx_intensity = preset->fx_intensity;
 }
