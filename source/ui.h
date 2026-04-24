@@ -137,13 +137,14 @@
 
 #define SHOOT_MODE_GBCAM      0
 #define SHOOT_MODE_WIGGLE     1
-#define SHOOT_MODE_LOMO       2
-#define SHOOT_MODE_BEND       3
-#define SHOOT_MODE_FX         4
-#define SHOOT_MODE_COUNT      5
+#define SHOOT_MODE_TONE       2
+#define SHOOT_MODE_LOMO       3
+#define SHOOT_MODE_BEND       4
+#define SHOOT_MODE_FX         5
+#define SHOOT_MODE_COUNT      6
 
 // Shoot quick-access row: capture selectors + effect stage entry points.
-#define SHOOT_STAGE_BTN_COUNT  7
+#define SHOOT_STAGE_BTN_COUNT  8
 #define SHOOT_STAGE_GRID_COLS  4
 #define SHOOT_STAGE_GRID_ROWS  2
 #define SHOOT_MODE_ROW1_Y     44

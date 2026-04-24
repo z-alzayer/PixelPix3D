@@ -5,6 +5,7 @@
 #include "sticker.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 // ---------------------------------------------------------------------------
 // Frame definitions
@@ -237,8 +238,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open && !timer_open) {
             // ---- Quick-access row: capture selectors + effect stages ----
             static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
-                "Still", "Wiggle", "GB", "Lomo",
-                "Bend", "FX", "Timer"
+                "Still", "Wiggle", "GB", "Tone",
+                "Lomo", "Bend", "FX", "Timer"
             };
 
             for (int i = 0; i < SHOOT_STAGE_BTN_COUNT; i++) {
@@ -250,13 +251,18 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
                 else if (i == 1) sel = (capture_mode == CAPTURE_MODE_WIGGLE);
                 else if (i == 2) sel = gb_enabled;
-                else if (i == 3) sel = lomo_enabled;
-                else if (i == 4) sel = bend_enabled;
-                else if (i == 5) sel = (p->fx_mode != FX_NONE);
-                else if (i == 6) sel = (shoot_timer_secs > 0);
+                else if (i == 3) sel = (!gb_enabled &&
+                                        (fabsf(p->brightness - ranges->bright_def) > 0.001f ||
+                                         fabsf(p->contrast - ranges->contrast_def) > 0.001f ||
+                                         fabsf(p->saturation - ranges->sat_def) > 0.001f ||
+                                         fabsf(p->gamma - ranges->gamma_def) > 0.001f));
+                else if (i == 4) sel = lomo_enabled;
+                else if (i == 5) sel = bend_enabled;
+                else if (i == 6) sel = (p->fx_mode != FX_NONE);
+                else if (i == 7) sel = (shoot_timer_secs > 0);
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
-                          (i == 6 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
+                          (i == 7 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
 
                 C2D_TextParse(&t, staticBuf, mode_labels[i]);
                 float tw2 = 0, th2 = 0;
@@ -340,7 +346,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Filter", "Wiggle", "Base Look", "Bend", "Post FX"
+                "GB Filter", "Wiggle", "Tone", "Base Look", "Bend", "Post FX"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -355,7 +361,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
             // ----- Per-mode content -----
             float cy = (float)SHOOT_CONTENT_Y;
 
-            if (shoot_mode == SHOOT_MODE_GBCAM) {
+            if (shoot_mode == SHOOT_MODE_GBCAM || shoot_mode == SHOOT_MODE_TONE) {
                 // 4 vertical sliders: Brt / Con / Sat / Gam
                 // Each column centred in a 80px wide lane, track spans SHOOT_CONTENT_Y..SHOOT_SAVE_Y-4
                 float vals[4]  = { p->brightness,  p->contrast,    p->saturation,   p->gamma };

@@ -401,12 +401,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             } else if (col == 2) {
                                 shoot->shoot_mode = SHOOT_MODE_GBCAM;
                             } else if (col == 3) {
-                                shoot->shoot_mode = SHOOT_MODE_LOMO;
+                                shoot->shoot_mode = SHOOT_MODE_TONE;
                             } else if (col == 4) {
-                                shoot->shoot_mode = SHOOT_MODE_BEND;
+                                shoot->shoot_mode = SHOOT_MODE_LOMO;
                             } else if (col == 5) {
-                                shoot->shoot_mode = SHOOT_MODE_FX;
+                                shoot->shoot_mode = SHOOT_MODE_BEND;
                             } else if (col == 6) {
+                                shoot->shoot_mode = SHOOT_MODE_FX;
+                            } else if (col == 7) {
                                 shoot->timer_open = true;
                                 return true;
                             }
@@ -473,6 +475,33 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
                             *field = mn + t_val * (mx - mn);
                             set_gb_stage_enabled(shoot, wig, true);
+                            return true;
+                        }
+                    }
+                    #undef VCOL_W
+                    #undef VHANDLE_W
+                    #undef VHANDLE_H
+                } else if (shoot->shoot_mode == SHOOT_MODE_TONE) {
+                    #define VCOL_W   80
+                    #define VHANDLE_W 14
+                    #define VHANDLE_H  8
+                    float vtrack_top = (float)SHOOT_CONTENT_Y + 14.0f;
+                    float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
+                    float vtrack_h   = vtrack_bot - vtrack_top;
+                    if (touched && ty >= (int)(vtrack_top - VHANDLE_H) && ty <= (int)(vtrack_bot + VHANDLE_H)) {
+                        int col = tx / VCOL_W;
+                        if (col >= 0 && col < 4) {
+                            float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
+                            if (t_val < 0.0f) t_val = 0.0f;
+                            if (t_val > 1.0f) t_val = 1.0f;
+                            float mn, mx;
+                            float *field = NULL;
+                            if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
+                            else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
+                            else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
+                            else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
+                            *field = mn + t_val * (mx - mn);
+                            wig->rebuild = true;
                             return true;
                         }
                     }
