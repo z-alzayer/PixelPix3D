@@ -54,6 +54,18 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     shoot->timer_open = false;
 }
 
+static void cycle_palette_backward(AppState *app) {
+    app->params.palette = (app->params.palette <= PALETTE_NONE)
+                        ? PALETTE_COUNT - 1
+                        : app->params.palette - 1;
+}
+
+static void cycle_palette_forward(AppState *app) {
+    app->params.palette = (app->params.palette >= PALETTE_COUNT - 1)
+                        ? PALETTE_NONE
+                        : app->params.palette + 1;
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -253,18 +265,21 @@ int main(void) {
             if (app.shutter_button) {
                 // A cycles palette forward when L/R are the shutter
                 if (kDown & KEY_A) {
-                    app.params.palette = (app.params.palette >= PALETTE_COUNT - 1)
-                                   ? PALETTE_NONE : app.params.palette + 1;
+                    cycle_palette_forward(&app);
                 }
             } else {
                 if (kDown & KEY_L) {
-                    app.params.palette = (app.params.palette <= PALETTE_NONE)
-                                   ? PALETTE_COUNT - 1 : app.params.palette - 1;
+                    cycle_palette_backward(&app);
                 }
                 if (kDown & KEY_R) {
-                    app.params.palette = (app.params.palette >= PALETTE_COUNT - 1)
-                                   ? PALETTE_NONE : app.params.palette + 1;
+                    cycle_palette_forward(&app);
                 }
+            }
+            if (kDown & KEY_ZL) {
+                cycle_palette_backward(&app);
+            }
+            if (kDown & KEY_ZR) {
+                cycle_palette_forward(&app);
             }
             if (kDown & KEY_B) {
                 app.params.pixel_size = (app.params.pixel_size % PX_STOPS) + 1;
