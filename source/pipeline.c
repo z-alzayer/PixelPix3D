@@ -5,31 +5,57 @@
 #include <stdio.h>
 #include <string.h>
 
+static float s_basic_lut[256];
+static float s_basic_gamma = -1.0f;
+static float s_basic_brightness = -1.0f;
+static float s_basic_contrast = -1.0f;
+
+static void rebuild_basic_lut(float gamma, float brightness, float contrast) {
+    if (gamma == s_basic_gamma &&
+        brightness == s_basic_brightness &&
+        contrast == s_basic_contrast) {
+        return;
+    }
+
+    float inv_gamma = 1.0f / gamma;
+    for (int i = 0; i < 256; i++) {
+        float v = powf(i / 255.0f, inv_gamma) * 255.0f;
+        v = (v * brightness - 128.0f) * contrast + 128.0f;
+        if (v < 0.0f) v = 0.0f;
+        else if (v > 255.0f) v = 255.0f;
+        s_basic_lut[i] = v;
+    }
+
+    s_basic_gamma = gamma;
+    s_basic_brightness = brightness;
+    s_basic_contrast = contrast;
+}
+
 static void apply_basic_adjustments(uint8_t *pixels, int width, int height,
                                     float brightness, float contrast,
                                     float gamma, float saturation) {
+    rebuild_basic_lut(gamma, brightness, contrast);
+
     for (int i = 0; i < width * height; i++) {
         int idx = i * 3;
-        float r = powf(pixels[idx + 0] / 255.0f, 1.0f / gamma) * 255.0f;
-        float g = powf(pixels[idx + 1] / 255.0f, 1.0f / gamma) * 255.0f;
-        float b = powf(pixels[idx + 2] / 255.0f, 1.0f / gamma) * 255.0f;
+        float r = s_basic_lut[pixels[idx + 0]];
+        float g = s_basic_lut[pixels[idx + 1]];
+        float b = s_basic_lut[pixels[idx + 2]];
 
-        r = (r * brightness - 128.0f) * contrast + 128.0f;
-        g = (g * brightness - 128.0f) * contrast + 128.0f;
-        b = (b * brightness - 128.0f) * contrast + 128.0f;
-
-        int lum = (77 * (int)r + 150 * (int)g + 29 * (int)b) >> 8;
-        r = lum + saturation * (r - lum);
-        g = lum + saturation * (g - lum);
-        b = lum + saturation * (b - lum);
+        if (fabsf(saturation - 1.0f) > 0.001f) {
+            float lum = (77.0f * r + 150.0f * g + 29.0f * b) / 256.0f;
+            r = lum + saturation * (r - lum);
+            g = lum + saturation * (g - lum);
+            b = lum + saturation * (b - lum);
+        }
 
         if (r < 0.0f) r = 0.0f; else if (r > 255.0f) r = 255.0f;
         if (g < 0.0f) g = 0.0f; else if (g > 255.0f) g = 255.0f;
         if (b < 0.0f) b = 0.0f; else if (b > 255.0f) b = 255.0f;
 
-        pixels[idx + 0] = (uint8_t)r;
-        pixels[idx + 1] = (uint8_t)g;
-        pixels[idx + 2] = (uint8_t)b;
+        pixels[idx + 0] = (uint8_t)(r + 0.5f);
+        pixels[idx + 1] = (uint8_t)(g + 0.5f);
+        pixels[idx + 2] = (uint8_t)(b + 0.5f);
     }
 }
 
