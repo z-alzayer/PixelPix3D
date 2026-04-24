@@ -129,6 +129,8 @@ int main(void) {
         .shoot_mode_open  = false,
         .capture_mode     = CAPTURE_MODE_STILL,
         .timer_open       = false,
+        .presets_open     = false,
+        .preset_selected  = 0,
         .shoot_timer_secs = 0,
         .gb_enabled       = true,
         .lomo_preset      = 0,
@@ -159,6 +161,7 @@ int main(void) {
         .capture_h        = CAMERA_HEIGHT,
     };
     static uint16_t wiggle_preview_frames[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
+    bool wiggle_preview_camera_paused = false;
 
     // Gallery state
     GalleryState gal = {
@@ -394,6 +397,25 @@ int main(void) {
 
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
         bool comparing = (kHeld & KEY_SELECT) != 0;
+
+        if (wig.preview && !wiggle_preview_camera_paused && app.cam_active) {
+            CAMU_StopCapture(PORT_BOTH);
+            for (int i = 2; i < 4; i++) {
+                if (camReceiveEvent[i]) {
+                    svcCloseHandle(camReceiveEvent[i]);
+                    camReceiveEvent[i] = 0;
+                }
+            }
+            captureInterrupted = false;
+            app.cam_active = false;
+            wiggle_preview_camera_paused = true;
+        } else if (!wig.preview && wiggle_preview_camera_paused && !app.cam_active) {
+            CAMU_ClearBuffer(PORT_BOTH);
+            if (!app.selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+            CAMU_StartCapture(PORT_BOTH);
+            app.cam_active = true;
+            wiggle_preview_camera_paused = false;
+        }
 
         if (app.cam_active) {
         int cur_screen_size = app.cam_w * app.cam_h * 2;  // RGB565

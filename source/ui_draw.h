@@ -5,6 +5,7 @@
 #define UI_DRAW_H
 
 #include "ui.h"
+#include "pipeline.h"
 
 // ---------------------------------------------------------------------------
 // Rounded-rect primitives (defined in ui_widgets.c)
@@ -45,7 +46,8 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     const FilterParams *p, const FilterRanges *ranges);
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                 const FilterParams *p, bool settings_flash);
+                 const PipelinePreset *presets, int preset_selected,
+                 bool settings_flash);
 void draw_more_tab(C2D_TextBuf staticBuf,
                    const FilterParams *p, int save_scale,
                    int shutter_button, bool settings_flash);

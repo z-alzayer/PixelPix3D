@@ -16,10 +16,6 @@ static const char *frame_names[FRAME_COUNT] = {
 };
 // (paths used only in main.c compositing; names shown here in picker)
 
-static const char *s_fx_labels_full[7] = {
-    "None", "Scan-H", "Scan-V", "LCD", "Vignette", "Chroma", "Grain"
-};
-
 static const int s_fx_modes_compact[6] = {
     FX_SCAN_H, FX_SCAN_V, FX_LCD, FX_VIGNETTE, FX_CHROMA, FX_GRAIN
 };
@@ -27,6 +23,13 @@ static const int s_fx_modes_compact[6] = {
 static const char *s_fx_labels_compact[6] = {
     "Scan-H", "Scan-V", "LCD", "Vignette", "Chroma", "Grain"
 };
+
+static bool preset_is_empty(const PipelinePreset *preset) {
+    return !preset->gb_enabled &&
+           !preset->base_enabled &&
+           !preset->bend_enabled &&
+           preset->fx_mode == FX_NONE;
+}
 
 static void draw_fx_intensity_row(C2D_TextBuf staticBuf, C2D_Text *t,
                                   const FilterParams *p, float divider_y,
@@ -65,41 +68,6 @@ static void draw_fx_intensity_row(C2D_TextBuf staticBuf, C2D_Text *t,
     C2D_DrawText(t, C2D_WithColor, 284.0f, value_y, 0.5f, 0.38f, 0.38f, CLR_DIM);
 }
 
-static void draw_fx_panel_full(C2D_TextBuf staticBuf, C2D_Text *t,
-                               const FilterParams *p) {
-    float sc = 0.44f;
-    for (int i = 0; i < 4; i++) {
-        float bx = (float)(FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP));
-        bool sel = (p->fx_mode == i);
-        draw_pill(bx, (float)FXTAB_BTN_Y1, FXTAB_R1_W, FXTAB_BTN_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(t, staticBuf, s_fx_labels_full[i]);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
-        C2D_DrawText(t, C2D_WithColor,
-                     bx + (FXTAB_R1_W - tw) / 2.0f,
-                     (float)FXTAB_BTN_Y1 + (FXTAB_BTN_H - th) / 2.0f - 1.0f,
-                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
-    }
-
-    for (int i = 0; i < 3; i++) {
-        float bx = (float)(FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP));
-        bool sel = (p->fx_mode == 4 + i);
-        draw_pill(bx, (float)FXTAB_BTN_Y2, FXTAB_R2_W, FXTAB_BTN_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(t, staticBuf, s_fx_labels_full[4 + i]);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
-        C2D_DrawText(t, C2D_WithColor,
-                     bx + (FXTAB_R2_W - tw) / 2.0f,
-                     (float)FXTAB_BTN_Y2 + (FXTAB_BTN_H - th) / 2.0f - 1.0f,
-                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
-    }
-
-    draw_fx_intensity_row(staticBuf, t, p, 96.0f, (float)FXTAB_SLIDER_Y - 18.0f,
-                          (float)FXTAB_SLIDER_Y, (float)FXTAB_SLIDER_Y - 18.0f, false);
-}
-
 static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
                                   const FilterParams *p, float cy) {
     float sc = 0.40f;
@@ -136,7 +104,7 @@ static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
 
 void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
     C2D_Text t;
-    const char *labels[4] = { "Shoot", "Style", "FX", "More" };
+    const char *labels[4] = { "Shoot", "Style", "Presets", "More" };
 
     // Nav bar background
     C2D_DrawRectSolid(0, NAV_Y, 0.5f, BOT_W, NAV_H, CLR_PANEL);
@@ -269,12 +237,15 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open && !timer_open) {
             // ---- Quick-access row: capture selectors + effect stages ----
             static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
-                "Still", "Wiggle", "GB", "Lomo", "Bend", "FX"
+                "Still", "Wiggle", "GB", "Lomo",
+                "Bend", "FX", "Timer"
             };
 
             for (int i = 0; i < SHOOT_STAGE_BTN_COUNT; i++) {
-                float bx = SHOOT_MODE_BTN_GAP + i * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                float by = (float)SHOOT_MODE_ROW1_Y;
+                int row = i / SHOOT_STAGE_GRID_COLS;
+                int col = i % SHOOT_STAGE_GRID_COLS;
+                float bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                float by = (row == 0) ? (float)SHOOT_MODE_ROW1_Y : (float)SHOOT_MODE_ROW2_Y;
                 bool sel = false;
                 if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
                 else if (i == 1) sel = (capture_mode == CAPTURE_MODE_WIGGLE);
@@ -282,9 +253,10 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 else if (i == 3) sel = lomo_enabled;
                 else if (i == 4) sel = bend_enabled;
                 else if (i == 5) sel = (p->fx_mode != FX_NONE);
+                else if (i == 6) sel = (shoot_timer_secs > 0);
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
-                          sel ? CLR_ACCENT : CLR_BTN);
+                          (i == 6 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
 
                 C2D_TextParse(&t, staticBuf, mode_labels[i]);
                 float tw2 = 0, th2 = 0;
@@ -295,27 +267,6 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                              0.5f, 0.42f, 0.42f,
                              sel ? CLR_WHITE : CLR_TEXT);
             }
-
-            // Timer pill remains visible without taking up a stage slot.
-            {
-                float bx = (BOT_W - SHOOT_TIMER_PILL_W) * 0.5f;
-                float by = (float)SHOOT_TIMER_ROW_Y;
-                bool tim_on = (shoot_timer_secs > 0);
-                draw_pill(bx, by, SHOOT_TIMER_PILL_W, SHOOT_TIMER_PILL_H,
-                          tim_on ? CLR_CONFIRM : CLR_BTN);
-                char tlbl[24];
-                if (tim_on) snprintf(tlbl, sizeof(tlbl), "Timer %ds", shoot_timer_secs);
-                else        snprintf(tlbl, sizeof(tlbl), "Timer Off");
-                C2D_TextParse(&t, staticBuf, tlbl);
-                float tw2 = 0, th2 = 0;
-                C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
-                C2D_DrawText(&t, C2D_WithColor,
-                             bx + (SHOOT_TIMER_PILL_W - tw2) / 2.0f,
-                             by + (SHOOT_TIMER_PILL_H - th2) / 2.0f - 1.0f,
-                             0.5f, 0.38f, 0.38f,
-                             tim_on ? CLR_WHITE : CLR_TEXT);
-            }
-
         } else if (timer_open) {
             // ---- Timer settings panel ----
             draw_pill(4.0f, (float)SHOOT_BACK_Y + 2, (float)SHOOT_BACK_W, (float)SHOOT_BACK_H - 4, CLR_BTN);
@@ -1186,26 +1137,49 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 // ---------------------------------------------------------------------------
 
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                 const FilterParams *p, bool settings_flash) {
+                 const PipelinePreset *presets, int preset_selected,
+                 bool settings_flash) {
     C2D_Text t;
 
-    C2D_TextParse(&t, staticBuf, "Effects");
+    C2D_TextParse(&t, staticBuf, "Presets");
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)FXTAB_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
-    draw_fx_panel_full(staticBuf, &t, p);
+    C2D_TextParse(&t, staticBuf, "Tap a slot to load it.");
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, 28.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
+    C2D_TextParse(&t, staticBuf, "Store Current writes over the selected slot.");
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, 44.0f, 0.5f, 0.32f, 0.32f, CLR_DIM);
 
-    C2D_DrawRectSolid(0, 144, 0.5f, BOT_W, 1, CLR_DIVIDER);
-    static const char *mode_descs[7] = {
-        "No effect applied",
-        "Darken every other row",
-        "Darken every other column",
-        "Dot-matrix grid overlay",
-        "Radial edge darkening",
-        "RGB channel offset",
-        "Per-frame random noise"
-    };
-    C2D_TextParse(&t, staticBuf, mode_descs[p->fx_mode]);
-    C2D_DrawText(&t, C2D_WithColor, 4.0f, (float)FXTAB_DESC_Y,
-                 0.5f, 0.40f, 0.40f, CLR_DIM);
+    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+        float by = 60.0f + i * 26.0f;
+        bool sel = (preset_selected == i);
+        draw_pill(8.0f, by, 304.0f, 24.0f, sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, presets[i].name);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor, 16.0f, by + (24.0f - th) * 0.5f - 1.0f,
+                     0.5f, 0.36f, 0.36f, sel ? CLR_WHITE : CLR_TEXT);
+
+        const char *status = preset_is_empty(&presets[i]) ? "Empty" : "Stored";
+        C2D_TextParse(&t, staticBuf, status);
+        C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor, 304.0f - tw, by + (24.0f - th) * 0.5f - 1.0f,
+                     0.5f, 0.32f, 0.32f, sel ? CLR_WHITE : CLR_DIM);
+    }
+
+    C2D_DrawRectSolid(0, 164.0f, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    draw_pill(24.0f, 170.0f, 132.0f, 24.0f, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Reset Custom");
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor, 24.0f + (132.0f - tw) * 0.5f,
+                 170.0f + (24.0f - th) * 0.5f - 1.0f,
+                 0.5f, 0.38f, 0.38f, CLR_TEXT);
+
+    draw_pill(164.0f, 170.0f, 132.0f, 24.0f, CLR_CONFIRM);
+    C2D_TextParse(&t, staticBuf, "Store Current");
+    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor, 164.0f + (132.0f - tw) * 0.5f,
+                 170.0f + (24.0f - th) * 0.5f - 1.0f,
+                 0.5f, 0.40f, 0.40f, CLR_WHITE);
 
     (void)settings_flash;
     (void)dynBuf;

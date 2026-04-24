@@ -33,6 +33,14 @@ static void apply_basic_adjustments(uint8_t *pixels, int width, int height,
     }
 }
 
+static bool has_basic_adjustments(const FilterParams *params) {
+    if (!params) return false;
+    return fabsf(params->brightness - 1.0f) > 0.001f ||
+           fabsf(params->contrast   - 1.0f) > 0.001f ||
+           fabsf(params->gamma      - 1.0f) > 0.001f ||
+           fabsf(params->saturation - 1.0f) > 0.001f;
+}
+
 void pipeline_state_init(EffectPipeline *pipe, const FilterParams *defaults) {
     pipe->capture_mode = CAPTURE_MODE_STILL;
     pipe->active_panel = PIPELINE_PANEL_GB;
@@ -92,6 +100,7 @@ void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
 bool pipeline_recipe_has_effects(const EffectRecipe *recipe) {
     return recipe &&
            (recipe->use_base_look || recipe->use_gb ||
+            has_basic_adjustments(&recipe->gb_params) ||
             recipe->use_bend || recipe->use_post_fx ||
             recipe->fallback_post_fx_mode != FX_NONE);
 }
@@ -108,6 +117,14 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
                                 lp->contrast,
                                 lp->gamma,
                                 lp->saturation);
+    }
+
+    if (!recipe->use_gb && has_basic_adjustments(&recipe->gb_params)) {
+        apply_basic_adjustments(rgb, w, h,
+                                recipe->gb_params.brightness,
+                                recipe->gb_params.contrast,
+                                recipe->gb_params.gamma,
+                                recipe->gb_params.saturation);
     }
 
     if (recipe->use_gb) {
@@ -132,45 +149,49 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
 }
 
 void pipeline_preset_default(PipelinePreset *preset, int slot) {
-    static const char *default_names[PIPELINE_PRESET_COUNT] = {
-        "Classic GB",
-        "LC-A GB",
-        "Wiggle Corrupt",
-        "Mono Grain",
-    };
     FilterParams defaults = FILTER_DEFAULTS;
     memset(preset, 0, sizeof(*preset));
-    snprintf(preset->name, sizeof(preset->name), "%s",
-             default_names[(slot >= 0 && slot < PIPELINE_PRESET_COUNT) ? slot : 0]);
-    preset->gb_enabled = true;
+    snprintf(preset->name, sizeof(preset->name), "Empty Slot %d", slot + 1);
+    preset->gb_enabled = false;
     preset->gb_params = defaults;
-
-    switch (slot) {
-        case 1:
-            preset->base_enabled = true;
-            preset->base_preset = 0;
-            break;
-        case 2:
-            preset->bend_enabled = true;
-            preset->bend_preset = 0;
-            preset->fx_mode = FX_CHROMA;
-            preset->fx_intensity = 6;
-            break;
-        case 3:
-            preset->gb_params.palette = 1;
-            preset->fx_mode = FX_GRAIN;
-            preset->fx_intensity = 7;
-            break;
-        default:
-            break;
-    }
 }
 
 void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
                              const char *name) {
     memset(preset, 0, sizeof(*preset));
-    if (name && name[0]) snprintf(preset->name, sizeof(preset->name), "%s", name);
-    else snprintf(preset->name, sizeof(preset->name), "Custom");
+    char generated[24] = {0};
+    bool first = true;
+    if (pipe->gb.enabled) {
+        snprintf(generated + strlen(generated), sizeof(generated) - strlen(generated),
+                 "%sGB", first ? "" : "+");
+        first = false;
+    }
+    if (pipe->base.enabled) {
+        snprintf(generated + strlen(generated), sizeof(generated) - strlen(generated),
+                 "%s%s", first ? "" : "+", lomo_presets[pipe->base.preset].name);
+        first = false;
+    }
+    if (pipe->bend.enabled) {
+        snprintf(generated + strlen(generated), sizeof(generated) - strlen(generated),
+                 "%s%s", first ? "" : "+", bend_presets[pipe->bend.preset].name);
+        first = false;
+    }
+    if (pipe->post.enabled) {
+        static const char *fx_names[] = {
+            "None", "ScanH", "ScanV", "LCD", "Vignette", "Chroma", "Grain"
+        };
+        const char *fx_name = (pipe->post.fx_mode >= 0 && pipe->post.fx_mode <= 6)
+                            ? fx_names[pipe->post.fx_mode] : "FX";
+        snprintf(generated + strlen(generated), sizeof(generated) - strlen(generated),
+                 "%s%s", first ? "" : "+", fx_name);
+        first = false;
+    }
+    if (first) snprintf(generated, sizeof(generated), "Raw");
+
+    if (name && name[0] && strncmp(name, "Empty Slot", 10) != 0)
+        snprintf(preset->name, sizeof(preset->name), "%s", name);
+    else
+        snprintf(preset->name, sizeof(preset->name), "%s", generated);
     preset->gb_enabled = pipe->gb.enabled;
     preset->gb_params = pipe->gb.params;
     preset->base_enabled = pipe->base.enabled;

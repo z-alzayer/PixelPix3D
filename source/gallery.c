@@ -110,8 +110,13 @@ void gallery_tick(GalleryState *gal) {
 
     u64 now = svcGetSystemTick();
     u64 period = (u64)gal->delay_ms * SYSCLOCK_ARM11 / 1000;
-    if (now - gal->anim_tick >= period) {
-        gal->anim_frame = (gal->anim_frame + 1) % gal->n_frames;
-        gal->anim_tick  = now;
+    if (period == 0) period = 1;
+    u64 elapsed = now - gal->anim_tick;
+    if (elapsed >= period) {
+        u64 steps = elapsed / period;
+        if (steps > 0) {
+            gal->anim_frame = (gal->anim_frame + (int)(steps % gal->n_frames)) % gal->n_frames;
+            gal->anim_tick += steps * period;
+        }
     }
 }

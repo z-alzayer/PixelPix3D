@@ -13,6 +13,12 @@
 #include <string.h>
 #include <stdio.h>
 
+static void reset_wiggle_preview_phase(WiggleState *wig) {
+    if (!wig) return;
+    wig->preview_frame = 0;
+    wig->preview_last_tick = svcGetSystemTick();
+}
+
 // ---------------------------------------------------------------------------
 // wiggle_align — find global translation via block-matching on downsampled luma
 // ---------------------------------------------------------------------------
@@ -327,7 +333,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                         float bx = px0 + i * (DPILL_W + DPILL_GAP);
                         if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
                             wig->delay_ms = presets[i];
-                            wig->preview_last_tick = svcGetSystemTick();
+                            reset_wiggle_preview_phase(wig);
                             break;
                         }
                     }
@@ -346,13 +352,13 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                     if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
                         wig->delay_ms -= 10;
                         if (wig->delay_ms < 10) wig->delay_ms = 10;
-                        wig->preview_last_tick = svcGetSystemTick();
+                        reset_wiggle_preview_phase(wig);
                     }
                     float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
                     if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
                         wig->delay_ms += 10;
                         if (wig->delay_ms > 1000) wig->delay_ms = 1000;
-                        wig->preview_last_tick = svcGetSystemTick();
+                        reset_wiggle_preview_phase(wig);
                     }
                 }
                 #undef DSTEP_BTN_W
@@ -380,6 +386,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         int cur = 0;
         for (int i = 0; i < 4; i++) if (wig->delay_ms == delay_presets[i]) { cur = i; break; }
         wig->delay_ms = delay_presets[(cur + (kDown & KEY_L ? 3 : 1)) % 4];
+        reset_wiggle_preview_phase(wig);
     }
 
     if (kDown & KEY_B) {
@@ -470,8 +477,13 @@ void wiggle_preview_tick(WiggleState *wig,
     }
     u64 now = svcGetSystemTick();
     u64 period = (u64)wig->delay_ms * SYSCLOCK_ARM11 / 1000;
-    if (now - wig->preview_last_tick >= period) {
-        wig->preview_frame     = (wig->preview_frame + 1) % wig->n_frames;
-        wig->preview_last_tick = now;
+    if (period == 0) period = 1;
+    u64 elapsed = now - wig->preview_last_tick;
+    if (elapsed >= period) {
+        u64 steps = elapsed / period;
+        if (steps > 0) {
+            wig->preview_frame = (wig->preview_frame + (int)(steps % wig->n_frames)) % wig->n_frames;
+            wig->preview_last_tick += steps * period;
+        }
     }
 }

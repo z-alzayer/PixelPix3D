@@ -18,6 +18,8 @@ typedef struct {
     bool shoot_mode_open;  // dropdown visible
     int  capture_mode;     // still or wiggle capture selection
     bool timer_open;       // timer picker visible
+    bool presets_open;     // preset panel visible
+    int  preset_selected;  // active preset slot
     int  shoot_timer_secs; // 0 = disabled
     bool gb_enabled;
     int  lomo_preset;

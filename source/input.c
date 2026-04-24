@@ -7,40 +7,6 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
-static bool handle_fx_tab_touch(int tx, int ty, bool tapped, bool touched,
-                                FilterParams *p) {
-    if (tapped && ty >= FXTAB_BTN_Y1 && ty < FXTAB_BTN_Y1 + FXTAB_BTN_H) {
-        for (int i = 0; i < 4; i++) {
-            int bx = FXTAB_R1_X0 + i * (FXTAB_R1_W + FXTAB_R1_GAP);
-            if (tx >= bx && tx < bx + FXTAB_R1_W) {
-                p->fx_mode = i;
-                return true;
-            }
-        }
-    }
-    if (tapped && ty >= FXTAB_BTN_Y2 && ty < FXTAB_BTN_Y2 + FXTAB_BTN_H) {
-        for (int i = 0; i < 3; i++) {
-            int bx = FXTAB_R2_X0 + i * (FXTAB_R2_W + FXTAB_R2_GAP);
-            if (tx >= bx && tx < bx + FXTAB_R2_W) {
-                p->fx_mode = 4 + i;
-                return true;
-            }
-        }
-    }
-    if (touched && p->fx_mode != FX_NONE &&
-        ty >= FXTAB_SLIDER_Y - 14 && ty < FXTAB_SLIDER_Y + 14 &&
-        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
-        float t_val = (float)(tx - TRACK_X) / TRACK_W;
-        if (t_val < 0.0f) t_val = 0.0f;
-        if (t_val > 1.0f) t_val = 1.0f;
-        p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
-        if (p->fx_intensity < 0)  p->fx_intensity = 0;
-        if (p->fx_intensity > 10) p->fx_intensity = 10;
-        return true;
-    }
-    return false;
-}
-
 static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
                                     FilterParams *p, float cy) {
     const int fx_btn_w = 100;
@@ -79,6 +45,55 @@ static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
         return true;
     }
     return false;
+}
+
+static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
+                                      AppState *app) {
+    pipeline_state_sync_legacy(&shoot->pipeline,
+                               shoot->capture_mode,
+                               (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+                                   ? wig->filter_active : shoot->gb_enabled,
+                               &app->params,
+                               shoot->lomo_enabled, shoot->lomo_preset,
+                               shoot->bend_enabled, shoot->bend_preset,
+                               app->params.fx_mode, app->params.fx_intensity,
+                               shoot->shoot_mode, shoot->shoot_mode_open);
+}
+
+static void apply_preset_to_legacy(ShootState *shoot, WiggleState *wig,
+                                   AppState *app, int idx) {
+    if (idx < 0 || idx >= PIPELINE_PRESET_COUNT) return;
+
+    pipeline_preset_apply(&shoot->pipeline, &shoot->presets[idx]);
+    app->params = shoot->pipeline.gb.params;
+    app->params.fx_mode = shoot->pipeline.post.fx_mode;
+    app->params.fx_intensity = shoot->pipeline.post.fx_intensity;
+    shoot->gb_enabled = shoot->pipeline.gb.enabled;
+    wig->filter_active = shoot->pipeline.gb.enabled;
+    shoot->lomo_enabled = shoot->pipeline.base.enabled;
+    shoot->lomo_preset = shoot->pipeline.base.preset;
+    shoot->bend_enabled = shoot->pipeline.bend.enabled;
+    shoot->bend_preset = shoot->pipeline.bend.preset;
+    wig->rebuild = true;
+}
+
+static void save_current_to_preset(ShootState *shoot, WiggleState *wig,
+                                   AppState *app, int idx) {
+    if (idx < 0 || idx >= PIPELINE_PRESET_COUNT) return;
+    sync_pipeline_from_legacy(shoot, wig, app);
+    pipeline_preset_capture(&shoot->presets[idx], &shoot->pipeline,
+                            shoot->presets[idx].name);
+    settings_save_pipeline_presets(shoot->presets);
+}
+
+static void reset_all_presets(ShootState *shoot, WiggleState *wig,
+                              AppState *app) {
+    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+        pipeline_preset_default(&shoot->presets[i], i);
+    }
+    shoot->preset_selected = 0;
+    settings_save_pipeline_presets(shoot->presets);
+    apply_preset_to_legacy(shoot, wig, app, 0);
 }
 
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
@@ -355,10 +370,13 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         {
             if (!shoot->shoot_mode_open && !shoot->timer_open) {
                 // ---- Quick-access row taps ----
-                if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H) {
+                if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW2_Y + SHOOT_MODE_ROW_H) {
                     for (int col = 0; col < SHOOT_STAGE_BTN_COUNT; col++) {
-                        int bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                        if (tx >= bx && tx < bx + SHOOT_MODE_BTN_W) {
+                        int row = col / SHOOT_STAGE_GRID_COLS;
+                        int grid_col = col % SHOOT_STAGE_GRID_COLS;
+                        int bx = SHOOT_MODE_BTN_GAP + grid_col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
+                        int by = (row == 0) ? SHOOT_MODE_ROW1_Y : SHOOT_MODE_ROW2_Y;
+                        if (hit(tx, ty, bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H)) {
                             if (col == 0) {
                                 shoot->capture_mode = CAPTURE_MODE_STILL;
                                 shoot->shoot_mode = SHOOT_MODE_GBCAM;
@@ -373,19 +391,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 shoot->shoot_mode = SHOOT_MODE_BEND;
                             } else if (col == 5) {
                                 shoot->shoot_mode = SHOOT_MODE_FX;
+                            } else if (col == 6) {
+                                shoot->timer_open = true;
+                                return true;
                             }
                             shoot->shoot_mode_open = true;
                             return true;
                         }
                     }
-                }
-                if (tapped && hit(tx, ty,
-                                  (BOT_W - SHOOT_TIMER_PILL_W) / 2,
-                                  SHOOT_TIMER_ROW_Y,
-                                  SHOOT_TIMER_PILL_W,
-                                  SHOOT_TIMER_PILL_H)) {
-                    shoot->timer_open = true;
-                    return true;
                 }
             } else if (shoot->timer_open) {
                 // ---- Timer settings panel ----
@@ -447,13 +460,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
                             else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
                             else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
-                            if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
-                                wig->filter_active = true;
-                                wig->rebuild = true;
-                            } else {
-                                shoot->gb_enabled = true;
-                            }
                             *field = mn + t_val * (mx - mn);
+                            if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
+                                wig->rebuild = true;
+                            }
                             return true;
                         }
                     }
@@ -638,8 +648,24 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // FX tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_FX && ty < NAV_Y) {
-        if (handle_fx_tab_touch(tx, ty, tapped, touched, p))
-            return true;
+        if (tapped) {
+            for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+                int by = 62 + i * 28;
+                if (hit(tx, ty, 8, by, 304, 24)) {
+                    shoot->preset_selected = i;
+                    apply_preset_to_legacy(shoot, wig, app, i);
+                    return true;
+                }
+            }
+            if (hit(tx, ty, 24, 170, 132, 24)) {
+                reset_all_presets(shoot, wig, app);
+                return true;
+            }
+            if (hit(tx, ty, 164, 170, 132, 24)) {
+                save_current_to_preset(shoot, wig, app, shoot->preset_selected);
+                return true;
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

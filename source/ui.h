@@ -143,14 +143,14 @@
 #define SHOOT_MODE_COUNT      5
 
 // Shoot quick-access row: capture selectors + effect stage entry points.
-#define SHOOT_STAGE_BTN_COUNT  6
+#define SHOOT_STAGE_BTN_COUNT  7
+#define SHOOT_STAGE_GRID_COLS  4
+#define SHOOT_STAGE_GRID_ROWS  2
 #define SHOOT_MODE_ROW1_Y     44
-#define SHOOT_MODE_ROW_H      30
-#define SHOOT_MODE_BTN_W      48
+#define SHOOT_MODE_ROW_H      28
 #define SHOOT_MODE_BTN_GAP     4
-#define SHOOT_TIMER_ROW_Y    (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + 8)
-#define SHOOT_TIMER_PILL_W   108
-#define SHOOT_TIMER_PILL_H    22
+#define SHOOT_MODE_BTN_W      ((BOT_W - (SHOOT_STAGE_GRID_COLS + 1) * SHOOT_MODE_BTN_GAP) / SHOOT_STAGE_GRID_COLS)
+#define SHOOT_MODE_ROW2_Y     (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP)
 
 // Full contextual panel (replaces grid when a mode is "open")
 // Occupies y=43..157: below top strip, above save button
@@ -203,6 +203,13 @@
 #define SHOOT_TIMER_VAL_COUNT       4
 #define SHOOT_TIMER_VALS_INIT  { 0, 3, 5, 10 }
 #define SHOOT_TIMER_LBLS_INIT  { "Off", "3s", "5s", "10s" }
+
+#define SHOOT_PRESET_ROW_H      22
+#define SHOOT_PRESET_ROW_GAP     6
+#define SHOOT_PRESET_ROW_X       8
+#define SHOOT_PRESET_ROW_W      304
+#define SHOOT_PRESET_SAVE_W     132
+#define SHOOT_PRESET_SAVE_H      24
 
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled
