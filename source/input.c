@@ -60,6 +60,19 @@ static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
                                shoot->shoot_mode, shoot->shoot_mode_open);
 }
 
+static bool current_gb_stage_enabled(const ShootState *shoot,
+                                     const WiggleState *wig) {
+    return (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+         ? wig->filter_active
+         : shoot->gb_enabled;
+}
+
+static void set_gb_stage_enabled(ShootState *shoot, WiggleState *wig, bool enabled) {
+    shoot->gb_enabled = enabled;
+    wig->filter_active = enabled;
+    wig->rebuild = true;
+}
+
 static void apply_preset_to_legacy(ShootState *shoot, WiggleState *wig,
                                    AppState *app, int idx) {
     if (idx < 0 || idx >= PIPELINE_PRESET_COUNT) return;
@@ -343,17 +356,11 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     int sx = SHOOT_SWATCH_X0 + i * (SHOOT_SWATCH_W + SHOOT_SWATCH_GAP);
                     if (tx >= sx && tx < sx + SHOOT_SWATCH_W) {
                         int new_pal = (i < 6) ? i : PALETTE_NONE;
-                        if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
-                            if (wig->filter_active && p->palette == new_pal)
-                                wig->filter_active = false;
-                            else {
-                                p->palette = new_pal;
-                                wig->filter_active = true;
-                            }
-                            wig->rebuild = true;
+                        if (current_gb_stage_enabled(shoot, wig) && p->palette == new_pal) {
+                            set_gb_stage_enabled(shoot, wig, false);
                         } else {
-                            shoot->gb_enabled = true;
                             p->palette = new_pal;
+                            set_gb_stage_enabled(shoot, wig, true);
                         }
                         return true;
                     }
@@ -377,11 +384,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         int bx = SHOOT_MODE_BTN_GAP + grid_col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                         int by = (row == 0) ? SHOOT_MODE_ROW1_Y : SHOOT_MODE_ROW2_Y;
                         if (hit(tx, ty, bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H)) {
+                            bool gb_enabled = current_gb_stage_enabled(shoot, wig);
                             if (col == 0) {
                                 shoot->capture_mode = CAPTURE_MODE_STILL;
-                                shoot->shoot_mode = SHOOT_MODE_GBCAM;
+                                set_gb_stage_enabled(shoot, wig, gb_enabled);
+                                wig->preview = false;
+                                shoot->timer_open = false;
+                                if (shoot->shoot_mode == SHOOT_MODE_WIGGLE)
+                                    shoot->shoot_mode = SHOOT_MODE_GBCAM;
+                                shoot->shoot_mode_open = false;
+                                return true;
                             } else if (col == 1) {
                                 shoot->capture_mode = CAPTURE_MODE_WIGGLE;
+                                set_gb_stage_enabled(shoot, wig, gb_enabled);
                                 shoot->shoot_mode = SHOOT_MODE_WIGGLE;
                             } else if (col == 2) {
                                 shoot->shoot_mode = SHOOT_MODE_GBCAM;
@@ -433,12 +448,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     if (tapped && hit(tx, ty,
                                       SHOOT_GB_TOGGLE_X, SHOOT_GB_TOGGLE_Y,
                                       SHOOT_GB_TOGGLE_W, SHOOT_GB_TOGGLE_H)) {
-                        if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
-                            wig->filter_active = !wig->filter_active;
-                            wig->rebuild = true;
-                        } else {
-                            shoot->gb_enabled = !shoot->gb_enabled;
-                        }
+                        set_gb_stage_enabled(shoot, wig,
+                                             !current_gb_stage_enabled(shoot, wig));
                         return true;
                     }
 
@@ -461,9 +472,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
                             else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
                             *field = mn + t_val * (mx - mn);
-                            if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
-                                wig->rebuild = true;
-                            }
+                            set_gb_stage_enabled(shoot, wig, true);
                             return true;
                         }
                     }

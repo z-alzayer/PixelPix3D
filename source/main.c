@@ -42,15 +42,16 @@ void cleanup(void) {
 
 static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
                                    AppState *app) {
+    FilterParams defaults = FILTER_DEFAULTS;
+    app->params = defaults;
     shoot->gb_enabled = false;
     shoot->lomo_enabled = false;
     shoot->bend_enabled = false;
-    app->params.fx_mode = FX_NONE;
     wig->filter_active = false;
+    wig->preview = false;
     wig->rebuild = true;
-    shoot->shoot_mode = (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
-                      ? SHOOT_MODE_WIGGLE : SHOOT_MODE_GBCAM;
     shoot->shoot_mode_open = false;
+    shoot->timer_open = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +133,7 @@ int main(void) {
         .presets_open     = false,
         .preset_selected  = 0,
         .shoot_timer_secs = 0,
-        .gb_enabled       = true,
+        .gb_enabled       = false,
         .lomo_preset      = 0,
         .lomo_enabled     = false,
         .bend_preset      = 0,
@@ -212,6 +213,7 @@ int main(void) {
     settings_load_ranges(&app.ranges);
     settings_load_pipeline_presets(shoot.presets);
     app.default_params = app.params;
+    app.params = (FilterParams)FILTER_DEFAULTS;
     filter_set_user_palettes(app.user_palettes);
     // Clamp live params to loaded ranges
     if (app.params.brightness  < app.ranges.bright_min)   app.params.brightness  = app.ranges.bright_min;
