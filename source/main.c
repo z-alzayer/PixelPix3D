@@ -31,6 +31,7 @@ static jmp_buf exitJmp;
 // ---------------------------------------------------------------------------
 
 void cleanup(void) {
+    HIDUSER_DisableAccelerometer();
     sound_exit();
     C2D_Fini();
     C3D_Fini();
@@ -77,6 +78,7 @@ int main(void) {
     gfxInitDefault();
     gfxSetDoubleBuffering(GFX_TOP,    true);
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
+    HIDUSER_EnableAccelerometer();
 
     C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
     C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
@@ -134,6 +136,7 @@ int main(void) {
         .cam_w            = VGA_WIDTH,
         .cam_h            = VGA_HEIGHT,
         .shutter_button   = 0,
+        .portrait_rotate_quadrants = 0,
     };
 
     // Shoot state
@@ -249,6 +252,35 @@ int main(void) {
         hidScanInput();
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
+
+        {
+            static int last_rotation_candidate = 0;
+            static int stable_rotation_frames = 0;
+            accelVector accel = {0};
+            hidAccelRead(&accel);
+
+            int ax = accel.x < 0 ? -accel.x : accel.x;
+            int ay = accel.y < 0 ? -accel.y : accel.y;
+            int az = accel.z < 0 ? -accel.z : accel.z;
+            int candidate = 0;
+            int lateral = (ax > ay) ? ax : ay;
+            if (lateral > az + 10 && lateral > 20) {
+                if (ax >= ay)
+                    candidate = (accel.x >= 0) ? 1 : 3;
+                else
+                    candidate = (accel.y >= 0) ? 1 : 3;
+            }
+
+            if (candidate == last_rotation_candidate) {
+                if (stable_rotation_frames < 8) stable_rotation_frames++;
+            } else {
+                last_rotation_candidate = candidate;
+                stable_rotation_frames = 1;
+            }
+
+            if (stable_rotation_frames >= 2)
+                app.portrait_rotate_quadrants = candidate;
+        }
 
         if ((kDown & KEY_START) && !gal.mode && !edit.active) {
             clear_processing_stack(&shoot, &wig, &app);
@@ -395,8 +427,12 @@ int main(void) {
         // Wiggle preview: B cancels, Save button confirms and writes APNG
         // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
         if (wig.preview) {
+            int wiggle_rotate = app.portrait_rotate_quadrants
+                              ? ((app.portrait_rotate_quadrants + 2) & 3)
+                              : 0;
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
+                                  wiggle_rotate,
                                   &live_recipe);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,

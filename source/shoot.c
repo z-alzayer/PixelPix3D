@@ -17,6 +17,44 @@
 
 SaveThreadState s_save;
 
+static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
+                                    int src_w, int src_h, int quadrants) {
+    int q = quadrants & 3;
+    if (q == 0) {
+        memcpy(dst, src, src_w * src_h * 3);
+        return;
+    }
+
+    if (q == 1) {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = src_h - 1 - y;
+                int dst_y = x;
+                memcpy(dst + (dst_y * src_h + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    } else if (q == 3) {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = y;
+                int dst_y = src_w - 1 - x;
+                memcpy(dst + (dst_y * src_h + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    } else {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = src_w - 1 - x;
+                int dst_y = src_h - 1 - y;
+                memcpy(dst + (dst_y * src_w + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Background save thread worker (runs on core 1)
 // ---------------------------------------------------------------------------
@@ -25,9 +63,11 @@ static void save_thread_func(void *arg) {
     SaveThreadState *st = (SaveThreadState *)arg;
     uint8_t *rgb_priv     = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
     uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH * MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
-    if (!rgb_priv || !upscale_priv) {
+    uint8_t *rotate_priv  = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH * MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
+    if (!rgb_priv || !upscale_priv || !rotate_priv) {
         free(rgb_priv);
         free(upscale_priv);
+        free(rotate_priv);
         threadExit(1);
     }
     while (true) {
@@ -47,13 +87,25 @@ static void save_thread_func(void *arg) {
                              st->wiggle_has_align ? &st->wiggle_align_result : NULL,
                              st->wiggle_offset_dx,
                              st->wiggle_offset_dy,
+                             st->rotate_quadrants,
                              &st->wiggle_recipe);
         } else {
             int scale = st->save_scale;
             rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
                              CAMERA_WIDTH * CAMERA_HEIGHT);
             nn_upscale(upscale_priv, rgb_priv, CAMERA_WIDTH, CAMERA_HEIGHT, scale);
-            save_jpeg(path, upscale_priv, CAMERA_WIDTH * scale, CAMERA_HEIGHT * scale);
+            int out_w = CAMERA_WIDTH * scale;
+            int out_h = CAMERA_HEIGHT * scale;
+            const uint8_t *save_buf = upscale_priv;
+            if (st->rotate_quadrants != 0) {
+                rotate_rgb888_quadrants(rotate_priv, upscale_priv, out_w, out_h,
+                                        st->rotate_quadrants);
+                save_buf = rotate_priv;
+                int tmp = out_w;
+                out_w = out_h;
+                out_h = tmp;
+            }
+            save_jpeg(path, save_buf, out_w, out_h);
         }
 
         st->busy = false;
@@ -61,6 +113,7 @@ static void save_thread_func(void *arg) {
     }
     free(rgb_priv);
     free(upscale_priv);
+    free(rotate_priv);
     threadExit(0);
 }
 
@@ -71,6 +124,7 @@ static void save_thread_func(void *arg) {
 Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.snapshot_buf  = snapshot_buf;
     s_save.snapshot_buf2 = snapshot_buf2;
+    s_save.rotate_quadrants = 0;
     s_save.wiggle_recipe = (EffectRecipe){0};
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
     LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
@@ -129,6 +183,9 @@ static void begin_jpeg_save(AppState *app, u8 *filtered_buf) {
         memcpy(s_save.save_path, save_path, sizeof(save_path));
         s_save.wiggle_mode = false;
         s_save.save_scale  = app->save_scale;
+        s_save.rotate_quadrants = app->portrait_rotate_quadrants
+                                 ? ((app->portrait_rotate_quadrants + 2) & 3)
+                                 : 0;
         s_save.busy = true;
         app->save_flash = 20;
         play_shutter_click();

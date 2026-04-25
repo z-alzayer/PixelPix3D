@@ -180,12 +180,51 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
 #define GIF_BUF_CAP (4 * 1024 * 1024)
 static uint8_t s_gif_buf[GIF_BUF_CAP];
 
+static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
+                                    int src_w, int src_h, int quadrants) {
+    int q = quadrants & 3;
+    if (q == 0) {
+        memcpy(dst, src, src_w * src_h * 3);
+        return;
+    }
+
+    if (q == 1) {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = src_h - 1 - y;
+                int dst_y = x;
+                memcpy(dst + (dst_y * src_h + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    } else if (q == 3) {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = y;
+                int dst_y = src_w - 1 - x;
+                memcpy(dst + (dst_y * src_h + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    } else {
+        for (int y = 0; y < src_h; y++) {
+            for (int x = 0; x < src_w; x++) {
+                int dst_x = src_w - 1 - x;
+                int dst_y = src_h - 1 - y;
+                memcpy(dst + (dst_y * src_w + dst_x) * 3,
+                       src + (y * src_w + x) * 3, 3);
+            }
+        }
+    }
+}
+
 int save_wiggle_gif(const char *path,
                     const uint8_t *left_rgb565,  int w, int h,
                     const uint8_t *right_rgb565,
                     int n_frames, int delay_ms,
                     const WiggleAlign *align,
                     int offset_dx, int offset_dy,
+                    int rotate_quadrants,
                     const EffectRecipe *recipe)
 {
     (void)n_frames;
@@ -248,9 +287,32 @@ int save_wiggle_gif(const char *path,
 
     // Sequence: L, blend, R, blend  (matches 3ds-mpo-gif animation order)
     const uint8_t *frame_ptrs[4] = { left_crop, blend_crop, right_crop, blend_crop };
+    uint8_t *rot_left = NULL, *rot_right = NULL, *rot_blend = NULL;
+    int enc_w = ow;
+    int enc_h = oh;
+    if (rotate_quadrants != 0) {
+        rot_left = malloc(onpix * 3);
+        rot_right = malloc(onpix * 3);
+        rot_blend = malloc(onpix * 3);
+        if (!rot_left || !rot_right || !rot_blend) {
+            free(rot_left); free(rot_right); free(rot_blend);
+            free(left_crop); free(right_crop); free(blend_crop);
+            return 0;
+        }
+        rotate_rgb888_quadrants(rot_left, left_crop, ow, oh, rotate_quadrants);
+        rotate_rgb888_quadrants(rot_right, right_crop, ow, oh, rotate_quadrants);
+        rotate_rgb888_quadrants(rot_blend, blend_crop, ow, oh, rotate_quadrants);
+        frame_ptrs[0] = rot_left;
+        frame_ptrs[1] = rot_blend;
+        frame_ptrs[2] = rot_right;
+        frame_ptrs[3] = rot_blend;
+        enc_w = oh;
+        enc_h = ow;
+    }
     size_t gif_len = gif_encode(s_gif_buf, GIF_BUF_CAP,
                                 frame_ptrs, 4,
-                                ow, oh, delay_ms);
+                                enc_w, enc_h, delay_ms);
+    free(rot_left); free(rot_right); free(rot_blend);
     free(left_crop); free(right_crop); free(blend_crop);
 
     if (gif_len == 0) return 0;
@@ -270,6 +332,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
+                           int rotate_quadrants,
                            const EffectRecipe *recipe) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
@@ -408,6 +471,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_offset_dy = wig->offset_dy;
             save->wiggle_cap_w     = wig->capture_w;
             save->wiggle_cap_h     = wig->capture_h;
+            save->rotate_quadrants = rotate_quadrants;
             save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;

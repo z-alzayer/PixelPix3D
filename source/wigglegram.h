@@ -54,6 +54,7 @@ void wiggle_preview_update(struct WiggleState *wig,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
+                           int rotate_quadrants,
                            const EffectRecipe *recipe);
 
 // Advance the wiggle preview animation: rebuild frames if offsets changed,
@@ -81,6 +82,7 @@ int save_wiggle_gif(const char *path,
                     int n_frames, int delay_ms,
                     const WiggleAlign *align,
                     int offset_dx, int offset_dy,
+                    int rotate_quadrants,
                     const EffectRecipe *recipe);
 
 #endif

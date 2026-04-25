@@ -123,6 +123,7 @@ typedef struct {
     int           cam_w;          // current camera capture width  (400 or 640)
     int           cam_h;          // current camera capture height (240 or 480)
     int           shutter_button; // 0 = A (default), 1 = L/R
+    int           portrait_rotate_quadrants; // cached stable portrait orientation for still saves
 } AppState;
 
 #endif

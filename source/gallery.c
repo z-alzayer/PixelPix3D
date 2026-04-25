@@ -70,7 +70,7 @@ void gallery_load_selected(GalleryState *gal) {
                                             &gal->n_frames, &gal->delay_ms,
                                             CAMERA_WIDTH, CAMERA_HEIGHT);
         if (!ok || gal->n_frames < 1) {
-            load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
+            memset(gallery_thumbs[0], 0, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
             gal->n_frames = 1;
         }
     } else {

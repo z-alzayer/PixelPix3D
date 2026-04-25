@@ -20,6 +20,7 @@ typedef struct SaveThreadState {
     uint8_t      *snapshot_buf2;   // malloc'd once, CAMERA_SCREEN_SIZE bytes (RGB565) — right cam
     char          save_path[64];
     int           save_scale;
+    int           rotate_quadrants; // 0 = landscape, 1 = CW 90, 3 = CCW 90
     bool          wiggle_mode;     // true = save APNG from both cam buffers
     int           wiggle_n_frames;
     int           wiggle_delay_ms;
