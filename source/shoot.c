@@ -21,6 +21,32 @@ static int corrected_portrait_rotation(int raw_quadrants) {
     return raw_quadrants ? ((raw_quadrants + 2) & 3) : 0;
 }
 
+static int detect_portrait_quadrants_from_accel(const accelVector *accel) {
+    int ax = accel->x < 0 ? -accel->x : accel->x;
+    int ay = accel->y < 0 ? -accel->y : accel->y;
+    int az = accel->z < 0 ? -accel->z : accel->z;
+    int lateral = (ax > ay) ? ax : ay;
+    int lateral_delta = (ax > ay) ? (ax - ay) : (ay - ax);
+
+    if (lateral <= az + 120 || lateral <= 160 || lateral_delta <= 100)
+        return 0;
+
+    if (ax >= ay)
+        return (accel->x >= 0) ? 1 : 3;
+    return (accel->y >= 0) ? 1 : 3;
+}
+
+static int capture_portrait_rotation(const AppState *app) {
+    accelVector accel = {0};
+    hidAccelRead(&accel);
+    int fresh_quadrants = detect_portrait_quadrants_from_accel(&accel);
+
+    if (fresh_quadrants != 0 &&
+        fresh_quadrants == app->portrait_rotate_quadrants)
+        return corrected_portrait_rotation(fresh_quadrants);
+    return 0;
+}
+
 static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
                                     int src_w, int src_h, int quadrants) {
     int q = quadrants & 3;
@@ -189,7 +215,7 @@ static void begin_jpeg_save(AppState *app, u8 *filtered_buf) {
         memcpy(s_save.save_path, save_path, sizeof(save_path));
         s_save.wiggle_mode = false;
         s_save.save_scale  = app->save_scale;
-        s_save.rotate_quadrants = corrected_portrait_rotation(app->portrait_rotate_quadrants);
+        s_save.rotate_quadrants = capture_portrait_rotation(app);
         s_save.busy = true;
         app->save_flash = 20;
         play_shutter_click();
@@ -227,7 +253,7 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
     if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h,
-                             corrected_portrait_rotation(app->portrait_rotate_quadrants));
+                             capture_portrait_rotation(app));
     } else if (!s_save.busy) {
         begin_jpeg_save(app, filtered_buf);
     }
@@ -249,7 +275,7 @@ void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
     } else if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h,
-                             corrected_portrait_rotation(app->portrait_rotate_quadrants));
+                             capture_portrait_rotation(app));
     } else {
         begin_jpeg_save(app, filtered_buf);
     }

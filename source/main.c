@@ -74,7 +74,7 @@ static int detect_portrait_quadrants_from_accel(const accelVector *accel) {
     int lateral = (ax > ay) ? ax : ay;
     int lateral_delta = (ax > ay) ? (ax - ay) : (ay - ax);
 
-    if (lateral <= az + 80 || lateral <= 120 || lateral_delta <= 60)
+    if (lateral <= az + 120 || lateral <= 160 || lateral_delta <= 100)
         return 0;
 
     if (ax >= ay)
