@@ -336,12 +336,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // SHOOT tab inputs (content area, y < NAV_Y) — only when NOT in gallery
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_SHOOT && !gal->mode && ty < NAV_Y) {
-        if (wig->preview) {
-            // Wiggle preview uses its own touch handler so it still responds
-            // while camera capture is interrupted.
-            return false;
-        }
-
         // Shoot strip (y < SHOOT_STRIP_H)
         if (ty < SHOOT_STRIP_H) {
             // Camera flip button (left zone)
@@ -372,6 +366,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 *do_gallery_toggle = true;
                 return true;
             }
+        }
+
+        if (wig->preview && shoot->shoot_mode == SHOOT_MODE_WIGGLE &&
+            shoot->shoot_mode_open && !shoot->timer_open) {
+            // Wiggle preview has its own X/Y/delay handler while camera capture
+            // is paused, but keep Back and the top palette strip available.
+            if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2,
+                              SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
+                shoot->shoot_mode_open = false;
+                return true;
+            }
+            if (ty >= SHOOT_CONTENT_Y && ty < SHOOT_SAVE_Y)
+                return false;
         }
 
         {
@@ -442,7 +449,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 // Back button
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
                     shoot->shoot_mode_open = false;
-                    wig->preview  = false;
                     return true;
                 }
 

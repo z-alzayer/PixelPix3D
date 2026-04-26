@@ -148,8 +148,8 @@
 #define SHOOT_STAGE_GRID_COLS  4
 #define SHOOT_STAGE_GRID_ROWS  2
 #define SHOOT_MODE_ROW1_Y     44
-#define SHOOT_MODE_ROW_H      28
-#define SHOOT_MODE_BTN_GAP     4
+#define SHOOT_MODE_ROW_H      52
+#define SHOOT_MODE_BTN_GAP     6
 #define SHOOT_MODE_BTN_W      ((BOT_W - (SHOOT_STAGE_GRID_COLS + 1) * SHOOT_MODE_BTN_GAP) / SHOOT_STAGE_GRID_COLS)
 #define SHOOT_MODE_ROW2_Y     (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP)
 
@@ -178,8 +178,8 @@
 
 // Timer/Photobooth panel: 3 timer buttons
 #define SHOOT_TIMER_BTN_Y   (SHOOT_CONTENT_Y + 8)
-#define SHOOT_TIMER_BTN_H    32
-#define SHOOT_TIMER_BTN_W    88   // 3 buttons with gaps: (320-4*4)/3 ~= 101, keep 88 for breathing room
+#define SHOOT_TIMER_BTN_H    28
+#define SHOOT_TIMER_BTN_W    72
 #define SHOOT_TIMER_BTN_GAP   4
 
 // Wiggle panel sliders (2 horizontal sliders: Frames / Delay)

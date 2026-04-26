@@ -495,15 +495,52 @@ static bool s_filter_applied = false;
 static int  s_filter_next = 0;
 // Whether the filter is wanted but not yet done (drives the dimmed overlay).
 static bool s_filter_pending = false;
+static EffectRecipe s_last_recipe;
+static bool s_last_recipe_valid = false;
 
 bool wiggle_filter_busy(void) {
     return s_filter_pending;
+}
+
+static bool same_filter_params(const FilterParams *a, const FilterParams *b) {
+    return a->palette == b->palette &&
+           a->pixel_size == b->pixel_size &&
+           a->brightness == b->brightness &&
+           a->contrast == b->contrast &&
+           a->saturation == b->saturation &&
+           a->gamma == b->gamma &&
+           a->fx_mode == b->fx_mode &&
+           a->fx_intensity == b->fx_intensity;
+}
+
+static bool same_effect_recipe(const EffectRecipe *a, const EffectRecipe *b) {
+    if (!a || !b) return a == b;
+    return a->use_base_look == b->use_base_look &&
+           a->lomo_preset == b->lomo_preset &&
+           a->use_gb == b->use_gb &&
+           same_filter_params(&a->gb_params, &b->gb_params) &&
+           a->use_bend == b->use_bend &&
+           a->bend_preset == b->bend_preset &&
+           a->use_post_fx == b->use_post_fx &&
+           a->post_fx_mode == b->post_fx_mode &&
+           a->post_fx_intensity == b->post_fx_intensity &&
+           a->fallback_post_fx_mode == b->fallback_post_fx_mode &&
+           a->fallback_post_fx_intensity == b->fallback_post_fx_intensity;
 }
 
 void wiggle_preview_tick(WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
                          const EffectRecipe *recipe, int frame_count) {
+    if (!s_last_recipe_valid || !same_effect_recipe(recipe, &s_last_recipe)) {
+        wig->rebuild = true;
+        s_filter_applied = false;
+        s_filter_next = 0;
+        s_filter_pending = pipeline_recipe_has_effects(recipe);
+        s_last_recipe = recipe ? *recipe : (EffectRecipe){0};
+        s_last_recipe_valid = true;
+    }
+
     bool effects_wanted = pipeline_recipe_has_effects(recipe);
     // Rebuild raw frames when user has adjusted H/V offsets
     if (wig->rebuild) {
