@@ -72,8 +72,9 @@ static int detect_portrait_quadrants_from_accel(const accelVector *accel) {
     int ay = accel->y < 0 ? -accel->y : accel->y;
     int az = accel->z < 0 ? -accel->z : accel->z;
     int lateral = (ax > ay) ? ax : ay;
+    int lateral_delta = (ax > ay) ? (ax - ay) : (ay - ax);
 
-    if (lateral <= az + 40 || lateral <= 80)
+    if (lateral <= az + 80 || lateral <= 120 || lateral_delta <= 60)
         return 0;
 
     if (ax >= ay)
@@ -82,7 +83,7 @@ static int detect_portrait_quadrants_from_accel(const accelVector *accel) {
 }
 
 static void update_portrait_orientation(AppState *app) {
-    enum { ORIENT_SAMPLE_COUNT = 12 };
+    enum { ORIENT_SAMPLE_COUNT = 16, ORIENT_MIN_VOTES = 12 };
     static int samples[ORIENT_SAMPLE_COUNT];
     static int sample_pos = 0;
     static int sample_count = 0;
@@ -100,11 +101,11 @@ static void update_portrait_orientation(AppState *app) {
         else votes_0++;
     }
 
-    if (votes_1 >= 8 && votes_1 > votes_3)
+    if (votes_1 >= ORIENT_MIN_VOTES && votes_1 > votes_3)
         app->portrait_rotate_quadrants = 1;
-    else if (votes_3 >= 8 && votes_3 > votes_1)
+    else if (votes_3 >= ORIENT_MIN_VOTES && votes_3 > votes_1)
         app->portrait_rotate_quadrants = 3;
-    else if (votes_0 >= 8)
+    else
         app->portrait_rotate_quadrants = 0;
 }
 
