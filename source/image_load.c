@@ -55,12 +55,22 @@ static void pixels_to_rgb565_portrait_fit(const uint8_t *pixels, int img_w, int 
                                           uint16_t *dst, int width, int height) {
     memset(dst, 0, width * height * sizeof(uint16_t));
 
-    int draw_w = height / 2;
-    int draw_h = (img_h * draw_w) / img_w;
-    if (draw_h > height) {
-        draw_h = height;
-        draw_w = (img_w * draw_h) / img_h;
+    int crop_w = img_w;
+    int crop_h = img_h;
+    int crop_x = 0;
+    int crop_y = 0;
+    if ((long long)crop_w * 4 > (long long)crop_h * 3) {
+        crop_w = (crop_h * 3) / 4;
+        if (crop_w < 1) crop_w = 1;
+        crop_x = (img_w - crop_w) / 2;
+    } else {
+        crop_h = (crop_w * 4) / 3;
+        if (crop_h < 1) crop_h = 1;
+        crop_y = (img_h - crop_h) / 2;
     }
+
+    int draw_h = height;
+    int draw_w = (draw_h * 3) / 4;
     if (draw_w < 1) draw_w = 1;
     if (draw_h < 1) draw_h = 1;
 
@@ -68,9 +78,9 @@ static void pixels_to_rgb565_portrait_fit(const uint8_t *pixels, int img_w, int 
     int oy = (height - draw_h) / 2;
 
     for (int y = 0; y < draw_h; y++) {
-        int sy = y * img_h / draw_h;
+        int sy = crop_y + (y * crop_h) / draw_h;
         for (int x = 0; x < draw_w; x++) {
-            int sx = x * img_w / draw_w;
+            int sx = crop_x + (x * crop_w) / draw_w;
             int idx = (sy * img_w + sx) * 3;
             dst[(oy + y) * width + (ox + x)] = rgb888_to_565_pixel(pixels + idx);
         }
@@ -92,12 +102,22 @@ static void gif_indices_to_rgb565_portrait_fit(const uint8_t *indices,
                                                int width, int height) {
     memset(dst, 0, width * height * sizeof(uint16_t));
 
-    int draw_w = height / 2;
-    int draw_h = (img_h * draw_w) / img_w;
-    if (draw_h > height) {
-        draw_h = height;
-        draw_w = (img_w * draw_h) / img_h;
+    int crop_w = img_w;
+    int crop_h = img_h;
+    int crop_x = 0;
+    int crop_y = 0;
+    if ((long long)crop_w * 4 > (long long)crop_h * 3) {
+        crop_w = (crop_h * 3) / 4;
+        if (crop_w < 1) crop_w = 1;
+        crop_x = (img_w - crop_w) / 2;
+    } else {
+        crop_h = (crop_w * 4) / 3;
+        if (crop_h < 1) crop_h = 1;
+        crop_y = (img_h - crop_h) / 2;
     }
+
+    int draw_h = height;
+    int draw_w = (draw_h * 3) / 4;
     if (draw_w < 1) draw_w = 1;
     if (draw_h < 1) draw_h = 1;
 
@@ -105,12 +125,12 @@ static void gif_indices_to_rgb565_portrait_fit(const uint8_t *indices,
     int oy = (height - draw_h) / 2;
 
     for (int y = 0; y < draw_h; y++) {
-        int sy0 = y * img_h / draw_h;
-        int sy1 = (y + 1) * img_h / draw_h;
+        int sy0 = crop_y + (y * crop_h) / draw_h;
+        int sy1 = crop_y + ((y + 1) * crop_h) / draw_h;
         if (sy1 <= sy0) sy1 = sy0 + 1;
         for (int x = 0; x < draw_w; x++) {
-            int sx0 = x * img_w / draw_w;
-            int sx1 = (x + 1) * img_w / draw_w;
+            int sx0 = crop_x + (x * crop_w) / draw_w;
+            int sx1 = crop_x + ((x + 1) * crop_w) / draw_w;
             if (sx1 <= sx0) sx1 = sx0 + 1;
 
             int r_sum = 0, g_sum = 0, b_sum = 0, count = 0;
