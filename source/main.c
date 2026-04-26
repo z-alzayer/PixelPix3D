@@ -67,6 +67,47 @@ static void cycle_palette_forward(AppState *app) {
                         : app->params.palette + 1;
 }
 
+static int detect_portrait_quadrants_from_accel(const accelVector *accel) {
+    int ax = accel->x < 0 ? -accel->x : accel->x;
+    int ay = accel->y < 0 ? -accel->y : accel->y;
+    int az = accel->z < 0 ? -accel->z : accel->z;
+    int lateral = (ax > ay) ? ax : ay;
+
+    if (lateral <= az + 40 || lateral <= 80)
+        return 0;
+
+    if (ax >= ay)
+        return (accel->x >= 0) ? 1 : 3;
+    return (accel->y >= 0) ? 1 : 3;
+}
+
+static void update_portrait_orientation(AppState *app) {
+    enum { ORIENT_SAMPLE_COUNT = 12 };
+    static int samples[ORIENT_SAMPLE_COUNT];
+    static int sample_pos = 0;
+    static int sample_count = 0;
+
+    accelVector accel = {0};
+    hidAccelRead(&accel);
+    samples[sample_pos] = detect_portrait_quadrants_from_accel(&accel);
+    sample_pos = (sample_pos + 1) % ORIENT_SAMPLE_COUNT;
+    if (sample_count < ORIENT_SAMPLE_COUNT) sample_count++;
+
+    int votes_0 = 0, votes_1 = 0, votes_3 = 0;
+    for (int i = 0; i < sample_count; i++) {
+        if (samples[i] == 1) votes_1++;
+        else if (samples[i] == 3) votes_3++;
+        else votes_0++;
+    }
+
+    if (votes_1 >= 8 && votes_1 > votes_3)
+        app->portrait_rotate_quadrants = 1;
+    else if (votes_3 >= 8 && votes_3 > votes_1)
+        app->portrait_rotate_quadrants = 3;
+    else if (votes_0 >= 8)
+        app->portrait_rotate_quadrants = 0;
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -175,6 +216,7 @@ int main(void) {
         .dpad_repeat      = 0,
         .capture_w        = CAMERA_WIDTH,
         .capture_h        = CAMERA_HEIGHT,
+        .capture_rotate_quadrants = 0,
     };
     static uint16_t wiggle_preview_frames[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
     bool wiggle_preview_camera_paused = false;
@@ -253,34 +295,7 @@ int main(void) {
         u32 kDown = hidKeysDown();
         u32 kHeld = hidKeysHeld();
 
-        {
-            static int last_rotation_candidate = 0;
-            static int stable_rotation_frames = 0;
-            accelVector accel = {0};
-            hidAccelRead(&accel);
-
-            int ax = accel.x < 0 ? -accel.x : accel.x;
-            int ay = accel.y < 0 ? -accel.y : accel.y;
-            int az = accel.z < 0 ? -accel.z : accel.z;
-            int candidate = 0;
-            int lateral = (ax > ay) ? ax : ay;
-            if (lateral > az + 10 && lateral > 20) {
-                if (ax >= ay)
-                    candidate = (accel.x >= 0) ? 1 : 3;
-                else
-                    candidate = (accel.y >= 0) ? 1 : 3;
-            }
-
-            if (candidate == last_rotation_candidate) {
-                if (stable_rotation_frames < 8) stable_rotation_frames++;
-            } else {
-                last_rotation_candidate = candidate;
-                stable_rotation_frames = 1;
-            }
-
-            if (stable_rotation_frames >= 2)
-                app.portrait_rotate_quadrants = candidate;
-        }
+        update_portrait_orientation(&app);
 
         if ((kDown & KEY_START) && !gal.mode && !edit.active) {
             clear_processing_stack(&shoot, &wig, &app);
@@ -427,12 +442,8 @@ int main(void) {
         // Wiggle preview: B cancels, Save button confirms and writes APNG
         // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
         if (wig.preview) {
-            int wiggle_rotate = app.portrait_rotate_quadrants
-                              ? ((app.portrait_rotate_quadrants + 2) & 3)
-                              : 0;
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
-                                  wiggle_rotate,
                                   &live_recipe);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,

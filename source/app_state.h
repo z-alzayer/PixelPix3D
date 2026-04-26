@@ -56,6 +56,7 @@ typedef struct WiggleState {
     int           dpad_repeat;
     int           capture_w;      // resolution of captured pair (400 or 640)
     int           capture_h;      // (240 or 480)
+    int           capture_rotate_quadrants; // locked orientation from shutter press
 } WiggleState;
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ typedef struct {
     int           cam_w;          // current camera capture width  (400 or 640)
     int           cam_h;          // current camera capture height (240 or 480)
     int           shutter_button; // 0 = A (default), 1 = L/R
-    int           portrait_rotate_quadrants; // cached stable portrait orientation for still saves
+    int           portrait_rotate_quadrants; // smoothed raw portrait orientation, 0/1/3
 } AppState;
 
 #endif

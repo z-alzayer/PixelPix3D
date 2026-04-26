@@ -332,7 +332,6 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
-                           int rotate_quadrants,
                            const EffectRecipe *recipe) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
@@ -471,7 +470,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_offset_dy = wig->offset_dy;
             save->wiggle_cap_w     = wig->capture_w;
             save->wiggle_cap_h     = wig->capture_h;
-            save->rotate_quadrants = rotate_quadrants;
+            save->rotate_quadrants = wig->capture_rotate_quadrants;
             save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;

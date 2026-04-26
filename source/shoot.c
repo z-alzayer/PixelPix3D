@@ -17,6 +17,10 @@
 
 SaveThreadState s_save;
 
+static int corrected_portrait_rotation(int raw_quadrants) {
+    return raw_quadrants ? ((raw_quadrants + 2) & 3) : 0;
+}
+
 static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
                                     int src_w, int src_h, int quadrants) {
     int q = quadrants & 3;
@@ -149,7 +153,8 @@ void save_thread_stop(Thread thread) {
 static void begin_wiggle_capture(WiggleState *wig,
                                  u8 *buf, u8 *wiggle_left, u8 *wiggle_right,
                                  uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
-                                 int cam_w, int cam_h) {
+                                 int cam_w, int cam_h,
+                                 int rotate_quadrants) {
     int screen_size = cam_w * cam_h * 2;
     memcpy(wiggle_left,  buf,               screen_size);
     memcpy(wiggle_right, buf + screen_size, screen_size);
@@ -158,6 +163,7 @@ static void begin_wiggle_capture(WiggleState *wig,
     wig->offset_dy  = 0;
     wig->capture_w  = cam_w;
     wig->capture_h  = cam_h;
+    wig->capture_rotate_quadrants = rotate_quadrants;
     wig->n_frames = build_wiggle_preview_frames(wiggle_preview_frames,
                                 wiggle_left, wiggle_right,
                                 cam_w, cam_h,
@@ -183,9 +189,7 @@ static void begin_jpeg_save(AppState *app, u8 *filtered_buf) {
         memcpy(s_save.save_path, save_path, sizeof(save_path));
         s_save.wiggle_mode = false;
         s_save.save_scale  = app->save_scale;
-        s_save.rotate_quadrants = app->portrait_rotate_quadrants
-                                 ? ((app->portrait_rotate_quadrants + 2) & 3)
-                                 : 0;
+        s_save.rotate_quadrants = corrected_portrait_rotation(app->portrait_rotate_quadrants);
         s_save.busy = true;
         app->save_flash = 20;
         play_shutter_click();
@@ -222,7 +226,8 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
     // Fire save using the mode that was active before switching to Timer
     if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
-                             wiggle_preview_frames, app->cam_w, app->cam_h);
+                             wiggle_preview_frames, app->cam_w, app->cam_h,
+                             corrected_portrait_rotation(app->portrait_rotate_quadrants));
     } else if (!s_save.busy) {
         begin_jpeg_save(app, filtered_buf);
     }
@@ -243,7 +248,8 @@ void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
         shoot->timer_active       = true;
     } else if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
-                             wiggle_preview_frames, app->cam_w, app->cam_h);
+                             wiggle_preview_frames, app->cam_w, app->cam_h,
+                             corrected_portrait_rotation(app->portrait_rotate_quadrants));
     } else {
         begin_jpeg_save(app, filtered_buf);
     }
