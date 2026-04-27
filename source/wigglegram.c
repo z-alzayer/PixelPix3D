@@ -19,6 +19,24 @@ static void reset_wiggle_preview_phase(WiggleState *wig) {
     wig->preview_last_tick = svcGetSystemTick();
 }
 
+static int wiggle_normalize_frame_count(int n_frames) {
+    if (n_frames < 2) n_frames = 2;
+    if (n_frames > WIGGLE_PREVIEW_MAX) n_frames = WIGGLE_PREVIEW_MAX;
+    return n_frames;
+}
+
+static int wiggle_interp_weight_for_frame(int frame, int n_frames) {
+    int forward_count = n_frames / 2 + 1;
+    if (frame < forward_count) {
+        int denom = forward_count - 1;
+        return denom > 0 ? (frame * 256) / denom : 0;
+    }
+
+    int reverse_count = n_frames - forward_count;
+    int rev = frame - forward_count + 1;
+    return reverse_count > 0 ? ((reverse_count - rev + 1) * 256) / (reverse_count + 1) : 0;
+}
+
 // ---------------------------------------------------------------------------
 // wiggle_align — find global translation via block-matching on downsampled luma
 // ---------------------------------------------------------------------------
@@ -108,10 +126,9 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
                                 int offset_dx, int offset_dy,
                                 int *out_w, int *out_h)
 {
-    (void)nf;
-
     const uint16_t *L = (const uint16_t *)left_rgb565;
     const uint16_t *R = (const uint16_t *)right_rgb565;
+    int n_frames = wiggle_normalize_frame_count(nf);
 
     int fdx = (align ? align->global_dx : 0) + offset_dx;
     int fdy = (align ? align->global_dy : 0) + offset_dy;
@@ -148,29 +165,32 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
     int dw = CAMERA_WIDTH;
     int dh = CAMERA_HEIGHT;
 
-    // Nearest-neighbor crop+scale from the overlap region to full preview size
-    for (int py = 0; py < dh; py++) {
-        int sy = preview_oy + (py * preview_oh) / dh;
-        for (int px = 0; px < dw; px++) {
-            int sx = preview_ox + (px * preview_ow) / dw;
-            dst[0][py * dw + px] = L[(ly + sy) * src_w + (lx + sx)];
-            dst[2][py * dw + px] = R[(ry + sy) * src_w + (rx + sx)];
+    for (int f = 0; f < n_frames; f++) {
+        int weight = wiggle_interp_weight_for_frame(f, n_frames);
+        int inv = 256 - weight;
+        for (int py = 0; py < dh; py++) {
+            int sy = preview_oy + (py * preview_oh) / dh;
+            for (int px = 0; px < dw; px++) {
+                int sx = preview_ox + (px * preview_ow) / dw;
+                uint16_t lp = L[(ly + sy) * src_w + (lx + sx)];
+                uint16_t rp = R[(ry + sy) * src_w + (rx + sx)];
+                uint16_t lr = (lp >> 11) & 0x1f;
+                uint16_t lg = (lp >>  5) & 0x3f;
+                uint16_t lb =  lp        & 0x1f;
+                uint16_t rr = (rp >> 11) & 0x1f;
+                uint16_t rg = (rp >>  5) & 0x3f;
+                uint16_t rb =  rp        & 0x1f;
+                uint16_t r = (lr * inv + rr * weight) >> 8;
+                uint16_t g = (lg * inv + rg * weight) >> 8;
+                uint16_t b = (lb * inv + rb * weight) >> 8;
+                dst[f][py * dw + px] = (r << 11) | (g << 5) | b;
+            }
         }
     }
 
-    int npix = dw * dh;
-    for (int i = 0; i < npix; i++) {
-        uint16_t lp = dst[0][i], rp = dst[2][i];
-        uint16_t r = (((lp >> 11) & 0x1f) + ((rp >> 11) & 0x1f)) >> 1;
-        uint16_t g = (((lp >>  5) & 0x3f) + ((rp >>  5) & 0x3f)) >> 1;
-        uint16_t b = (( lp        & 0x1f) + ( rp        & 0x1f)) >> 1;
-        dst[1][i] = (r << 11) | (g << 5) | b;
-    }
-    memcpy(dst[3], dst[1], npix * sizeof(uint16_t));
-
     if (out_w) *out_w = dw;
     if (out_h) *out_h = dh;
-    return 4;
+    return n_frames;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +247,7 @@ int save_wiggle_gif(const char *path,
                     int rotate_quadrants,
                     const EffectRecipe *recipe)
 {
-    (void)n_frames;
+    n_frames = wiggle_normalize_frame_count(n_frames);
 
     int fdx = (align ? align->global_dx : 0) + offset_dx;
     int fdy = (align ? align->global_dy : 0) + offset_dy;
@@ -245,75 +265,62 @@ int save_wiggle_gif(const char *path,
     int ry = fdy < 0 ? -fdy : 0;
 
     int onpix = ow * oh;
-    uint8_t *left_crop  = malloc(onpix * 3);
-    uint8_t *right_crop = malloc(onpix * 3);
-    uint8_t *blend_crop = malloc(onpix * 3);
-    if (!left_crop || !right_crop || !blend_crop) {
-        free(left_crop); free(right_crop); free(blend_crop); return 0;
-    }
+    uint8_t *frame_bufs[WIGGLE_PREVIEW_MAX] = {0};
 
     const uint16_t *L = (const uint16_t *)left_rgb565;
     const uint16_t *R = (const uint16_t *)right_rgb565;
-
-    // Convert + crop in one pass (RGB565 → RGB888, overlap region only)
-    // Also build blend frame as 50/50 average
-    for (int py = 0; py < oh; py++) {
-        for (int px = 0; px < ow; px++) {
-            uint16_t lp = L[(ly + py) * w + (lx + px)];
-            uint8_t *ld = left_crop  + (py * ow + px) * 3;
-            ld[0] = (lp >> 11) << 3;
-            ld[1] = ((lp >> 5) & 0x3f) << 2;
-            ld[2] = (lp & 0x1f) << 3;
-
-            uint16_t rp = R[(ry + py) * w + (rx + px)];
-            uint8_t *rd = right_crop + (py * ow + px) * 3;
-            rd[0] = (rp >> 11) << 3;
-            rd[1] = ((rp >> 5) & 0x3f) << 2;
-            rd[2] = (rp & 0x1f) << 3;
-
-            uint8_t *bd = blend_crop + (py * ow + px) * 3;
-            bd[0] = (ld[0] + rd[0]) >> 1;
-            bd[1] = (ld[1] + rd[1]) >> 1;
-            bd[2] = (ld[2] + rd[2]) >> 1;
+    for (int f = 0; f < n_frames; f++) {
+        frame_bufs[f] = malloc(onpix * 3);
+        if (!frame_bufs[f]) {
+            for (int i = 0; i < n_frames; i++) free(frame_bufs[i]);
+            return 0;
         }
+        int weight = wiggle_interp_weight_for_frame(f, n_frames);
+        int inv = 256 - weight;
+        for (int py = 0; py < oh; py++) {
+            for (int px = 0; px < ow; px++) {
+                uint16_t lp = L[(ly + py) * w + (lx + px)];
+                uint16_t rp = R[(ry + py) * w + (rx + px)];
+                uint8_t lr = (lp >> 11) << 3;
+                uint8_t lg = ((lp >> 5) & 0x3f) << 2;
+                uint8_t lb = (lp & 0x1f) << 3;
+                uint8_t rr = (rp >> 11) << 3;
+                uint8_t rg = ((rp >> 5) & 0x3f) << 2;
+                uint8_t rb = (rp & 0x1f) << 3;
+                uint8_t *dst = frame_bufs[f] + (py * ow + px) * 3;
+                dst[0] = (lr * inv + rr * weight) >> 8;
+                dst[1] = (lg * inv + rg * weight) >> 8;
+                dst[2] = (lb * inv + rb * weight) >> 8;
+            }
+        }
+        if (pipeline_recipe_has_effects(recipe))
+            pipeline_apply(frame_bufs[f], ow, oh, recipe, f);
     }
 
-    // Apply the active processing pipeline to each unique frame if requested.
-    if (pipeline_recipe_has_effects(recipe)) {
-        pipeline_apply(left_crop,  ow, oh, recipe, 0);
-        pipeline_apply(right_crop, ow, oh, recipe, 1);
-        pipeline_apply(blend_crop, ow, oh, recipe, 2);
-    }
-
-    // Sequence: L, blend, R, blend  (matches 3ds-mpo-gif animation order)
-    const uint8_t *frame_ptrs[4] = { left_crop, blend_crop, right_crop, blend_crop };
-    uint8_t *rot_left = NULL, *rot_right = NULL, *rot_blend = NULL;
+    const uint8_t *frame_ptrs[WIGGLE_PREVIEW_MAX] = {0};
     int enc_w = ow;
     int enc_h = oh;
     if (rotate_quadrants != 0) {
-        rot_left = malloc(onpix * 3);
-        rot_right = malloc(onpix * 3);
-        rot_blend = malloc(onpix * 3);
-        if (!rot_left || !rot_right || !rot_blend) {
-            free(rot_left); free(rot_right); free(rot_blend);
-            free(left_crop); free(right_crop); free(blend_crop);
-            return 0;
-        }
-        rotate_rgb888_quadrants(rot_left, left_crop, ow, oh, rotate_quadrants);
-        rotate_rgb888_quadrants(rot_right, right_crop, ow, oh, rotate_quadrants);
-        rotate_rgb888_quadrants(rot_blend, blend_crop, ow, oh, rotate_quadrants);
-        frame_ptrs[0] = rot_left;
-        frame_ptrs[1] = rot_blend;
-        frame_ptrs[2] = rot_right;
-        frame_ptrs[3] = rot_blend;
         enc_w = oh;
         enc_h = ow;
+        for (int f = 0; f < n_frames; f++) {
+            uint8_t *rot = malloc(onpix * 3);
+            if (!rot) {
+                for (int i = 0; i < n_frames; i++) free(frame_bufs[i]);
+                return 0;
+            }
+            rotate_rgb888_quadrants(rot, frame_bufs[f], ow, oh, rotate_quadrants);
+            free(frame_bufs[f]);
+            frame_bufs[f] = rot;
+            frame_ptrs[f] = frame_bufs[f];
+        }
+    } else {
+        for (int f = 0; f < n_frames; f++) frame_ptrs[f] = frame_bufs[f];
     }
     size_t gif_len = gif_encode(s_gif_buf, GIF_BUF_CAP,
-                                frame_ptrs, 4,
+                                frame_ptrs, n_frames,
                                 enc_w, enc_h, delay_ms);
-    free(rot_left); free(rot_right); free(rot_blend);
-    free(left_crop); free(right_crop); free(blend_crop);
+    for (int f = 0; f < n_frames; f++) free(frame_bufs[f]);
 
     if (gif_len == 0) return 0;
     FILE *fp = fopen(path, "wb");
@@ -366,18 +373,30 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             #define WRSTX (WPLUX + WBTW + 2)
             int row_x_y = SHOOT_CONTENT_Y + 4;
             int row_y_y = SHOOT_CONTENT_Y + 32;
+            int row_frames_y = SHOOT_CONTENT_Y + 60;
             int *val = NULL; int lo = 0, hi = 0;
             if (tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
                 { val = &wig->offset_dx; lo = -40; hi = 40; }
             else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
                 { val = &wig->offset_dy; lo = -10; hi = 10; }
+            else if (tx < 158 && ty >= row_frames_y && ty < row_frames_y + WBTH)
+                { val = &wig->n_frames; lo = 2; hi = WIGGLE_PREVIEW_MAX; }
             if (val) {
                 if (tx >= WMINX && tx < WMINX + WBTW) {
-                    if (*val > lo) { (*val)--; wig->rebuild = true; }
+                    if (*val > lo) {
+                        (*val)--;
+                        wig->rebuild = true;
+                        reset_wiggle_preview_phase(wig);
+                    }
                 } else if (tx >= WPLUX && tx < WPLUX + WBTW) {
-                    if (*val < hi) { (*val)++; wig->rebuild = true; }
-                } else if (tx >= WRSTX && tx < WRSTX + WRSTW) {
-                    *val = 0; wig->rebuild = true;
+                    if (*val < hi) {
+                        (*val)++;
+                        wig->rebuild = true;
+                        reset_wiggle_preview_phase(wig);
+                    }
+                } else if (val != &wig->n_frames && tx >= WRSTX && tx < WRSTX + WRSTW) {
+                    *val = 0;
+                    wig->rebuild = true;
                 }
             }
 
@@ -426,6 +445,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 #undef DSTEP_BTN_W
                 #undef DSTEP_BTN_H
                 #undef DSTEP_VAL_W
+
             }
 
             if (ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)

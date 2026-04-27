@@ -489,6 +489,27 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                       C2D_TextGetDimensions(&t,0.30f,0.30f,&tw,&th);
                       C2D_DrawText(&t,C2D_WithColor,WIG_RST_X+(WIG_RST_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.30f,0.30f,CLR_TEXT); }
                 }
+
+                // -- Row 3: total animation frames --
+                {
+                    float ry = cy + 60.0f;
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Fr");
+                      C2D_TextGetDimensions(&t,0.32f,0.32f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,4.0f+(16.0f-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.32f,0.32f,CLR_DIM); }
+                    draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"-");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_MINUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    draw_rounded_rect(WIG_VAL_X, ry, WIG_VAL_W, WIG_BTN_H, 3.0f, CLR_TRACK);
+                    { char buf[8]; snprintf(buf,sizeof(buf),"%d",wiggle_frames);
+                      C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,buf);
+                      C2D_TextGetDimensions(&t,0.33f,0.33f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_VAL_X+(WIG_VAL_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.33f,0.33f,CLR_TEXT); }
+                    draw_pill(WIG_PLUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"+");
+                      C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                }
                 } // end wiggle_preview else
 
                 #undef WIG_BTN_W

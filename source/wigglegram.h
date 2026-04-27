@@ -69,7 +69,7 @@ void wiggle_preview_tick(struct WiggleState *wig,
 bool wiggle_filter_busy(void);
 
 // Save a wiggle GIF from two raw RGB565 camera buffers.
-// n_frames: number of animation frames (2..8).
+// n_frames: total ping-pong animation frames (2..8).
 // delay_ms: milliseconds per frame.
 // align: alignment result (pass NULL to skip offset correction).
 // offset_dx/dy: user alignment adjustment in pixels.
