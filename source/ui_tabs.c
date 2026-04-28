@@ -161,6 +161,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     bool gallery_mode,
                     const FilterParams *p, const FilterRanges *ranges,
                     int shoot_mode, int capture_mode, bool shoot_mode_open,
+                    int stereo_output,
                     bool gb_enabled,
                     int shoot_timer_secs, bool timer_open,
                     int wiggle_frames, int wiggle_delay_ms,
@@ -238,7 +239,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         if (!shoot_mode_open && !timer_open) {
             // ---- Quick-access row: capture selectors + effect stages ----
             static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
-                "Still", "Wiggle", "GB", "Tone",
+                "Still", "Stereo", "GB", "Tone",
                 "Lomo", "Bend", "FX", "Timer"
             };
 
@@ -246,10 +247,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 int row = i / SHOOT_STAGE_GRID_COLS;
                 int col = i % SHOOT_STAGE_GRID_COLS;
                 float bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                float by = (row == 0) ? (float)SHOOT_MODE_ROW1_Y : (float)SHOOT_MODE_ROW2_Y;
+                float by = (float)SHOOT_MODE_ROW1_Y +
+                           row * (SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP);
                 bool sel = false;
                 if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
-                else if (i == 1) sel = (capture_mode == CAPTURE_MODE_WIGGLE);
+                else if (i == 1) sel = (capture_mode == CAPTURE_MODE_STEREO);
                 else if (i == 2) sel = gb_enabled;
                 else if (i == 3) sel = (!gb_enabled &&
                                         (fabsf(p->brightness - ranges->bright_def) > 0.001f ||
@@ -346,7 +348,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             // Mode title (right of back button)
             static const char *mode_titles[SHOOT_MODE_COUNT] = {
-                "GB Filter", "Wiggle", "Tone", "Base Look", "Bend", "Post FX"
+                "GB Filter", "Stereo", "Tone", "Base Look", "Bend", "Post FX"
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
@@ -491,7 +493,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 }
 
                 // -- Row 3: total animation frames --
-                {
+                if (stereo_output == STEREO_OUTPUT_WIGGLE) {
                     float ry = cy + 60.0f;
                     { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Fr");
                       C2D_TextGetDimensions(&t,0.32f,0.32f,&tw,&th);
@@ -529,17 +531,45 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     #define DZONE_X    160
                     #define DZONE_W    160
                     #define DZONE_CX   (DZONE_X + DZONE_W / 2)
-                    // "Delay" label
+                    // Output selector
                     {
                         C2D_Text td; float lw = 0, lh = 0;
-                        C2D_TextParse(&td, staticBuf, "Delay");
+                        C2D_TextParse(&td, staticBuf, "Output");
                         C2D_TextGetDimensions(&td, 0.36f, 0.36f, &lw, &lh);
                         C2D_DrawText(&td, C2D_WithColor,
                                      DZONE_CX - lw * 0.5f, cy + 4.0f,
                                      0.5f, 0.36f, 0.36f, CLR_DIM);
                     }
-                    // Preset pills: 50 / 100 / 200 / 500
                     {
+                        static const char *out_labels[2] = {"Wiggle", "Ana"};
+                        const int out_vals[2] = {STEREO_OUTPUT_WIGGLE, STEREO_OUTPUT_ANAGLYPH};
+                        #define OPILL_W   54
+                        #define OPILL_H   17
+                        #define OPILL_GAP  5
+                        float total_w = 2 * OPILL_W + OPILL_GAP;
+                        float px0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
+                        float py0 = cy + 20.0f;
+                        for (int i = 0; i < 2; i++) {
+                            float bx = px0 + i * (OPILL_W + OPILL_GAP);
+                            bool sel = (stereo_output == out_vals[i]);
+                            draw_pill(bx, py0, OPILL_W, OPILL_H,
+                                      sel ? CLR_ACCENT : CLR_BTN);
+                            C2D_Text tp; float tw = 0, th = 0;
+                            C2D_TextParse(&tp, staticBuf, out_labels[i]);
+                            C2D_TextGetDimensions(&tp, 0.32f, 0.32f, &tw, &th);
+                            C2D_DrawText(&tp, C2D_WithColor,
+                                         bx + (OPILL_W - tw) * 0.5f,
+                                         py0 + (OPILL_H - th) * 0.5f,
+                                         0.5f, 0.32f, 0.32f,
+                                         sel ? CLR_WHITE : CLR_TEXT);
+                        }
+                        #undef OPILL_W
+                        #undef OPILL_H
+                        #undef OPILL_GAP
+                    }
+
+                    // Preset pills: 50 / 100 / 200 / 500
+                    if (stereo_output == STEREO_OUTPUT_WIGGLE) {
                         static const int presets[4] = {50, 100, 200, 500};
                         static const char *preset_labels[4] = {"50", "100", "200", "500"};
                         #define DPILL_W   32
@@ -547,7 +577,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         #define DPILL_GAP  3
                         float total_w = 4 * DPILL_W + 3 * DPILL_GAP;
                         float px0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
-                        float py0 = cy + 20.0f;
+                        float py0 = cy + 42.0f;
                         for (int i = 0; i < 4; i++) {
                             float bx = px0 + i * (DPILL_W + DPILL_GAP);
                             bool sel = (wiggle_delay_ms == presets[i]);
@@ -567,11 +597,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         #undef DPILL_GAP
                     }
                     // Stepper row: [ - ]  [ NNNms ]  [ + ]
-                    {
+                    if (stereo_output == STEREO_OUTPUT_WIGGLE) {
                         #define DSTEP_BTN_W  22
                         #define DSTEP_BTN_H  18
                         #define DSTEP_VAL_W  54
-                        float sy = cy + 44.0f;
+                        float sy = cy + 64.0f;
                         float total_w = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
                         float sx0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
                         // "-" button
@@ -613,6 +643,14 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         #undef DSTEP_BTN_W
                         #undef DSTEP_BTN_H
                         #undef DSTEP_VAL_W
+                    }
+                    if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+                        C2D_Text ta; float aw = 0, ah = 0;
+                        C2D_TextParse(&ta, staticBuf, "red/cyan JPG");
+                        C2D_TextGetDimensions(&ta, 0.36f, 0.36f, &aw, &ah);
+                        C2D_DrawText(&ta, C2D_WithColor,
+                                     DZONE_CX - aw * 0.5f, cy + 50.0f,
+                                     0.5f, 0.36f, 0.36f, CLR_DIM);
                     }
                     #undef DZONE_X
                     #undef DZONE_W
@@ -692,7 +730,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         } else {
             save_bg  = CLR_ACCENT;
             save_txt = CLR_WHITE;
-            save_label = (capture_mode == CAPTURE_MODE_WIGGLE) ? "Capture" : "Save";
+            save_label = (capture_mode == CAPTURE_MODE_STEREO) ? "Capture" : "Save";
         }
         C2D_DrawRectSolid(0, SHOOT_SAVE_Y, 0.5f, BOT_W, SHOOT_SAVE_H, save_bg);
         C2D_TextParse(&t, staticBuf, save_label);

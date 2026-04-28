@@ -8,15 +8,32 @@
 // Scratch buffers owned by this module
 static uint8_t  s_edit_preview_rgb888[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 static uint16_t s_wiggle_compose_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
+static uint16_t s_stereo_left_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
+static uint16_t s_stereo_right_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
 uint16_t s_raw_display_buf[CAMERA_WIDTH * CAMERA_HEIGHT];
 
 void render_top_screen(bool use3d, bool timer_open,
                        const EditState *edit, const GalleryState *gal,
                        const WiggleState *wig,
                        uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
-                       bool comparing, const u8 *buf, const u8 *filtered_buf) {
-    gfxSet3D(false);
-    if (use3d || timer_open) {
+                       bool comparing, const u8 *buf, const u8 *filtered_buf,
+                       int cam_w, int cam_h) {
+    bool stereo_live = use3d && !timer_open && !edit->active &&
+                       !gal->mode && !wig->preview && buf;
+    gfxSet3D(stereo_live);
+    if (stereo_live) {
+        int screen_size = cam_w * cam_h * 2;
+        crop_fill_rgb565(s_stereo_left_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                         (const uint16_t *)buf, cam_w, cam_h);
+        crop_fill_rgb565(s_stereo_right_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                         (const uint16_t *)(buf + screen_size), cam_w, cam_h);
+        writePictureToFramebufferRGB565(
+            gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL),
+            s_stereo_left_buf, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+        writePictureToFramebufferRGB565(
+            gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL),
+            s_stereo_right_buf, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+    } else if (timer_open) {
         u8 *fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
         memset(fb, 0, CAMERA_WIDTH * CAMERA_HEIGHT * 3);
     } else if (edit->active && gal->count > 0) {

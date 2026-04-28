@@ -253,14 +253,15 @@ void draw_ui(C3D_RenderTarget *bot,
                          (const char (*)[64])gal->paths,
                          gal->sel, gal->scroll);
     } else if (app->active_tab == TAB_SHOOT) {
-        bool gb_stage_enabled = (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+        bool gb_stage_enabled = (shoot->capture_mode == CAPTURE_MODE_STEREO)
                              ? wig->filter_active : shoot->gb_enabled;
-        int display_pal = ((shoot->capture_mode == CAPTURE_MODE_WIGGLE && !wig->filter_active) ||
-                           (shoot->capture_mode != CAPTURE_MODE_WIGGLE && !shoot->gb_enabled))
+        int display_pal = ((shoot->capture_mode == CAPTURE_MODE_STEREO && !wig->filter_active) ||
+                           (shoot->capture_mode != CAPTURE_MODE_STEREO && !shoot->gb_enabled))
                         ? PALETTE_NONE : app->params.palette;
         draw_shoot_tab(staticBuf, app->selfie, app->save_flash, app->user_palettes,
                        display_pal, gal->mode, &app->params, &app->ranges,
                        shoot->shoot_mode, shoot->capture_mode, shoot->shoot_mode_open,
+                       shoot->stereo_output,
                        gb_stage_enabled,
                        shoot->shoot_timer_secs, shoot->timer_open,
                        wig->n_frames, wig->delay_ms,

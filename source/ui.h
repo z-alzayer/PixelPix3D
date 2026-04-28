@@ -143,7 +143,7 @@
 #define SHOOT_MODE_FX         5
 #define SHOOT_MODE_COUNT      6
 
-// Shoot quick-access row: capture selectors + effect stage entry points.
+// Shoot quick-access row: capture source + effect stages.
 #define SHOOT_STAGE_BTN_COUNT  8
 #define SHOOT_STAGE_GRID_COLS  4
 #define SHOOT_STAGE_GRID_ROWS  2

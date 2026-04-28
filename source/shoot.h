@@ -22,6 +22,7 @@ typedef struct SaveThreadState {
     int           save_scale;
     int           rotate_quadrants; // 0 = landscape, 1 = CW 90, 3 = CCW 90
     bool          wiggle_mode;     // true = save APNG from both cam buffers
+    bool          anaglyph_mode;   // true = save red/cyan JPEG from both cam buffers
     int           wiggle_n_frames;
     int           wiggle_delay_ms;
     WiggleAlign   wiggle_align_result;
@@ -31,6 +32,7 @@ typedef struct SaveThreadState {
     int           wiggle_cap_w;    // capture resolution (400 or 640)
     int           wiggle_cap_h;    // (240 or 480)
     EffectRecipe  wiggle_recipe;   // snapshot of the active processing recipe
+    EffectRecipe  anaglyph_recipe; // snapshot of the active processing recipe
     volatile bool busy;            // main sets true on trigger; worker clears on finish
     volatile bool quit;            // main sets true at shutdown
     LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start
@@ -62,13 +64,15 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
                   u32 kDown,
                   u8 *buf, u8 *filtered_buf,
                   u8 *wiggle_left, u8 *wiggle_right,
-                  uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT]);
+                  uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                  const EffectRecipe *recipe);
 
 // Handle the A-button / do_save trigger when not in wiggle-preview or timer
 // mode.  Starts a timer countdown, begins wiggle capture, or saves a JPEG.
 void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
                    u8 *buf, u8 *filtered_buf,
                    u8 *wiggle_left, u8 *wiggle_right,
-                   uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT]);
+                   uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                   const EffectRecipe *recipe);
 
 #endif

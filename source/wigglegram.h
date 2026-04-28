@@ -54,6 +54,8 @@ void wiggle_preview_update(struct WiggleState *wig,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
+                           int save_scale,
+                           int stereo_output,
                            const EffectRecipe *recipe);
 
 // Advance the wiggle preview animation: rebuild frames if offsets changed,
@@ -63,7 +65,8 @@ void wiggle_preview_update(struct WiggleState *wig,
 void wiggle_preview_tick(struct WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
-                         const EffectRecipe *recipe, int frame_count);
+                         const EffectRecipe *recipe, int frame_count,
+                         int stereo_output);
 
 // Returns true while the wiggle preview filter is being applied frame-by-frame.
 bool wiggle_filter_busy(void);

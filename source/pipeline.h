@@ -7,8 +7,13 @@
 
 typedef enum {
     CAPTURE_MODE_STILL = 0,
-    CAPTURE_MODE_WIGGLE = 1,
+    CAPTURE_MODE_STEREO = 1,
 } CaptureMode;
+
+typedef enum {
+    STEREO_OUTPUT_WIGGLE = 0,
+    STEREO_OUTPUT_ANAGLYPH = 1,
+} StereoOutputMode;
 
 typedef enum {
     PIPELINE_PANEL_GB = 0,

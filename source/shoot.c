@@ -10,6 +10,7 @@
 #include "settings.h"
 #include "sound.h"
 #include "pipeline.h"
+#include "anaglyph.h"
 
 // ---------------------------------------------------------------------------
 // Global save thread state
@@ -119,6 +120,15 @@ static void save_thread_func(void *arg) {
                              st->wiggle_offset_dy,
                              st->rotate_quadrants,
                              &st->wiggle_recipe);
+        } else if (st->anaglyph_mode) {
+            save_anaglyph_png(path,
+                              st->snapshot_buf,
+                              st->wiggle_cap_w, st->wiggle_cap_h,
+                              st->snapshot_buf2,
+                              st->wiggle_offset_dx,
+                              st->wiggle_offset_dy,
+                              st->rotate_quadrants,
+                              &st->anaglyph_recipe);
         } else {
             int scale = st->save_scale;
             rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
@@ -155,7 +165,9 @@ Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.snapshot_buf  = snapshot_buf;
     s_save.snapshot_buf2 = snapshot_buf2;
     s_save.rotate_quadrants = 0;
+    s_save.anaglyph_mode = false;
     s_save.wiggle_recipe = (EffectRecipe){0};
+    s_save.anaglyph_recipe = (EffectRecipe){0};
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
     LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
     s_save.busy = false;
@@ -203,6 +215,27 @@ static void begin_wiggle_capture(WiggleState *wig,
     play_shutter_click();
 }
 
+static void begin_anaglyph_capture(WiggleState *wig,
+                                   u8 *buf, u8 *wiggle_left, u8 *wiggle_right,
+                                   int cam_w, int cam_h,
+                                   int rotate_quadrants) {
+    int screen_size = cam_w * cam_h * 2;
+    memcpy(wiggle_left,  buf,               screen_size);
+    memcpy(wiggle_right, buf + screen_size, screen_size);
+    wig->has_align  = false;
+    wig->capture_w  = cam_w;
+    wig->capture_h  = cam_h;
+    wig->capture_rotate_quadrants = rotate_quadrants;
+    wig->n_frames = 1;
+    wig->crop_w = CAMERA_WIDTH;
+    wig->crop_h = CAMERA_HEIGHT;
+    wig->preview = true;
+    wig->rebuild = true;
+    wig->preview_frame = 0;
+    wig->preview_last_tick = svcGetSystemTick();
+    play_shutter_click();
+}
+
 // ---------------------------------------------------------------------------
 // Helper: trigger a normal JPEG save on the background thread
 // ---------------------------------------------------------------------------
@@ -214,6 +247,7 @@ static void begin_jpeg_save(AppState *app, u8 *filtered_buf) {
         memcpy(s_save.snapshot_buf, filtered_buf, CAMERA_SCREEN_SIZE);
         memcpy(s_save.save_path, save_path, sizeof(save_path));
         s_save.wiggle_mode = false;
+        s_save.anaglyph_mode = false;
         s_save.save_scale  = app->save_scale;
         s_save.rotate_quadrants = capture_portrait_rotation(app);
         s_save.busy = true;
@@ -231,7 +265,8 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
                   u32 kDown,
                   u8 *buf, u8 *filtered_buf,
                   u8 *wiggle_left, u8 *wiggle_right,
-                  uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT]) {
+                  uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                  const EffectRecipe *recipe) {
     // B cancels countdown
     if (kDown & KEY_B) {
         shoot->timer_active = false;
@@ -250,10 +285,17 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
     shoot->timer_active = false;
 
     // Fire save using the mode that was active before switching to Timer
-    if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
+    if (shoot->capture_mode == CAPTURE_MODE_STEREO &&
+        shoot->stereo_output == STEREO_OUTPUT_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h,
                              capture_portrait_rotation(app));
+    } else if (shoot->capture_mode == CAPTURE_MODE_STEREO &&
+               shoot->stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+        (void)recipe;
+        begin_anaglyph_capture(wig, buf, wiggle_left, wiggle_right,
+                               app->cam_w, app->cam_h,
+                               capture_portrait_rotation(app));
     } else if (!s_save.busy) {
         begin_jpeg_save(app, filtered_buf);
     }
@@ -266,16 +308,24 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
 void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
                    u8 *buf, u8 *filtered_buf,
                    u8 *wiggle_left, u8 *wiggle_right,
-                   uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT]) {
+                   uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
+                   const EffectRecipe *recipe) {
     if (shoot->shoot_timer_secs > 0 && !shoot->timer_active) {
         // Start countdown
         shoot->timer_remaining_ms = shoot->shoot_timer_secs * 1000;
         shoot->timer_prev_tick    = svcGetSystemTick();
         shoot->timer_active       = true;
-    } else if (shoot->capture_mode == CAPTURE_MODE_WIGGLE) {
+    } else if (shoot->capture_mode == CAPTURE_MODE_STEREO &&
+               shoot->stereo_output == STEREO_OUTPUT_WIGGLE) {
         begin_wiggle_capture(wig, buf, wiggle_left, wiggle_right,
                              wiggle_preview_frames, app->cam_w, app->cam_h,
                              capture_portrait_rotation(app));
+    } else if (shoot->capture_mode == CAPTURE_MODE_STEREO &&
+               shoot->stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+        (void)recipe;
+        begin_anaglyph_capture(wig, buf, wiggle_left, wiggle_right,
+                               app->cam_w, app->cam_h,
+                               capture_portrait_rotation(app));
     } else {
         begin_jpeg_save(app, filtered_buf);
     }

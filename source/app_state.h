@@ -16,7 +16,8 @@
 typedef struct {
     int  shoot_mode;       // SHOOT_MODE_GBCAM / WIGGLE / LOMO
     bool shoot_mode_open;  // dropdown visible
-    int  capture_mode;     // still or wiggle capture selection
+    int  capture_mode;     // still or stereo capture selection
+    int  stereo_output;    // STEREO_OUTPUT_WIGGLE / ANAGLYPH
     bool timer_open;       // timer picker visible
     bool presets_open;     // preset panel visible
     int  preset_selected;  // active preset slot

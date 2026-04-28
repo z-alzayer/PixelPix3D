@@ -186,6 +186,7 @@ int main(void) {
         .shoot_mode       = SHOOT_MODE_GBCAM,
         .shoot_mode_open  = false,
         .capture_mode     = CAPTURE_MODE_STILL,
+        .stereo_output    = STEREO_OUTPUT_WIGGLE,
         .timer_open       = false,
         .presets_open     = false,
         .preset_selected  = 0,
@@ -431,7 +432,7 @@ int main(void) {
 
         pipeline_state_sync_legacy(&shoot.pipeline,
                                    shoot.capture_mode,
-                                   (shoot.capture_mode == CAPTURE_MODE_WIGGLE)
+                                   (shoot.capture_mode == CAPTURE_MODE_STEREO)
                                        ? wig.filter_active : shoot.gb_enabled,
                                    &app.params,
                                    shoot.lomo_enabled, shoot.lomo_preset,
@@ -445,15 +446,16 @@ int main(void) {
         if (wig.preview) {
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
+                                  app.save_scale, shoot.stereo_output,
                                   &live_recipe);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,
                          buf, filtered_buf, wiggle_left, wiggle_right,
-                         wiggle_preview_frames);
+                         wiggle_preview_frames, &live_recipe);
         } else if ((do_save || (kDown & (app.shutter_button ? (KEY_L | KEY_R) : KEY_A))) && !s_save.busy && !gal.mode && !edit.active) {
             shoot_trigger(&shoot, &wig, &app,
                           buf, filtered_buf, wiggle_left, wiggle_right,
-                          wiggle_preview_frames);
+                          wiggle_preview_frames, &live_recipe);
         }
 
         if (s_save.busy) app.save_flash = 20;  // pin high while thread is working
@@ -547,7 +549,7 @@ int main(void) {
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wig.preview) {
             wiggle_preview_tick(&wig, wiggle_preview_frames, wiggle_left, wiggle_right,
-                                &live_recipe, app.frame_count);
+                                &live_recipe, app.frame_count, shoot.stereo_output);
         }
 
         gallery_tick(&gal);
@@ -556,13 +558,14 @@ int main(void) {
         render_top_screen(use3d, shoot.timer_open,
                           &edit, &gal, &wig,
                           wiggle_preview_frames,
-                          comparing, buf, filtered_buf);
+                          comparing, buf, filtered_buf,
+                          app.cam_w, app.cam_h);
 
         // Draw bottom screen UI with citro2d
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
         draw_ui(bot, staticBuf, dynBuf,
                 &app, &shoot, &wig, &gal, &edit,
-                use3d, comparing,
+                false, comparing,
                 shoot.timer_active ? (shoot.timer_remaining_ms + 999) / 1000 : -1);
         C3D_FrameEnd(0);
         app.frame_count++;

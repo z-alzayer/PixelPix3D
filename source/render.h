@@ -14,6 +14,7 @@ void render_top_screen(bool use3d, bool timer_open,
                        const EditState *edit, const GalleryState *gal,
                        const WiggleState *wig,
                        uint16_t wiggle_preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
-                       bool comparing, const u8 *buf, const u8 *filtered_buf);
+                       bool comparing, const u8 *buf, const u8 *filtered_buf,
+                       int cam_w, int cam_h);
 
 #endif

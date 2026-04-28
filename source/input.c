@@ -51,7 +51,7 @@ static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
                                       AppState *app) {
     pipeline_state_sync_legacy(&shoot->pipeline,
                                shoot->capture_mode,
-                               (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+                               (shoot->capture_mode == CAPTURE_MODE_STEREO)
                                    ? wig->filter_active : shoot->gb_enabled,
                                &app->params,
                                shoot->lomo_enabled, shoot->lomo_preset,
@@ -62,7 +62,7 @@ static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
 
 static bool current_gb_stage_enabled(const ShootState *shoot,
                                      const WiggleState *wig) {
-    return (shoot->capture_mode == CAPTURE_MODE_WIGGLE)
+    return (shoot->capture_mode == CAPTURE_MODE_STEREO)
          ? wig->filter_active
          : shoot->gb_enabled;
 }
@@ -384,12 +384,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         {
             if (!shoot->shoot_mode_open && !shoot->timer_open) {
                 // ---- Quick-access row taps ----
-                if (tapped && ty >= SHOOT_MODE_ROW1_Y && ty < SHOOT_MODE_ROW2_Y + SHOOT_MODE_ROW_H) {
+                if (tapped && ty >= SHOOT_MODE_ROW1_Y &&
+                    ty < SHOOT_MODE_ROW1_Y + SHOOT_STAGE_GRID_ROWS * SHOOT_MODE_ROW_H +
+                         (SHOOT_STAGE_GRID_ROWS - 1) * SHOOT_MODE_BTN_GAP) {
                     for (int col = 0; col < SHOOT_STAGE_BTN_COUNT; col++) {
                         int row = col / SHOOT_STAGE_GRID_COLS;
                         int grid_col = col % SHOOT_STAGE_GRID_COLS;
                         int bx = SHOOT_MODE_BTN_GAP + grid_col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
-                        int by = (row == 0) ? SHOOT_MODE_ROW1_Y : SHOOT_MODE_ROW2_Y;
+                        int by = SHOOT_MODE_ROW1_Y + row * (SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP);
                         if (hit(tx, ty, bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H)) {
                             bool gb_enabled = current_gb_stage_enabled(shoot, wig);
                             if (col == 0) {
@@ -402,7 +404,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 shoot->shoot_mode_open = false;
                                 return true;
                             } else if (col == 1) {
-                                shoot->capture_mode = CAPTURE_MODE_WIGGLE;
+                                shoot->capture_mode = CAPTURE_MODE_STEREO;
                                 set_gb_stage_enabled(shoot, wig, gb_enabled);
                                 shoot->shoot_mode = SHOOT_MODE_WIGGLE;
                             } else if (col == 2) {
@@ -572,12 +574,57 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     #define WIG_PLUS_X   (WIG_VAL_X + WIG_VAL_W + 2)
                     #define WIG_RST_X    (WIG_PLUS_X + WIG_BTN_W + 2)
 
-                    // X/Y offset buttons handled in wigglegram.c (outside captureInterrupted)
+                    if (tapped && shoot->stereo_output == STEREO_OUTPUT_ANAGLYPH &&
+                        tx < 158) {
+                        int row_x_y = SHOOT_CONTENT_Y + 18;
+                        if (ty >= row_x_y && ty < row_x_y + WIG_BTN_H) {
+                            if (tx >= WIG_MINUS_X && tx < WIG_MINUS_X + WIG_BTN_W) {
+                                if (wig->offset_dx > -40) wig->offset_dx--;
+                                return true;
+                            }
+                            if (tx >= WIG_PLUS_X && tx < WIG_PLUS_X + WIG_BTN_W) {
+                                if (wig->offset_dx < 40) wig->offset_dx++;
+                                return true;
+                            }
+                            if (tx >= WIG_RST_X && tx < WIG_RST_X + WIG_RST_W) {
+                                wig->offset_dx = 0;
+                                return true;
+                            }
+                        }
+                    }
+
+                    // X/Y offset buttons for wiggle preview are handled in
+                    // wigglegram.c while camera capture is paused.
 
                     // Delay: preset pills + stepper (right zone x=160..319)
                     if (tapped && tx >= 160) {
+                        #define OPILL_W   54
+                        #define OPILL_H   17
+                        #define OPILL_GAP  5
+                        float out_total_w = 2 * OPILL_W + OPILL_GAP;
+                        float out_px0 = 160.0f + (160.0f - out_total_w) * 0.5f;
+                        float out_py0 = (float)SHOOT_CONTENT_Y + 20.0f;
+                        if (ty >= (int)out_py0 && ty < (int)(out_py0 + OPILL_H)) {
+                            if (tx >= (int)out_px0 && tx < (int)(out_px0 + OPILL_W)) {
+                                shoot->stereo_output = STEREO_OUTPUT_WIGGLE;
+                                return true;
+                            }
+                            float ana_x = out_px0 + OPILL_W + OPILL_GAP;
+                            if (tx >= (int)ana_x && tx < (int)(ana_x + OPILL_W)) {
+                                shoot->stereo_output = STEREO_OUTPUT_ANAGLYPH;
+                                wig->preview = false;
+                                return true;
+                            }
+                        }
+                        #undef OPILL_W
+                        #undef OPILL_H
+                        #undef OPILL_GAP
+
+                        if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE)
+                            return true;
+
                         // Preset pills row
-                        float py0 = (float)SHOOT_CONTENT_Y + 20.0f;
+                        float py0 = (float)SHOOT_CONTENT_Y + 42.0f;
                         #define DPILL_W   32
                         #define DPILL_H   16
                         #define DPILL_GAP  3
@@ -598,7 +645,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         #undef DPILL_GAP
 
                         // Stepper row
-                        float sy = (float)SHOOT_CONTENT_Y + 44.0f;
+                        float sy = (float)SHOOT_CONTENT_Y + 64.0f;
                         #define DSTEP_BTN_W  22
                         #define DSTEP_BTN_H  18
                         #define DSTEP_VAL_W  54

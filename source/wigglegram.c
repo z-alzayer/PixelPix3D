@@ -9,6 +9,7 @@
 #include "pipeline.h"
 #include "settings.h"
 #include "sound.h"
+#include "anaglyph.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -339,6 +340,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
+                           int save_scale,
+                           int stereo_output,
                            const EffectRecipe *recipe) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
@@ -379,7 +382,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 { val = &wig->offset_dx; lo = -40; hi = 40; }
             else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
                 { val = &wig->offset_dy; lo = -10; hi = 10; }
-            else if (tx < 158 && ty >= row_frames_y && ty < row_frames_y + WBTH)
+            else if (stereo_output == STEREO_OUTPUT_WIGGLE &&
+                     tx < 158 && ty >= row_frames_y && ty < row_frames_y + WBTH)
                 { val = &wig->n_frames; lo = 2; hi = WIGGLE_PREVIEW_MAX; }
             if (val) {
                 if (tx >= WMINX && tx < WMINX + WBTW) {
@@ -401,8 +405,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             }
 
             // Delay controls live on the right half of the wiggle preview UI.
-            if (tx >= 160) {
-                float py0 = (float)SHOOT_CONTENT_Y + 20.0f;
+            if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE) {
+                float py0 = (float)SHOOT_CONTENT_Y + 42.0f;
                 #define DPILL_W   32
                 #define DPILL_H   16
                 #define DPILL_GAP  3
@@ -423,7 +427,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 #undef DPILL_H
                 #undef DPILL_GAP
 
-                float sy = (float)SHOOT_CONTENT_Y + 44.0f;
+                float sy = (float)SHOOT_CONTENT_Y + 64.0f;
                 #define DSTEP_BTN_W  22
                 #define DSTEP_BTN_H  18
                 #define DSTEP_VAL_W  54
@@ -463,7 +467,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     }
 
     // L/R bumpers cycle through delay presets (50 → 100 → 200 → 500)
-    if (kDown & KEY_L || kDown & KEY_R) {
+    if (stereo_output == STEREO_OUTPUT_WIGGLE && (kDown & KEY_L || kDown & KEY_R)) {
         static const int delay_presets[] = {50, 100, 200, 500};
         int cur = 0;
         for (int i = 0; i < 4; i++) if (wig->delay_ms == delay_presets[i]) { cur = i; break; }
@@ -474,15 +478,21 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     if (kDown & KEY_B) {
         wig->preview = false;
     } else if ((do_save || (kDown & KEY_A)) && !save->busy) {
-        char apng_path[64];
-        if (next_wiggle_path(SAVE_DIR, apng_path, sizeof(apng_path))) {
+        char save_path[64];
+        bool anaglyph = stereo_output == STEREO_OUTPUT_ANAGLYPH;
+        bool has_path = anaglyph
+                      ? next_wiggle_path_ext(SAVE_DIR, ".png", save_path, sizeof(save_path))
+                      : next_wiggle_path(SAVE_DIR, save_path, sizeof(save_path));
+        if (has_path) {
             settings_save_file_counter(file_counter_next());
             // wiggle_left/right already hold the raw RGB565 snapshots
             int cap_size = wig->capture_w * wig->capture_h * 2;
             memcpy(save->snapshot_buf,  wiggle_left,  cap_size);
             memcpy(save->snapshot_buf2, wiggle_right, cap_size);
-            memcpy(save->save_path, apng_path, sizeof(apng_path));
-            save->wiggle_mode      = true;
+            memcpy(save->save_path, save_path, sizeof(save_path));
+            save->wiggle_mode      = !anaglyph;
+            save->anaglyph_mode    = anaglyph;
+            save->save_scale       = save_scale;
             save->wiggle_n_frames  = wig->n_frames;
             save->wiggle_delay_ms  = wig->delay_ms;
             save->wiggle_has_align = wig->has_align;
@@ -492,6 +502,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_cap_h     = wig->capture_h;
             save->rotate_quadrants = wig->capture_rotate_quadrants;
             save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
+            save->anaglyph_recipe = recipe ? *recipe : (EffectRecipe){0};
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;
             *save_flash = 20;
@@ -551,12 +562,14 @@ static bool same_effect_recipe(const EffectRecipe *a, const EffectRecipe *b) {
 void wiggle_preview_tick(WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
-                         const EffectRecipe *recipe, int frame_count) {
+                         const EffectRecipe *recipe, int frame_count,
+                         int stereo_output) {
     if (!s_last_recipe_valid || !same_effect_recipe(recipe, &s_last_recipe)) {
         wig->rebuild = true;
         s_filter_applied = false;
         s_filter_next = 0;
-        s_filter_pending = pipeline_recipe_has_effects(recipe);
+        s_filter_pending = pipeline_recipe_has_effects(recipe) &&
+                           stereo_output == STEREO_OUTPUT_WIGGLE;
         s_last_recipe = recipe ? *recipe : (EffectRecipe){0};
         s_last_recipe_valid = true;
     }
@@ -564,21 +577,33 @@ void wiggle_preview_tick(WiggleState *wig,
     bool effects_wanted = pipeline_recipe_has_effects(recipe);
     // Rebuild raw frames when user has adjusted H/V offsets
     if (wig->rebuild) {
-        wig->n_frames = build_wiggle_preview_frames(preview_frames,
-                                        wiggle_left, wiggle_right,
-                                        wig->capture_w, wig->capture_h,
-                                        wig->n_frames, NULL,
-                                        wig->offset_dx, wig->offset_dy,
-                                        &wig->crop_w, &wig->crop_h);
+        if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+            build_anaglyph_preview_frame(preview_frames[0],
+                                         wiggle_left, wig->capture_w, wig->capture_h,
+                                         wiggle_right,
+                                         wig->offset_dx, wig->offset_dy,
+                                         recipe);
+            wig->n_frames = 1;
+            wig->crop_w = CAMERA_WIDTH;
+            wig->crop_h = CAMERA_HEIGHT;
+        } else {
+            wig->n_frames = build_wiggle_preview_frames(preview_frames,
+                                            wiggle_left, wiggle_right,
+                                            wig->capture_w, wig->capture_h,
+                                            wig->n_frames, NULL,
+                                            wig->offset_dx, wig->offset_dy,
+                                            &wig->crop_w, &wig->crop_h);
+        }
         s_filter_applied = false;
         s_filter_next = 0;
-        s_filter_pending = effects_wanted;
+        s_filter_pending = effects_wanted && stereo_output == STEREO_OUTPUT_WIGGLE;
         wig->rebuild = false;
     }
 
     // Deferred filter: apply one frame per tick when d-pad is idle.
     // This spreads the work across multiple frames to avoid stutter.
-    if (effects_wanted && !s_filter_applied && wig->dpad_repeat == 0) {
+    if (stereo_output == STEREO_OUTPUT_WIGGLE &&
+        effects_wanted && !s_filter_applied && wig->dpad_repeat == 0) {
         int npix = wig->crop_w * wig->crop_h;
         int f = s_filter_next;
         rgb565_to_rgb888(s_preview_rgb888, preview_frames[f], npix);
