@@ -1,8 +1,6 @@
 #include "anaglyph.h"
-#include "apng_enc.h"
 #include "camera.h"
 #include "image_load.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,9 +8,6 @@ static uint16_t s_left_crop[CAMERA_WIDTH * CAMERA_HEIGHT];
 static uint16_t s_right_crop[CAMERA_WIDTH * CAMERA_HEIGHT];
 static uint8_t s_left_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 static uint8_t s_right_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
-
-#define ANAGLYPH_PNG_BUF_CAP (4 * 1024 * 1024)
-static uint8_t s_anaglyph_png_buf[ANAGLYPH_PNG_BUF_CAP];
 
 static uint8_t luma_rgb(const uint8_t *p) {
     return (uint8_t)((77 * p[0] + 150 * p[1] + 29 * p[2]) >> 8);
@@ -136,40 +131,6 @@ static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
     }
 }
 
-int save_anaglyph_jpeg(const char *path,
-                       const uint8_t *left_rgb565, int w, int h,
-                       const uint8_t *right_rgb565,
-                       int offset_dx, int offset_dy,
-                       int save_scale, int rotate_quadrants,
-                       const EffectRecipe *recipe,
-                       uint8_t *rgb_scratch,
-                       uint8_t *upscale_scratch,
-                       uint8_t *rotate_scratch) {
-    uint8_t *left_rgb = rgb_scratch;
-    uint8_t *right_rgb = upscale_scratch;
-    uint8_t *anaglyph_rgb = rotate_scratch;
-    prepare_eye_buffers(left_rgb565, w, h, right_rgb565, recipe,
-                        left_rgb, right_rgb);
-    compose_anaglyph_rgb888(anaglyph_rgb, left_rgb, right_rgb,
-                            offset_dx, offset_dy);
-
-    int out_w = CAMERA_WIDTH * save_scale;
-    int out_h = CAMERA_HEIGHT * save_scale;
-    nn_upscale(upscale_scratch, anaglyph_rgb, CAMERA_WIDTH, CAMERA_HEIGHT, save_scale);
-
-    const uint8_t *save_buf = upscale_scratch;
-    if (rotate_quadrants != 0) {
-        rotate_rgb888_quadrants(rotate_scratch, upscale_scratch, out_w, out_h,
-                                rotate_quadrants);
-        save_buf = rotate_scratch;
-        int tmp = out_w;
-        out_w = out_h;
-        out_h = tmp;
-    }
-
-    return save_jpeg(path, save_buf, out_w, out_h);
-}
-
 int save_anaglyph_png(const char *path,
                       const uint8_t *left_rgb565, int w, int h,
                       const uint8_t *right_rgb565,
@@ -204,15 +165,7 @@ int save_anaglyph_png(const char *path,
         out_h = w;
     }
 
-    const uint8_t *frames[1] = { frame };
-    size_t png_len = apng_encode(s_anaglyph_png_buf, ANAGLYPH_PNG_BUF_CAP,
-                                 frames, 1, out_w, out_h, 1, 1000);
-    if (png_len == 0) goto fail;
-
-    FILE *fp = fopen(path, "wb");
-    if (!fp) goto fail;
-    int ok = (fwrite(s_anaglyph_png_buf, 1, png_len, fp) == png_len);
-    fclose(fp);
+    int ok = save_png(path, frame, out_w, out_h);
     free(left_rgb);
     free(right_rgb);
     free(ana_rgb);

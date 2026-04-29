@@ -1,6 +1,8 @@
 #include "gallery.h"
 #include "camera.h"
 #include "image_load.h"
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // ---------------------------------------------------------------------------
@@ -8,6 +10,58 @@
 // ---------------------------------------------------------------------------
 
 uint16_t gallery_thumbs[GALLERY_WIGGLE_MAX_FRAMES][CAMERA_WIDTH * CAMERA_HEIGHT];
+
+static bool ext_is(const char *ext, const char *want) {
+    if (!ext || !want) return false;
+    while (*ext && *want) {
+        char a = *ext++;
+        char b = *want++;
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return *ext == 0 && *want == 0;
+}
+
+static uint32_t rd32be_gallery(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16)
+         | ((uint32_t)p[2] <<  8) |  (uint32_t)p[3];
+}
+
+static bool png_has_actl(const char *path) {
+    uint8_t hdr[8];
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return false;
+    if (fread(hdr, 1, sizeof(hdr), fp) != sizeof(hdr)) {
+        fclose(fp);
+        return false;
+    }
+
+    static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (memcmp(hdr, sig, sizeof(sig)) != 0) {
+        fclose(fp);
+        return false;
+    }
+
+    while (true) {
+        uint8_t chunk_hdr[8];
+        if (fread(chunk_hdr, 1, sizeof(chunk_hdr), fp) != sizeof(chunk_hdr))
+            break;
+        uint32_t len = rd32be_gallery(chunk_hdr);
+        if (memcmp(chunk_hdr + 4, "acTL", 4) == 0) {
+            fclose(fp);
+            return true;
+        }
+        if (memcmp(chunk_hdr + 4, "IDAT", 4) == 0 ||
+            memcmp(chunk_hdr + 4, "IEND", 4) == 0)
+            break;
+        if (fseek(fp, (long)len + 4, SEEK_CUR) != 0)
+            break;
+    }
+
+    fclose(fp);
+    return false;
+}
 
 // ---------------------------------------------------------------------------
 // gallery_toggle — enter or leave gallery mode
@@ -51,30 +105,47 @@ void gallery_load_selected(GalleryState *gal) {
         return;
 
     const char *gpath = gal->paths[gal->sel];
-    const char *ext = gpath + strlen(gpath) - 4;
+    const char *ext = strrchr(gpath, '.');
+    bool is_png = ext_is(ext, ".png");
+    bool is_gif = ext_is(ext, ".gif");
     gal->n_frames   = 1;
     gal->delay_ms   = 250;
     gal->anim_tick  = svcGetSystemTick();
     gal->anim_frame = 0;
     uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
-    if (ext > gpath && (strcmp(ext, ".png") == 0 || strcmp(ext, ".gif") == 0)) {
+    if (is_png || is_gif) {
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)
             fptrs[i] = gallery_thumbs[i];
         int ok = 0;
-        if (strcmp(ext, ".gif") == 0)
+        if (is_gif) {
             ok = load_gif_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
                                            &gal->n_frames, &gal->delay_ms,
                                            CAMERA_WIDTH, CAMERA_HEIGHT);
-        else
-            ok = load_apng_frames_to_rgb565(gpath, fptrs, GALLERY_WIGGLE_MAX_FRAMES,
-                                            &gal->n_frames, &gal->delay_ms,
-                                            CAMERA_WIDTH, CAMERA_HEIGHT);
+        } else {
+            // PNGs can be either animated wiggles or still Ana exports. Avoid
+            // the APNG parser for ordinary PNGs; it is only needed when acTL is
+            // present before IDAT.
+            if (png_has_actl(gpath)) {
+                ok = load_apng_frames_to_rgb565(gpath, fptrs,
+                                                GALLERY_WIGGLE_MAX_FRAMES,
+                                                &gal->n_frames, &gal->delay_ms,
+                                                CAMERA_WIDTH, CAMERA_HEIGHT);
+            } else {
+                ok = load_png_to_rgb565_fast(gpath, gallery_thumbs[0],
+                                             CAMERA_WIDTH, CAMERA_HEIGHT);
+                gal->n_frames = ok ? 1 : 0;
+            }
+        }
         if (!ok || gal->n_frames < 1) {
-            memset(gallery_thumbs[0], 0, CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
+            memset(gallery_thumbs[0], 0,
+                   CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
             gal->n_frames = 1;
         }
     } else {
-        load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
+        int ok = load_jpeg_to_rgb565(gpath, gallery_thumbs[0], CAMERA_WIDTH, CAMERA_HEIGHT);
+        if (!ok)
+            memset(gallery_thumbs[0], 0,
+                   CAMERA_WIDTH * CAMERA_HEIGHT * sizeof(uint16_t));
     }
     gal->loaded = gal->sel;
 }

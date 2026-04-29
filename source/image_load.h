@@ -7,6 +7,10 @@
 // Returns 1 on success, 0 on failure.
 int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height);
 
+// Load a plain RGB/RGBA PNG into RGB565 using a bounded static decode path.
+// Intended for gallery still previews without stbi's full PNG allocations.
+int load_png_to_rgb565_fast(const char *path, uint16_t *dst, int width, int height);
+
 // Load a still image at native resolution as RGB888. The returned buffer must
 // be released with free_loaded_image().
 int load_image_rgb888_native(const char *path,
@@ -45,6 +49,10 @@ int load_animation_rgb565_native(const char *path,
 // Returns 1 on success, 0 on failure.
 int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height);
 
+// Save an RGB888 buffer as lossless PNG at path.
+// Returns 1 on success, 0 on failure.
+int save_png(const char *path, const uint8_t *rgb888, int width, int height);
+
 // Seed the shared file counter from the INI value and a dir scan.
 // ini_val: value loaded from settings (0 if not present).
 // Both GB_ and GW_ files draw from the same counter so numbers never collide.
@@ -73,6 +81,9 @@ int next_wiggle_path(const char *dir, char *out_path, int out_len);
 // ".png"). Falls back to ".gif" for unknown extensions.
 int next_wiggle_path_ext(const char *dir, const char *ext,
                          char *out_path, int out_len);
+
+// Return the next free GA_XXXX.png path for anaglyph stills.
+int next_anaglyph_path(const char *dir, char *out_path, int out_len);
 
 // Save an edited wiggle: composites stickers/frame onto each RGB565 source
 // frame, then encodes using the file extension on path. composite_fn is called

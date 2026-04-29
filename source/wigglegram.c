@@ -481,7 +481,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         char save_path[64];
         bool anaglyph = stereo_output == STEREO_OUTPUT_ANAGLYPH;
         bool has_path = anaglyph
-                      ? next_wiggle_path_ext(SAVE_DIR, ".png", save_path, sizeof(save_path))
+                      ? next_anaglyph_path(SAVE_DIR, save_path, sizeof(save_path))
                       : next_wiggle_path(SAVE_DIR, save_path, sizeof(save_path));
         if (has_path) {
             settings_save_file_counter(file_counter_next());

@@ -646,7 +646,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     }
                     if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
                         C2D_Text ta; float aw = 0, ah = 0;
-                        C2D_TextParse(&ta, staticBuf, "red/cyan JPG");
+                        C2D_TextParse(&ta, staticBuf, "red/cyan PNG");
                         C2D_TextGetDimensions(&ta, 0.36f, 0.36f, &aw, &ah);
                         C2D_DrawText(&ta, C2D_WithColor,
                                      DZONE_CX - aw * 0.5f, cy + 50.0f,
@@ -829,6 +829,8 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
             else if (sscanf(slash, "GW_%d.png", &n) == 1) {
                 snprintf(label, sizeof(label), "%04d", n);
                 is_wiggle = true;
+            } else if (sscanf(slash, "GA_%d.png", &n) == 1) {
+                snprintf(label, sizeof(label), "%04d", n);
             } else {
                 snprintf(label, sizeof(label), "?");
             }

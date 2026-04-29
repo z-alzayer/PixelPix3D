@@ -24,6 +24,11 @@ static uint16_t rgb888_to_565_pixel(const uint8_t *p) {
          |  (uint16_t)(p[2] >> 3);
 }
 
+static uint32_t rd32be(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16)
+         | ((uint32_t)p[2] <<  8) |  (uint32_t)p[3];
+}
+
 static void pixels_to_rgb565_crop_fill(const uint8_t *pixels, int img_w, int img_h,
                                        uint16_t *dst, int width, int height) {
     int crop_w, crop_h, crop_x, crop_y;
@@ -176,17 +181,118 @@ void free_loaded_image(void *pixels) {
     stbi_image_free(pixels);
 }
 
+extern int stbi_zlib_decode_buffer(char *obuffer, int olen,
+                                   const char *ibuffer, int ilen);
+
+#define PNG_IDAT_CAP (2 * 1024 * 1024)
+#define PNG_RAW_CAP  ((VGA_WIDTH * 4 + 1) * VGA_HEIGHT)
+static uint8_t s_png_idat[PNG_IDAT_CAP];
+static uint8_t s_png_raw[PNG_RAW_CAP];
+static uint8_t s_png_rgb[VGA_WIDTH * VGA_HEIGHT * 3];
+
+static int paeth_predictor(int a, int b, int c) {
+    int p = a + b - c;
+    int pa = p - a; if (pa < 0) pa = -pa;
+    int pb = p - b; if (pb < 0) pb = -pb;
+    int pc = p - c; if (pc < 0) pc = -pc;
+    if (pa <= pb && pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
+}
+
+int load_png_to_rgb565_fast(const char *path, uint16_t *dst, int width, int height) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return 0;
+
+    uint8_t sig[8];
+    static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (fread(sig, 1, sizeof(sig), fp) != sizeof(sig) ||
+        memcmp(sig, png_sig, sizeof(sig)) != 0) {
+        fclose(fp);
+        return 0;
+    }
+
+    int img_w = 0, img_h = 0, color_type = -1, bit_depth = 0;
+    size_t idat_len = 0;
+    bool ok = false;
+
+    while (true) {
+        uint8_t chunk_hdr[8];
+        if (fread(chunk_hdr, 1, sizeof(chunk_hdr), fp) != sizeof(chunk_hdr))
+            break;
+        uint32_t len = rd32be(chunk_hdr);
+        const uint8_t *type = chunk_hdr + 4;
+
+        if (memcmp(type, "IHDR", 4) == 0 && len == 13) {
+            uint8_t ihdr[13];
+            if (fread(ihdr, 1, sizeof(ihdr), fp) != sizeof(ihdr)) break;
+            img_w = (int)rd32be(ihdr);
+            img_h = (int)rd32be(ihdr + 4);
+            bit_depth = ihdr[8];
+            color_type = ihdr[9];
+            if (fseek(fp, 4, SEEK_CUR) != 0) break; // CRC
+        } else if (memcmp(type, "IDAT", 4) == 0) {
+            if (idat_len + len > PNG_IDAT_CAP) break;
+            if (fread(s_png_idat + idat_len, 1, len, fp) != len) break;
+            idat_len += len;
+            if (fseek(fp, 4, SEEK_CUR) != 0) break; // CRC
+        } else {
+            if (fseek(fp, (long)len + 4, SEEK_CUR) != 0) break;
+            if (memcmp(type, "IEND", 4) == 0) break;
+        }
+    }
+    fclose(fp);
+
+    if (img_w <= 0 || img_h <= 0 ||
+        img_w * img_h > VGA_WIDTH * VGA_HEIGHT ||
+        bit_depth != 8 || (color_type != 2 && color_type != 6) || idat_len == 0)
+        return 0;
+
+    int src_bpp = (color_type == 6) ? 4 : 3;
+    int row_bytes = img_w * src_bpp;
+    int raw_len = (row_bytes + 1) * img_h;
+    if (raw_len > PNG_RAW_CAP) return 0;
+
+    int inflated = stbi_zlib_decode_buffer((char *)s_png_raw, raw_len,
+                                           (const char *)s_png_idat,
+                                           (int)idat_len);
+    if (inflated != raw_len) return 0;
+
+    for (int y = 0; y < img_h; y++) {
+        uint8_t *row = s_png_raw + y * (row_bytes + 1) + 1;
+        uint8_t filter = s_png_raw[y * (row_bytes + 1)];
+        uint8_t *prev = (y > 0) ? (s_png_raw + (y - 1) * (row_bytes + 1) + 1) : NULL;
+        for (int x = 0; x < row_bytes; x++) {
+            int left = (x >= src_bpp) ? row[x - src_bpp] : 0;
+            int up = prev ? prev[x] : 0;
+            int ul = (prev && x >= src_bpp) ? prev[x - src_bpp] : 0;
+            int add = 0;
+            if (filter == 1) add = left;
+            else if (filter == 2) add = up;
+            else if (filter == 3) add = (left + up) >> 1;
+            else if (filter == 4) add = paeth_predictor(left, up, ul);
+            else if (filter != 0) return 0;
+            row[x] = (uint8_t)(row[x] + add);
+        }
+
+        uint8_t *rgb = s_png_rgb + y * img_w * 3;
+        for (int x = 0; x < img_w; x++) {
+            rgb[x * 3 + 0] = row[x * src_bpp + 0];
+            rgb[x * 3 + 1] = row[x * src_bpp + 1];
+            rgb[x * 3 + 2] = row[x * src_bpp + 2];
+        }
+    }
+
+    pixels_to_rgb565_gallery_still(s_png_rgb, img_w, img_h, dst, width, height);
+    ok = true;
+    return ok ? 1 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // load_apng_2frames_to_rgb565
 // Parse the APNG chunk stream and decode frame 0 (IDAT) and frame 1 (fdAT)
 // into dst0 and dst1 respectively.  Both are scaled to (width x height).
 // ---------------------------------------------------------------------------
-
-// Read a big-endian u32 from raw bytes
-static uint32_t rd32be(const uint8_t *p) {
-    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16)
-         | ((uint32_t)p[2] <<  8) |  (uint32_t)p[3];
-}
 
 // CRC-32 for a buffer (reuse table from apng_enc.c if already built,
 // but we can compute inline here as a local helper)
@@ -685,6 +791,30 @@ int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height) {
     return ok;
 }
 
+#define PNG_BUF_CAP (4 * 1024 * 1024)
+static uint8_t s_png_buf[PNG_BUF_CAP];
+static int     s_png_len;
+
+static void png_accum(void *ctx, void *data, int size) {
+    (void)ctx;
+    if (s_png_len + size > PNG_BUF_CAP) return;
+    memcpy(s_png_buf + s_png_len, data, size);
+    s_png_len += size;
+}
+
+int save_png(const char *path, const uint8_t *rgb888, int width, int height) {
+    s_png_len = 0;
+    stbi_write_png_to_func(png_accum, NULL, width, height, 3,
+                           rgb888, width * 3);
+    if (s_png_len <= 0) return 0;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) return 0;
+    int ok = (fwrite(s_png_buf, 1, s_png_len, f) == (size_t)s_png_len);
+    fclose(f);
+    return ok;
+}
+
 // Single shared counter for all saved files (GB_ and GW_).
 // Seeded by file_counter_init(); incremented on each save.
 static int s_next_n = -1;  // -1 = not yet initialised
@@ -705,6 +835,7 @@ void file_counter_init(const char *dir, int ini_val) {
             if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1 && n > max_n) max_n = n;
             if (sscanf(e->d_name, "GW_%d.gif", &n) == 1 && n > max_n) max_n = n;
             if (sscanf(e->d_name, "GW_%d.png", &n) == 1 && n > max_n) max_n = n;
+            if (sscanf(e->d_name, "GA_%d.png", &n) == 1 && n > max_n) max_n = n;
         }
         closedir(d);
     }
@@ -724,13 +855,13 @@ int next_save_path(const char *dir, char *out_path, int out_len) {
     return 1;
 }
 
-// Scan dir for GB_XXXX.JPG and GW_XXXX.GIF files, fill paths[] sorted descending by number.
+// Scan dir for saved still/stereo files, fill paths[] sorted descending by number.
 // Both file types share the same 4-digit counter space so they interleave naturally.
 int list_saved_photos(const char *dir, char paths[][64], int max) {
     // Pack type (0=JPG, 1=GIF) in high bit of a 32-bit slot alongside the number.
     // Sorting by value descending keeps them interleaved correctly.
     int nums[256];
-    int types[256];  // 0=JPG, 1=GIF
+    int types[256];  // 0=JPG, 1=GIF, 2=GW PNG, 3=GA PNG
     int count = 0;
 
     DIR *d = opendir(dir);
@@ -749,6 +880,10 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
         } else if (sscanf(e->d_name, "GW_%d.png", &n) == 1) {
             nums[count]  = n;
             types[count] = 2;
+            count++;
+        } else if (sscanf(e->d_name, "GA_%d.png", &n) == 1) {
+            nums[count]  = n;
+            types[count] = 3;
             count++;
         }
     }
@@ -771,8 +906,10 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
             snprintf(paths[i], 64, "%s/GB_%04d.JPG", dir, nums[i]);
         else if (types[i] == 1)
             snprintf(paths[i], 64, "%s/GW_%04d.gif", dir, nums[i]);
-        else
+        else if (types[i] == 2)
             snprintf(paths[i], 64, "%s/GW_%04d.png", dir, nums[i]);
+        else
+            snprintf(paths[i], 64, "%s/GA_%04d.png", dir, nums[i]);
     }
 
     return count;
@@ -788,6 +925,14 @@ int next_wiggle_path_ext(const char *dir, const char *ext,
     if (s_next_n > 9999) return 0;
     const char *suffix = (ext && strcmp(ext, ".png") == 0) ? ".png" : ".gif";
     snprintf(out_path, out_len, "%s/GW_%04d%s", dir, s_next_n, suffix);
+    s_next_n++;
+    return 1;
+}
+
+int next_anaglyph_path(const char *dir, char *out_path, int out_len) {
+    if (s_next_n < 0) file_counter_init(dir, 0);
+    if (s_next_n > 9999) return 0;
+    snprintf(out_path, out_len, "%s/GA_%04d.png", dir, s_next_n);
     s_next_n++;
     return 1;
 }
