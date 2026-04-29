@@ -579,15 +579,22 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         int row_x_y = SHOOT_CONTENT_Y + 18;
                         if (ty >= row_x_y && ty < row_x_y + WIG_BTN_H) {
                             if (tx >= WIG_MINUS_X && tx < WIG_MINUS_X + WIG_BTN_W) {
-                                if (wig->offset_dx > -40) wig->offset_dx--;
+                                if (wig->offset_dx > -40) {
+                                    wig->offset_dx--;
+                                    wig->last_anaglyph_offset_dx = wig->offset_dx;
+                                }
                                 return true;
                             }
                             if (tx >= WIG_PLUS_X && tx < WIG_PLUS_X + WIG_BTN_W) {
-                                if (wig->offset_dx < 40) wig->offset_dx++;
+                                if (wig->offset_dx < 40) {
+                                    wig->offset_dx++;
+                                    wig->last_anaglyph_offset_dx = wig->offset_dx;
+                                }
                                 return true;
                             }
                             if (tx >= WIG_RST_X && tx < WIG_RST_X + WIG_RST_W) {
                                 wig->offset_dx = 0;
+                                wig->last_anaglyph_offset_dx = wig->offset_dx;
                                 return true;
                             }
                         }

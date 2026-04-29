@@ -137,7 +137,7 @@ void edit_save(EditState *edit, GalleryState *gal,
         uint16_t *native_frames[GALLERY_WIGGLE_MAX_FRAMES] = {0};
         const uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
         int src_w = 0, src_h = 0;
-        int n_frames = 0, delay_ms = 250;
+        int n_frames = 0, delay_ms = WIGGLE_DEFAULT_DELAY_MS;
 
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++) {
             native_frames[i] = malloc(VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));

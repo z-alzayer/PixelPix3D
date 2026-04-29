@@ -206,7 +206,7 @@ int main(void) {
     WiggleState wig = {
         .preview          = false,
         .n_frames         = 4,
-        .delay_ms         = 250,
+        .delay_ms         = WIGGLE_DEFAULT_DELAY_MS,
         .preview_frame    = 0,
         .preview_last_tick = 0,
         .has_align        = false,
@@ -216,6 +216,10 @@ int main(void) {
         .crop_w           = CAMERA_WIDTH,
         .crop_h           = CAMERA_HEIGHT,
         .dpad_repeat      = 0,
+        .last_wiggle_offset_dx = 0,
+        .last_wiggle_offset_dy = 0,
+        .last_anaglyph_offset_dx = 0,
+        .last_anaglyph_offset_dy = 0,
         .capture_w        = CAMERA_WIDTH,
         .capture_h        = CAMERA_HEIGHT,
         .capture_rotate_quadrants = 0,
@@ -231,7 +235,7 @@ int main(void) {
         .count      = 0,
         .loaded     = -1,
         .n_frames   = 1,
-        .delay_ms   = 250,
+        .delay_ms   = WIGGLE_DEFAULT_DELAY_MS,
         .anim_tick  = 0,
         .anim_frame = 0,
     };

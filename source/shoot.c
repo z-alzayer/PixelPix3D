@@ -197,8 +197,8 @@ static void begin_wiggle_capture(WiggleState *wig,
     memcpy(wiggle_left,  buf,               screen_size);
     memcpy(wiggle_right, buf + screen_size, screen_size);
     wig->has_align  = false;
-    wig->offset_dx  = 0;
-    wig->offset_dy  = 0;
+    wig->offset_dx  = wig->last_wiggle_offset_dx;
+    wig->offset_dy  = wig->last_wiggle_offset_dy;
     wig->capture_w  = cam_w;
     wig->capture_h  = cam_h;
     wig->capture_rotate_quadrants = rotate_quadrants;
@@ -223,6 +223,8 @@ static void begin_anaglyph_capture(WiggleState *wig,
     memcpy(wiggle_left,  buf,               screen_size);
     memcpy(wiggle_right, buf + screen_size, screen_size);
     wig->has_align  = false;
+    wig->offset_dx  = wig->last_anaglyph_offset_dx;
+    wig->offset_dy  = wig->last_anaglyph_offset_dy;
     wig->capture_w  = cam_w;
     wig->capture_h  = cam_h;
     wig->capture_rotate_quadrants = rotate_quadrants;

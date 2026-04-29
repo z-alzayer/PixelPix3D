@@ -55,6 +55,10 @@ typedef struct WiggleState {
     int           crop_w;
     int           crop_h;
     int           dpad_repeat;
+    int           last_wiggle_offset_dx;
+    int           last_wiggle_offset_dy;
+    int           last_anaglyph_offset_dx;
+    int           last_anaglyph_offset_dy;
     int           capture_w;      // resolution of captured pair (400 or 640)
     int           capture_h;      // (240 or 480)
     int           capture_rotate_quadrants; // locked orientation from shutter press

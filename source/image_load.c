@@ -7,6 +7,7 @@
 #include "image_load.h"
 #include "camera.h"
 #include "filter.h"
+#include "wigglegram.h"
 #include "apng_enc.h"
 #include "gif_enc.h"
 #include <stdio.h>
@@ -349,7 +350,7 @@ int load_apng_frames_to_rgb565(const char *path,
                                 int *out_n_frames, int *out_delay_ms,
                                 int width, int height) {
     *out_n_frames = 0;
-    *out_delay_ms = 250;
+    *out_delay_ms = WIGGLE_DEFAULT_DELAY_MS;
 
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
@@ -579,7 +580,7 @@ int load_gif_frames_to_rgb565(const char *path,
                                int *out_n_frames, int *out_delay_ms,
                                int width, int height) {
     *out_n_frames = 0;
-    *out_delay_ms = 250;
+    *out_delay_ms = WIGGLE_DEFAULT_DELAY_MS;
 
     FILE *fp = fopen(path, "rb");
     if (!fp) return 0;

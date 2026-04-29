@@ -14,6 +14,7 @@ struct SaveThreadState;
 
 // Maximum number of animation frames in a wiggle preview / saved APNG.
 #define WIGGLE_PREVIEW_MAX 8
+#define WIGGLE_DEFAULT_DELAY_MS 100
 
 // Auto-detected stereo alignment (global translation only).
 typedef struct {

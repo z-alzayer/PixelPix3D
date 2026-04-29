@@ -20,6 +20,16 @@ static void reset_wiggle_preview_phase(WiggleState *wig) {
     wig->preview_last_tick = svcGetSystemTick();
 }
 
+static void remember_stereo_offsets(WiggleState *wig, int stereo_output) {
+    if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+        wig->last_anaglyph_offset_dx = wig->offset_dx;
+        wig->last_anaglyph_offset_dy = wig->offset_dy;
+    } else {
+        wig->last_wiggle_offset_dx = wig->offset_dx;
+        wig->last_wiggle_offset_dy = wig->offset_dy;
+    }
+}
+
 static int wiggle_normalize_frame_count(int n_frames) {
     if (n_frames < 2) n_frames = 2;
     if (n_frames > WIGGLE_PREVIEW_MAX) n_frames = WIGGLE_PREVIEW_MAX;
@@ -349,10 +359,15 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         bool fire = (kDown & dpad) || (wig->dpad_repeat > 20 && wig->dpad_repeat % 4 == 0);
         wig->dpad_repeat++;
         if (fire) {
-            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -40) { wig->offset_dx--; wig->rebuild = true; }
-            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  40) { wig->offset_dx++; wig->rebuild = true; }
-            if ((dpad & KEY_DUP)    && wig->offset_dy <  10) { wig->offset_dy++; wig->rebuild = true; }
-            if ((dpad & KEY_DDOWN)  && wig->offset_dy > -10) { wig->offset_dy--; wig->rebuild = true; }
+            bool changed = false;
+            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -40) { wig->offset_dx--; changed = true; }
+            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  40) { wig->offset_dx++; changed = true; }
+            if ((dpad & KEY_DUP)    && wig->offset_dy <  10) { wig->offset_dy++; changed = true; }
+            if ((dpad & KEY_DDOWN)  && wig->offset_dy > -10) { wig->offset_dy--; changed = true; }
+            if (changed) {
+                wig->rebuild = true;
+                remember_stereo_offsets(wig, stereo_output);
+            }
         }
     } else {
         wig->dpad_repeat = 0;
@@ -390,17 +405,22 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                     if (*val > lo) {
                         (*val)--;
                         wig->rebuild = true;
+                        if (val == &wig->offset_dx || val == &wig->offset_dy)
+                            remember_stereo_offsets(wig, stereo_output);
                         reset_wiggle_preview_phase(wig);
                     }
                 } else if (tx >= WPLUX && tx < WPLUX + WBTW) {
                     if (*val < hi) {
                         (*val)++;
                         wig->rebuild = true;
+                        if (val == &wig->offset_dx || val == &wig->offset_dy)
+                            remember_stereo_offsets(wig, stereo_output);
                         reset_wiggle_preview_phase(wig);
                     }
                 } else if (val != &wig->n_frames && tx >= WRSTX && tx < WRSTX + WRSTW) {
                     *val = 0;
                     wig->rebuild = true;
+                    remember_stereo_offsets(wig, stereo_output);
                 }
             }
 

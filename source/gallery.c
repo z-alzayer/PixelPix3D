@@ -109,7 +109,7 @@ void gallery_load_selected(GalleryState *gal) {
     bool is_png = ext_is(ext, ".png");
     bool is_gif = ext_is(ext, ".gif");
     gal->n_frames   = 1;
-    gal->delay_ms   = 250;
+    gal->delay_ms   = WIGGLE_DEFAULT_DELAY_MS;
     gal->anim_tick  = svcGetSystemTick();
     gal->anim_frame = 0;
     uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
