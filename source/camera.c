@@ -56,7 +56,7 @@ void writePictureToFramebufferRGB565(void *fb, void *img,
     u16 *img_16 = (u16 *)img;
     for (int j = 0; j < h; j++) {
         for (int i = 0; i < w; i++) {
-            u32 v    = (y + h - j + (x + i) * h) * 3;
+            u32 v    = (y + h - 1 - j + (x + i) * h) * 3;
             u16 data = img_16[j * w + i];
             // filtered_buf is RGB565 (R=bits15-11, G=bits10-5, B=bits4-0)
             // framebuffer is BGR8 (B at byte 0, G at byte 1, R at byte 2)
