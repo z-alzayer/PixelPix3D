@@ -296,12 +296,20 @@ void settings_save_pipeline_presets(const PipelinePreset presets[PIPELINE_PRESET
         snprintf(val, sizeof(val), "%d", presets[i].base_preset);
         ini_set_key(key, val);
 
+        snprintf(key, sizeof(key), "preset_%d_base_strength", i);
+        snprintf(val, sizeof(val), "%d", presets[i].base_strength);
+        ini_set_key(key, val);
+
         snprintf(key, sizeof(key), "preset_%d_bend_enabled", i);
         snprintf(val, sizeof(val), "%d", presets[i].bend_enabled ? 1 : 0);
         ini_set_key(key, val);
 
         snprintf(key, sizeof(key), "preset_%d_bend_preset", i);
         snprintf(val, sizeof(val), "%d", presets[i].bend_preset);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_bend_strength", i);
+        snprintf(val, sizeof(val), "%d", presets[i].bend_strength);
         ini_set_key(key, val);
 
         snprintf(key, sizeof(key), "preset_%d_fx_mode", i);
@@ -384,8 +392,10 @@ void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT
         else if (strcmp(field, "gb_enabled") == 0)    p->gb_enabled = atoi(val) != 0;
         else if (strcmp(field, "base_enabled") == 0)  p->base_enabled = atoi(val) != 0;
         else if (strcmp(field, "base_preset") == 0)   p->base_preset = atoi(val);
+        else if (strcmp(field, "base_strength") == 0) p->base_strength = atoi(val);
         else if (strcmp(field, "bend_enabled") == 0)  p->bend_enabled = atoi(val) != 0;
         else if (strcmp(field, "bend_preset") == 0)   p->bend_preset = atoi(val);
+        else if (strcmp(field, "bend_strength") == 0) p->bend_strength = atoi(val);
         else if (strcmp(field, "fx_mode") == 0)       p->fx_mode = atoi(val);
         else if (strcmp(field, "fx_intensity") == 0)  p->fx_intensity = atoi(val);
         else if (strcmp(field, "pixel_size") == 0)    p->gb_params.pixel_size = atoi(val);

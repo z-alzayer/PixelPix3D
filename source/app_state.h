@@ -24,8 +24,10 @@ typedef struct {
     int  shoot_timer_secs; // 0 = disabled
     bool gb_enabled;
     int  lomo_preset;
+    int  lomo_strength;
     bool lomo_enabled;
     int  bend_preset;
+    int  bend_strength;
     bool bend_enabled;
     EffectPipeline pipeline;
     PipelinePreset presets[PIPELINE_PRESET_COUNT];

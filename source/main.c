@@ -193,8 +193,10 @@ int main(void) {
         .shoot_timer_secs = 0,
         .gb_enabled       = false,
         .lomo_preset      = 0,
+        .lomo_strength    = 10,
         .lomo_enabled     = false,
         .bend_preset      = 0,
+        .bend_strength    = 10,
         .bend_enabled     = false,
         .timer_active     = false,
         .timer_remaining_ms = 0,
@@ -439,8 +441,8 @@ int main(void) {
                                    (shoot.capture_mode == CAPTURE_MODE_STEREO)
                                        ? wig.filter_active : shoot.gb_enabled,
                                    &app.params,
-                                   shoot.lomo_enabled, shoot.lomo_preset,
-                                   shoot.bend_enabled, shoot.bend_preset,
+                                   shoot.lomo_enabled, shoot.lomo_preset, shoot.lomo_strength,
+                                   shoot.bend_enabled, shoot.bend_preset, shoot.bend_strength,
                                    app.params.fx_mode, app.params.fx_intensity,
                                    shoot.shoot_mode, shoot.shoot_mode_open);
         EffectRecipe live_recipe;

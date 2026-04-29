@@ -69,6 +69,37 @@ static void draw_fx_intensity_row(C2D_TextBuf staticBuf, C2D_Text *t,
     C2D_DrawText(t, C2D_WithColor, 284.0f, value_y, 0.5f, 0.38f, 0.38f, CLR_DIM);
 }
 
+static void draw_stage_strength_row(C2D_TextBuf staticBuf, C2D_Text *t,
+                                    const char *label, int strength,
+                                    bool enabled, float divider_y,
+                                    float label_y, float slider_y,
+                                    float value_y) {
+    C2D_DrawRectSolid(0, divider_y, 0.5f, BOT_W, 1, CLR_DIVIDER);
+    C2D_TextParse(t, staticBuf, label);
+    C2D_DrawText(t, C2D_WithColor, 4.0f, label_y, 0.5f, 0.38f, 0.38f,
+                 enabled ? CLR_TEXT : CLR_TRACK);
+
+    C2D_DrawRectSolid(TRACK_X, slider_y - TRACK_H / 2.0f,
+                      0.5f, TRACK_W, TRACK_H, CLR_TRACK);
+    if (enabled) {
+        const float handle_w = 10.0f;
+        const float handle_h = 10.0f;
+        float hx = slider_val_to_x((float)strength, 0.0f, 10.0f);
+        float fill_w = hx - TRACK_X;
+        if (fill_w > 0.0f) {
+            C2D_DrawRectSolid(TRACK_X, slider_y - TRACK_H / 2.0f,
+                              0.5f, fill_w, TRACK_H, CLR_FILL);
+        }
+        draw_rounded_rect(hx - handle_w / 2.0f, slider_y - handle_h / 2.0f,
+                          handle_w, handle_h, 3.0f, CLR_HANDLE);
+    }
+
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", strength);
+    C2D_TextParse(t, staticBuf, buf);
+    C2D_DrawText(t, C2D_WithColor, 284.0f, value_y, 0.5f, 0.38f, 0.38f, CLR_DIM);
+}
+
 static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
                                   const FilterParams *p, float cy) {
     float sc = 0.40f;
@@ -167,8 +198,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
                     int wiggle_offset_dx, int wiggle_offset_dy,
-                    bool lomo_enabled, int lomo_preset,
-                    bool bend_enabled, int bend_preset) {
+                    bool lomo_enabled, int lomo_preset, int lomo_strength,
+                    bool bend_enabled, int bend_preset, int bend_strength) {
     C2D_Text t;
 
     // Background for strip area
@@ -686,6 +717,9 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                      sel ? CLR_WHITE : CLR_TEXT);
                     }
                 }
+                draw_stage_strength_row(staticBuf, &t, "Strength", lomo_strength,
+                                        lomo_enabled, cy + 66.0f, cy + 70.0f,
+                                        cy + 84.0f, cy + 70.0f);
             } else if (shoot_mode == SHOOT_MODE_BEND) {
                 // 3×2 grid of circuit-bend preset buttons
                 for (int row = 0; row < BEND_GRID_ROWS; row++) {
@@ -707,6 +741,9 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                      sel ? CLR_WHITE : CLR_TEXT);
                     }
                 }
+                draw_stage_strength_row(staticBuf, &t, "Strength", bend_strength,
+                                        bend_enabled, cy + 66.0f, cy + 70.0f,
+                                        cy + 84.0f, cy + 70.0f);
             } else if (shoot_mode == SHOOT_MODE_FX) {
                 draw_fx_panel_compact(staticBuf, &t, p, cy);
             }

@@ -31,8 +31,10 @@ typedef struct {
     FilterParams gb_params;
     bool base_enabled;
     int  base_preset;
+    int  base_strength;
     bool bend_enabled;
     int  bend_preset;
+    int  bend_strength;
     int  fx_mode;
     int  fx_intensity;
 } PipelinePreset;
@@ -40,6 +42,7 @@ typedef struct {
 typedef struct {
     bool enabled;
     int  preset;
+    int  strength;
 } BaseLookState;
 
 typedef struct {
@@ -50,6 +53,7 @@ typedef struct {
 typedef struct {
     bool enabled;
     int  preset;
+    int  strength;
 } BendStageState;
 
 typedef struct {
@@ -71,10 +75,12 @@ typedef struct {
 typedef struct {
     bool         use_base_look;
     int          lomo_preset;
+    int          lomo_strength;
     bool         use_gb;
     FilterParams gb_params;
     bool         use_bend;
     int          bend_preset;
+    int          bend_strength;
     bool         use_post_fx;
     int          post_fx_mode;
     int          post_fx_intensity;
@@ -87,8 +93,8 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
                                 int capture_mode,
                                 bool gb_enabled,
                                 const FilterParams *gb_params,
-                                bool lomo_enabled, int lomo_preset,
-                                bool bend_enabled, int bend_preset,
+                                bool lomo_enabled, int lomo_preset, int lomo_strength,
+                                bool bend_enabled, int bend_preset, int bend_strength,
                                 int post_fx_mode, int post_fx_intensity,
                                 int active_panel, bool panel_open);
 void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe);

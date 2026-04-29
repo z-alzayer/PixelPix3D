@@ -92,15 +92,6 @@ static void rotate_rgb888_quadrants(uint8_t *dst, const uint8_t *src,
 
 static void save_thread_func(void *arg) {
     SaveThreadState *st = (SaveThreadState *)arg;
-    uint8_t *rgb_priv     = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
-    uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH * MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
-    uint8_t *rotate_priv  = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH * MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
-    if (!rgb_priv || !upscale_priv || !rotate_priv) {
-        free(rgb_priv);
-        free(upscale_priv);
-        free(rotate_priv);
-        threadExit(1);
-    }
     while (true) {
         LightEvent_Wait(&st->request_event);
         if (st->quit) break;
@@ -130,30 +121,37 @@ static void save_thread_func(void *arg) {
                               st->rotate_quadrants,
                               &st->anaglyph_recipe);
         } else {
+            uint8_t *rgb_priv = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
+            uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH *
+                                           MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
+            uint8_t *rotate_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH *
+                                          MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
             int scale = st->save_scale;
-            rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
-                             CAMERA_WIDTH * CAMERA_HEIGHT);
-            nn_upscale(upscale_priv, rgb_priv, CAMERA_WIDTH, CAMERA_HEIGHT, scale);
-            int out_w = CAMERA_WIDTH * scale;
-            int out_h = CAMERA_HEIGHT * scale;
-            const uint8_t *save_buf = upscale_priv;
-            if (st->rotate_quadrants != 0) {
-                rotate_rgb888_quadrants(rotate_priv, upscale_priv, out_w, out_h,
-                                        st->rotate_quadrants);
-                save_buf = rotate_priv;
-                int tmp = out_w;
-                out_w = out_h;
-                out_h = tmp;
+            if (rgb_priv && upscale_priv && rotate_priv) {
+                rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
+                                 CAMERA_WIDTH * CAMERA_HEIGHT);
+                nn_upscale(upscale_priv, rgb_priv, CAMERA_WIDTH, CAMERA_HEIGHT, scale);
+                int out_w = CAMERA_WIDTH * scale;
+                int out_h = CAMERA_HEIGHT * scale;
+                const uint8_t *save_buf = upscale_priv;
+                if (st->rotate_quadrants != 0) {
+                    rotate_rgb888_quadrants(rotate_priv, upscale_priv, out_w, out_h,
+                                            st->rotate_quadrants);
+                    save_buf = rotate_priv;
+                    int tmp = out_w;
+                    out_w = out_h;
+                    out_h = tmp;
+                }
+                save_jpeg(path, save_buf, out_w, out_h);
             }
-            save_jpeg(path, save_buf, out_w, out_h);
+            free(rgb_priv);
+            free(upscale_priv);
+            free(rotate_priv);
         }
 
         st->busy = false;
         LightEvent_Signal(&st->done_event);
     }
-    free(rgb_priv);
-    free(upscale_priv);
-    free(rotate_priv);
     threadExit(0);
 }
 

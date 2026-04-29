@@ -5,11 +5,23 @@
 #include "bend.h"
 #include <string.h>
 
+static int clamp_strength(int strength)
+{
+    if (strength < 0) return 0;
+    if (strength > 10) return 10;
+    return strength;
+}
+
+static uint8_t mix_u8(uint8_t a, uint8_t b, int strength)
+{
+    return (uint8_t)(a + (((int)b - (int)a) * strength + 5) / 10);
+}
+
 // ---------------------------------------------------------------------------
 // Corrupt — per-scanline channel bit-rotation
 // Simulates reading pixel memory at the wrong byte alignment.
 // ---------------------------------------------------------------------------
-static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
+static void bend_corrupt(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     uint32_t rng = (uint32_t)(frame * 1597334677u + 97);
     for (int y = 0; y < h; y++) {
@@ -26,13 +38,14 @@ static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
             uint8_t cg = (g >> shift_g) | (g << (8 - shift_g));
             uint8_t cb = (b << shift_b) | (b >> (8 - shift_b));
             // Blend ~55% corrupted with original to soften
-            int mr = r + (((cr - r) * 140) >> 8);
-            int mg = g + (((cg - g) * 140) >> 8);
-            int mb = b + (((cb - b) * 140) >> 8);
+            int blend = 140 * strength / 10;
+            int mr = r + (((cr - r) * blend) >> 8);
+            int mg = g + (((cg - g) * blend) >> 8);
+            int mb = b + (((cb - b) * blend) >> 8);
             // Random colour pop — pick a channel to boost based on
             // which original channel is strongest
             rng = rng * 1664525u + 1013904223u;
-            int boost = 20 + ((rng >> 12) & 0x1F); // 20..51
+            int boost = (20 + ((rng >> 12) & 0x1F)) * strength / 10; // 20..51 at full
             if (r >= g && r >= b)      { mr += boost; mg += boost >> 3; }
             else if (g >= r && g >= b) { mg += boost; mb += boost >> 3; }
             else                       { mb += boost; mr += boost >> 3; }
@@ -48,7 +61,7 @@ static void bend_corrupt(uint8_t *rgb, int w, int h, int frame)
 // Simulates a broken DAC whose output register overflows, wrapping
 // around to produce sudden neon jumps from what should be smooth tones.
 // ---------------------------------------------------------------------------
-static void bend_overflow(uint8_t *rgb, int w, int h, int frame)
+static void bend_overflow(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     (void)frame;
     // LCG state — seeded per-frame so the pattern varies across captures
@@ -68,9 +81,9 @@ static void bend_overflow(uint8_t *rgb, int w, int h, int frame)
             uint32_t r2 = rng * 2891336453u + 1;
             int ch_spread = (int)((r2 >> 16) & 0x1F);  // 0..31
 
-            uint8_t bias_r = (uint8_t)((base_r + jitter) & 0xFF);
-            uint8_t bias_g = (uint8_t)((base_g + jitter + ch_spread) & 0xFF);
-            uint8_t bias_b = (uint8_t)((base_b + jitter - ch_spread) & 0xFF);
+            int bias_r = ((base_r + jitter) & 0xFF) * strength / 10;
+            int bias_g = ((base_g + jitter + ch_spread) & 0xFF) * strength / 10;
+            int bias_b = ((base_b + jitter - ch_spread) & 0xFF) * strength / 10;
 
             row[x*3+0] = (uint8_t)(row[x*3+0] + bias_r);
             row[x*3+1] = (uint8_t)(row[x*3+1] + bias_g);
@@ -86,12 +99,12 @@ static void bend_overflow(uint8_t *rgb, int w, int h, int frame)
 // ---------------------------------------------------------------------------
 static uint8_t s_byteshift_tmp[400 * 3];  // one row scratch
 
-static void bend_byteshift(uint8_t *rgb, int w, int h, int frame)
+static void bend_byteshift(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     int row_bytes = w * 3;
     uint32_t rng = (uint32_t)(frame * 3266489917u + 13);
     for (int y = 0; y < h; y++) {
-        int shift = (y * y / 60) % row_bytes;  // quadratic growth, wrapping
+        int shift = ((y * y / 60) * strength / 10) % row_bytes;  // quadratic growth, wrapping
         uint8_t *row = rgb + y * row_bytes;
         memcpy(s_byteshift_tmp, row, row_bytes);
         for (int i = 0; i < row_bytes; i += 3) {
@@ -104,17 +117,17 @@ static void bend_byteshift(uint8_t *rgb, int w, int h, int frame)
             uint8_t orig_b = s_byteshift_tmp[i + 2];
             // Softer XOR — blend shifted with original (~50/50) then
             // apply a mild XOR instead of the full-strength y mask
-            uint8_t xmask = (uint8_t)((y >> 1) & 0x7F); // half strength
-            int mr = ((int)orig_r + (int)src_r) >> 1;
-            int mg = ((int)orig_g + (int)src_g) >> 1;
-            int mb = ((int)orig_b + (int)src_b) >> 1;
+            uint8_t xmask = (uint8_t)(((y >> 1) & 0x7F) * strength / 10);
+            int mr = orig_r + (((int)src_r - (int)orig_r) * strength) / 20;
+            int mg = orig_g + (((int)src_g - (int)orig_g) * strength) / 20;
+            int mb = orig_b + (((int)src_b - (int)orig_b) * strength) / 20;
             mr ^= xmask;
             mg ^= xmask;
             mb ^= xmask;
             // Random vibrant tint — varies per pixel
             rng = rng * 1664525u + 1013904223u;
             int sel = (rng >> 16) % 3;
-            int pop = 15 + ((rng >> 8) & 0x1F); // 15..46
+            int pop = (15 + ((rng >> 8) & 0x1F)) * strength / 10; // 15..46 at full
             if (sel == 0)      mr += pop;
             else if (sel == 1) mg += pop;
             else               mb += pop;
@@ -130,12 +143,13 @@ static void bend_byteshift(uint8_t *rgb, int w, int h, int frame)
 // Takes the solarization concept and pushes it into pure chaos:
 // wrapping math, channel cross-contamination, and bit manipulation.
 // ---------------------------------------------------------------------------
-static void bend_solarize(uint8_t *rgb, int w, int h, int frame)
+static void bend_solarize(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     (void)frame;
     int npix = w * h;
     for (int i = 0; i < npix; i++) {
-        uint8_t r = rgb[i*3+0], g = rgb[i*3+1], b = rgb[i*3+2];
+        uint8_t or = rgb[i*3+0], og = rgb[i*3+1], ob = rgb[i*3+2];
+        uint8_t r = or, g = og, b = ob;
         // Fold channels through midpoint (solarize base)
         if (r > 128) r = 255 - r;
         if (g > 128) g = 255 - g;
@@ -152,9 +166,9 @@ static void bend_solarize(uint8_t *rgb, int w, int h, int frame)
         r ^= (b >> 1);
         g ^= (r >> 1);
         b ^= (g >> 1);
-        rgb[i*3+0] = r;
-        rgb[i*3+1] = g;
-        rgb[i*3+2] = b;
+        rgb[i*3+0] = (strength >= 10) ? r : mix_u8(or, r, strength);
+        rgb[i*3+1] = (strength >= 10) ? g : mix_u8(og, g, strength);
+        rgb[i*3+2] = (strength >= 10) ? b : mix_u8(ob, b, strength);
     }
 }
 
@@ -163,7 +177,7 @@ static void bend_solarize(uint8_t *rgb, int w, int h, int frame)
 // Reads RGB triplets at a stride that doesn't align with pixel boundaries,
 // producing colour-shifted ghost images layered on top of each other.
 // ---------------------------------------------------------------------------
-static void bend_scramble(uint8_t *rgb, int w, int h, int frame)
+static void bend_scramble(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     int total = w * h * 3;
     // Use a stride coprime with 3 to maximise channel misalignment.
@@ -179,16 +193,17 @@ static void bend_scramble(uint8_t *rgb, int w, int h, int frame)
 
         // Softer blend — mix ~40% scrambled instead of full add to tame
         // the harsh scanline banding
-        int mr = r0 + ((rs * 100) >> 8);
-        int mg = g0 + ((gs * 100) >> 8);
-        int mb = b0 + ((bs * 100) >> 8);
+        int mix = 100 * strength / 10;
+        int mr = r0 + ((rs * mix) >> 8);
+        int mg = g0 + ((gs * mix) >> 8);
+        int mb = b0 + ((bs * mix) >> 8);
 
         // Vibrant colour tint derived from the original subject —
         // boost the dominant channel and cross-contaminate slightly
         // so the subject's hues punch through the glitch.
         rng = rng * 1664525u + 1013904223u;
         int sel = (rng >> 16) % 3;
-        int boost = 30 + ((rng >> 8) & 0x1F);  // 30..61
+        int boost = (30 + ((rng >> 8) & 0x1F)) * strength / 10;  // 30..61 at full
 
         if (sel == 0)      { mr += boost; mg += boost >> 2; }
         else if (sel == 1) { mg += boost; mb += boost >> 2; }
@@ -204,7 +219,7 @@ static void bend_scramble(uint8_t *rgb, int w, int h, int frame)
 // Acid — multiply channels together and use wrapping to create extreme
 // psychedelic rainbows. Like a broken colour LUT where every entry is wrong.
 // ---------------------------------------------------------------------------
-static void bend_acid(uint8_t *rgb, int w, int h, int frame)
+static void bend_acid(uint8_t *rgb, int w, int h, int frame, int strength)
 {
     (void)frame;
     int npix = w * h;
@@ -219,9 +234,9 @@ static void bend_acid(uint8_t *rgb, int w, int h, int frame)
         nr = (nr >> 4) | (nr << 4);
         ng = (ng >> 4) | (ng << 4);
         nb = (nb >> 4) | (nb << 4);
-        rgb[i*3+0] = nr;
-        rgb[i*3+1] = ng;
-        rgb[i*3+2] = nb;
+        rgb[i*3+0] = (strength >= 10) ? nr : mix_u8(r, nr, strength);
+        rgb[i*3+1] = (strength >= 10) ? ng : mix_u8(g, ng, strength);
+        rgb[i*3+2] = (strength >= 10) ? nb : mix_u8(b, nb, strength);
     }
 }
 
@@ -229,15 +244,18 @@ static void bend_acid(uint8_t *rgb, int w, int h, int frame)
 // Public entry point
 // ---------------------------------------------------------------------------
 
-void apply_bend(uint8_t *rgb, int w, int h, int preset_id, int frame_count)
+void apply_bend(uint8_t *rgb, int w, int h, int preset_id, int frame_count, int strength)
 {
+    strength = clamp_strength(strength);
+    if (strength <= 0) return;
+
     switch (preset_id) {
-    case BEND_CORRUPT:   bend_corrupt(rgb, w, h, frame_count);   break;
-    case BEND_MELT:      bend_overflow(rgb, w, h, frame_count);  break;
-    case BEND_SWAP:      bend_byteshift(rgb, w, h, frame_count); break;
-    case BEND_SOLARIZE:  bend_solarize(rgb, w, h, frame_count);  break;
-    case BEND_FEEDBACK:  bend_scramble(rgb, w, h, frame_count);  break;
-    case BEND_POSTERIZE: bend_acid(rgb, w, h, frame_count);      break;
+    case BEND_CORRUPT:   bend_corrupt(rgb, w, h, frame_count, strength);   break;
+    case BEND_MELT:      bend_overflow(rgb, w, h, frame_count, strength);  break;
+    case BEND_SWAP:      bend_byteshift(rgb, w, h, frame_count, strength); break;
+    case BEND_SOLARIZE:  bend_solarize(rgb, w, h, frame_count, strength);  break;
+    case BEND_FEEDBACK:  bend_scramble(rgb, w, h, frame_count, strength);  break;
+    case BEND_POSTERIZE: bend_acid(rgb, w, h, frame_count, strength);      break;
     default: break;
     }
 }

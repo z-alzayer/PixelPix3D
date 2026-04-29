@@ -568,10 +568,12 @@ static bool same_effect_recipe(const EffectRecipe *a, const EffectRecipe *b) {
     if (!a || !b) return a == b;
     return a->use_base_look == b->use_base_look &&
            a->lomo_preset == b->lomo_preset &&
+           a->lomo_strength == b->lomo_strength &&
            a->use_gb == b->use_gb &&
            same_filter_params(&a->gb_params, &b->gb_params) &&
            a->use_bend == b->use_bend &&
            a->bend_preset == b->bend_preset &&
+           a->bend_strength == b->bend_strength &&
            a->use_post_fx == b->use_post_fx &&
            a->post_fx_mode == b->post_fx_mode &&
            a->post_fx_intensity == b->post_fx_intensity &&

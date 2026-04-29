@@ -31,6 +31,17 @@ static void rebuild_basic_lut(float gamma, float brightness, float contrast) {
     s_basic_contrast = contrast;
 }
 
+static int clamp_strength(int strength) {
+    if (strength < 0) return 0;
+    if (strength > 10) return 10;
+    return strength;
+}
+
+static float strength_mix(float neutral, float target, int strength) {
+    float t = (float)clamp_strength(strength) / 10.0f;
+    return neutral + (target - neutral) * t;
+}
+
 static void apply_basic_adjustments(uint8_t *pixels, int width, int height,
                                     float brightness, float contrast,
                                     float gamma, float saturation) {
@@ -73,10 +84,12 @@ void pipeline_state_init(EffectPipeline *pipe, const FilterParams *defaults) {
     pipe->panel_open = false;
     pipe->base.enabled = false;
     pipe->base.preset = 0;
+    pipe->base.strength = 10;
     pipe->gb.enabled = false;
     pipe->gb.params = *defaults;
     pipe->bend.enabled = false;
     pipe->bend.preset = 0;
+    pipe->bend.strength = 10;
     pipe->post.enabled = defaults->fx_mode != FX_NONE;
     pipe->post.fx_mode = defaults->fx_mode;
     pipe->post.fx_intensity = defaults->fx_intensity;
@@ -86,8 +99,8 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
                                 int capture_mode,
                                 bool gb_enabled,
                                 const FilterParams *gb_params,
-                                bool lomo_enabled, int lomo_preset,
-                                bool bend_enabled, int bend_preset,
+                                bool lomo_enabled, int lomo_preset, int lomo_strength,
+                                bool bend_enabled, int bend_preset, int bend_strength,
                                 int post_fx_mode, int post_fx_intensity,
                                 int active_panel, bool panel_open) {
     pipe->capture_mode = capture_mode;
@@ -97,8 +110,10 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
     pipe->gb.params = *gb_params;
     pipe->base.enabled = lomo_enabled;
     pipe->base.preset = lomo_preset;
+    pipe->base.strength = clamp_strength(lomo_strength);
     pipe->bend.enabled = bend_enabled;
     pipe->bend.preset = bend_preset;
+    pipe->bend.strength = clamp_strength(bend_strength);
     pipe->post.enabled = post_fx_mode != FX_NONE;
     pipe->post.fx_mode = post_fx_mode;
     pipe->post.fx_intensity = post_fx_intensity;
@@ -107,16 +122,19 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
 void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
     out->use_base_look = pipe->base.enabled;
     out->lomo_preset = pipe->base.preset;
+    out->lomo_strength = clamp_strength(pipe->base.strength);
     out->use_gb = pipe->gb.enabled;
     out->gb_params = pipe->gb.params;
     out->use_bend = pipe->bend.enabled;
     out->bend_preset = pipe->bend.preset;
+    out->bend_strength = clamp_strength(pipe->bend.strength);
     out->use_post_fx = pipe->post.enabled;
     out->post_fx_mode = pipe->post.fx_mode;
     out->post_fx_intensity = pipe->post.fx_intensity;
-    if (pipe->base.enabled) {
+    if (pipe->base.enabled && pipe->base.strength > 0) {
         out->fallback_post_fx_mode = lomo_presets[pipe->base.preset].fx_mode;
-        out->fallback_post_fx_intensity = lomo_presets[pipe->base.preset].fx_intensity;
+        out->fallback_post_fx_intensity =
+            (lomo_presets[pipe->base.preset].fx_intensity * out->lomo_strength + 5) / 10;
     } else {
         out->fallback_post_fx_mode = FX_NONE;
         out->fallback_post_fx_intensity = 0;
@@ -125,9 +143,9 @@ void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
 
 bool pipeline_recipe_has_effects(const EffectRecipe *recipe) {
     return recipe &&
-           (recipe->use_base_look || recipe->use_gb ||
+           ((recipe->use_base_look && recipe->lomo_strength > 0) || recipe->use_gb ||
             has_basic_adjustments(&recipe->gb_params) ||
-            recipe->use_bend || recipe->use_post_fx ||
+            (recipe->use_bend && recipe->bend_strength > 0) || recipe->use_post_fx ||
             recipe->fallback_post_fx_mode != FX_NONE);
 }
 
@@ -136,13 +154,13 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
                     int frame_count) {
     if (!pipeline_recipe_has_effects(recipe)) return;
 
-    if (recipe->use_base_look) {
+    if (recipe->use_base_look && recipe->lomo_strength > 0) {
         const LomoPreset *lp = &lomo_presets[recipe->lomo_preset];
         apply_basic_adjustments(rgb, w, h,
-                                lp->brightness,
-                                lp->contrast,
-                                lp->gamma,
-                                lp->saturation);
+                                strength_mix(1.0f, lp->brightness, recipe->lomo_strength),
+                                strength_mix(1.0f, lp->contrast, recipe->lomo_strength),
+                                strength_mix(1.0f, lp->gamma, recipe->lomo_strength),
+                                strength_mix(1.0f, lp->saturation, recipe->lomo_strength));
     }
 
     if (!recipe->use_gb && has_basic_adjustments(&recipe->gb_params)) {
@@ -157,8 +175,8 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
         apply_gameboy_filter(rgb, w, h, recipe->gb_params);
     }
 
-    if (recipe->use_bend) {
-        apply_bend(rgb, w, h, recipe->bend_preset, frame_count);
+    if (recipe->use_bend && recipe->bend_strength > 0) {
+        apply_bend(rgb, w, h, recipe->bend_preset, frame_count, recipe->bend_strength);
     }
 
     if (recipe->use_post_fx) {
@@ -180,6 +198,8 @@ void pipeline_preset_default(PipelinePreset *preset, int slot) {
     snprintf(preset->name, sizeof(preset->name), "Empty Slot %d", slot + 1);
     preset->gb_enabled = false;
     preset->gb_params = defaults;
+    preset->base_strength = 10;
+    preset->bend_strength = 10;
 }
 
 void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
@@ -222,8 +242,10 @@ void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
     preset->gb_params = pipe->gb.params;
     preset->base_enabled = pipe->base.enabled;
     preset->base_preset = pipe->base.preset;
+    preset->base_strength = clamp_strength(pipe->base.strength);
     preset->bend_enabled = pipe->bend.enabled;
     preset->bend_preset = pipe->bend.preset;
+    preset->bend_strength = clamp_strength(pipe->bend.strength);
     preset->fx_mode = pipe->post.enabled ? pipe->post.fx_mode : FX_NONE;
     preset->fx_intensity = pipe->post.fx_intensity;
 }
@@ -233,8 +255,10 @@ void pipeline_preset_apply(EffectPipeline *pipe, const PipelinePreset *preset) {
     pipe->gb.params = preset->gb_params;
     pipe->base.enabled = preset->base_enabled;
     pipe->base.preset = preset->base_preset;
+    pipe->base.strength = clamp_strength(preset->base_strength);
     pipe->bend.enabled = preset->bend_enabled;
     pipe->bend.preset = preset->bend_preset;
+    pipe->bend.strength = clamp_strength(preset->bend_strength);
     pipe->post.enabled = preset->fx_mode != FX_NONE;
     pipe->post.fx_mode = preset->fx_mode;
     pipe->post.fx_intensity = preset->fx_intensity;

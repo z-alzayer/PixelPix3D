@@ -140,9 +140,8 @@ int save_anaglyph_png(const char *path,
     int npix = w * h;
     uint8_t *left_rgb = malloc((size_t)npix * 3);
     uint8_t *right_rgb = malloc((size_t)npix * 3);
-    uint8_t *ana_rgb = malloc((size_t)npix * 3);
     uint8_t *rot_rgb = NULL;
-    if (!left_rgb || !right_rgb || !ana_rgb) goto fail;
+    if (!left_rgb || !right_rgb) goto fail;
 
     rgb565_to_rgb888(left_rgb, (const uint16_t *)left_rgb565, npix);
     rgb565_to_rgb888(right_rgb, (const uint16_t *)right_rgb565, npix);
@@ -150,16 +149,16 @@ int save_anaglyph_png(const char *path,
         pipeline_apply(left_rgb, w, h, recipe, 0);
         pipeline_apply(right_rgb, w, h, recipe, 0);
     }
-    compose_anaglyph_rgb888_sized(ana_rgb, left_rgb, right_rgb,
+    compose_anaglyph_rgb888_sized(left_rgb, left_rgb, right_rgb,
                                   w, h, offset_dx, offset_dy);
 
-    const uint8_t *frame = ana_rgb;
+    const uint8_t *frame = left_rgb;
     int out_w = w;
     int out_h = h;
     if (rotate_quadrants != 0) {
         rot_rgb = malloc((size_t)npix * 3);
         if (!rot_rgb) goto fail;
-        rotate_rgb888_quadrants(rot_rgb, ana_rgb, w, h, rotate_quadrants);
+        rotate_rgb888_quadrants(rot_rgb, left_rgb, w, h, rotate_quadrants);
         frame = rot_rgb;
         out_w = h;
         out_h = w;
@@ -168,14 +167,12 @@ int save_anaglyph_png(const char *path,
     int ok = save_png(path, frame, out_w, out_h);
     free(left_rgb);
     free(right_rgb);
-    free(ana_rgb);
     free(rot_rgb);
     return ok;
 
 fail:
     free(left_rgb);
     free(right_rgb);
-    free(ana_rgb);
     free(rot_rgb);
     return 0;
 }

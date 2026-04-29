@@ -267,8 +267,8 @@ void draw_ui(C3D_RenderTarget *bot,
                        wig->n_frames, wig->delay_ms,
                        wig->preview,
                        wig->offset_dx, wig->offset_dy,
-                       shoot->lomo_enabled, shoot->lomo_preset,
-                       shoot->bend_enabled, shoot->bend_preset);
+                       shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
+                       shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength);
     } else if (app->active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf, &app->params, &app->ranges);
     } else if (app->active_tab == TAB_FX) {

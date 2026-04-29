@@ -54,8 +54,8 @@ static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
                                (shoot->capture_mode == CAPTURE_MODE_STEREO)
                                    ? wig->filter_active : shoot->gb_enabled,
                                &app->params,
-                               shoot->lomo_enabled, shoot->lomo_preset,
-                               shoot->bend_enabled, shoot->bend_preset,
+                               shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
+                               shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
                                app->params.fx_mode, app->params.fx_intensity,
                                shoot->shoot_mode, shoot->shoot_mode_open);
 }
@@ -85,8 +85,10 @@ static void apply_preset_to_legacy(ShootState *shoot, WiggleState *wig,
     wig->filter_active = shoot->pipeline.gb.enabled;
     shoot->lomo_enabled = shoot->pipeline.base.enabled;
     shoot->lomo_preset = shoot->pipeline.base.preset;
+    shoot->lomo_strength = shoot->pipeline.base.strength;
     shoot->bend_enabled = shoot->pipeline.bend.enabled;
     shoot->bend_preset = shoot->pipeline.bend.preset;
+    shoot->bend_strength = shoot->pipeline.bend.strength;
     wig->rebuild = true;
 }
 
@@ -538,6 +540,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             }
                         }
                     }
+                    if (touched && shoot->lomo_enabled &&
+                        ty >= (int)(cy + 84.0f - 14.0f) &&
+                        ty <  (int)(cy + 84.0f + 14.0f) &&
+                        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                        if (t_val < 0.0f) t_val = 0.0f;
+                        if (t_val > 1.0f) t_val = 1.0f;
+                        shoot->lomo_strength = (int)(t_val * 10.0f + 0.5f);
+                        if (shoot->lomo_strength < 0)  shoot->lomo_strength = 0;
+                        if (shoot->lomo_strength > 10) shoot->lomo_strength = 10;
+                        wig->rebuild = true;
+                        return true;
+                    }
                 } else if (shoot->shoot_mode == SHOOT_MODE_BEND) {
                     // 3×2 circuit-bend preset grid
                     float cy = (float)SHOOT_CONTENT_Y;
@@ -559,6 +574,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 }
                             }
                         }
+                    }
+                    if (touched && shoot->bend_enabled &&
+                        ty >= (int)(cy + 84.0f - 14.0f) &&
+                        ty <  (int)(cy + 84.0f + 14.0f) &&
+                        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                        if (t_val < 0.0f) t_val = 0.0f;
+                        if (t_val > 1.0f) t_val = 1.0f;
+                        shoot->bend_strength = (int)(t_val * 10.0f + 0.5f);
+                        if (shoot->bend_strength < 0)  shoot->bend_strength = 0;
+                        if (shoot->bend_strength > 10) shoot->bend_strength = 10;
+                        wig->rebuild = true;
+                        return true;
                     }
                 } else if (shoot->shoot_mode == SHOOT_MODE_FX) {
                     float cy = (float)SHOOT_CONTENT_Y;

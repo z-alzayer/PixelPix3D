@@ -13,7 +13,7 @@
 // Background save thread state
 // ---------------------------------------------------------------------------
 
-#define SAVE_THREAD_STACK_SIZE (32 * 1024)
+#define SAVE_THREAD_STACK_SIZE (64 * 1024)
 
 typedef struct SaveThreadState {
     uint8_t      *snapshot_buf;    // malloc'd once, CAMERA_SCREEN_SIZE bytes (RGB565)
@@ -21,7 +21,7 @@ typedef struct SaveThreadState {
     char          save_path[64];
     int           save_scale;
     int           rotate_quadrants; // 0 = landscape, 1 = CW 90, 3 = CCW 90
-    bool          wiggle_mode;     // true = save APNG from both cam buffers
+    bool          wiggle_mode;     // true = save GIF from both cam buffers
     bool          anaglyph_mode;   // true = save red/cyan PNG from both cam buffers
     int           wiggle_n_frames;
     int           wiggle_delay_ms;
