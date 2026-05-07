@@ -243,7 +243,7 @@
 
 #define MORE_LABEL_Y       8
 
-// Save Scale row — 4 buttons: 1x / 2x / 3x / 4x
+// Save Scale row — native / 2x
 #define MORE_SCALE_Y          38
 #define MORE_STOG_H           24
 #define MORE_STOG_W           56

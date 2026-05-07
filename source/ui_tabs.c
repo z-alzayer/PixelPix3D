@@ -1324,12 +1324,12 @@ void draw_more_tab(C2D_TextBuf staticBuf,
 
     C2D_DrawRectSolid(0, 26, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
-    // --- Save Scale row: 1x / 2x / 3x / 4x ---
+    // --- Save Scale row: native / 2x ---
     {
-        static const char *scale_labels[4] = { "1x", "2x", "3x", "4x" };
+        static const char *scale_labels[MAX_SAVE_SCALE] = { "1x", "2x" };
         C2D_TextParse(&t, staticBuf, "Save Scale");
         C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)MORE_SCALE_Y - 8.0f, 0.5f, sc, sc, CLR_TEXT);
-        for (int si = 0; si < 4; si++) {
+        for (int si = 0; si < MAX_SAVE_SCALE; si++) {
             float bx = (float)(MORE_STOG_X0 + si * (MORE_SCALE_BTN_W + MORE_SCALE_BTN_GAP));
             bool sel = (save_scale == si + 1);
             draw_pill(bx, MORE_SCALE_Y - MORE_STOG_H / 2,

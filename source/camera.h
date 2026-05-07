@@ -13,7 +13,7 @@
 #define CAMERA_SCREEN_SIZE (CAMERA_WIDTH * CAMERA_HEIGHT * 2)
 #define CAMERA_BUF_SIZE    (CAMERA_SCREEN_SIZE * 2)
 #define SAVE_SCALE         2
-#define MAX_SAVE_SCALE     4
+#define MAX_SAVE_SCALE     2
 
 // VGA capture resolution (wiggle mode)
 #define VGA_WIDTH          640

@@ -31,6 +31,7 @@ static jmp_buf exitJmp;
 // ---------------------------------------------------------------------------
 
 void cleanup(void) {
+    osSetSpeedupEnable(false);
     HIDUSER_DisableAccelerometer();
     sound_exit();
     C2D_Fini();
@@ -131,6 +132,7 @@ int main(void) {
     acInit();
     sound_init();  // gracefully no-ops if csnd unavailable
     gfxInitDefault();
+    osSetSpeedupEnable(true);  // Enable New 3DS 804MHz mode when available.
     gfxSetDoubleBuffering(GFX_TOP,    true);
     gfxSetDoubleBuffering(GFX_BOTTOM, false);
     HIDUSER_EnableAccelerometer();

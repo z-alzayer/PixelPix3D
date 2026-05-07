@@ -122,21 +122,35 @@ static void save_thread_func(void *arg) {
                               &st->anaglyph_recipe,
                               st->anaglyph_colors);
         } else {
-            uint8_t *rgb_priv = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
-            uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH *
-                                           MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
-            uint8_t *rotate_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH *
-                                          MAX_SAVE_SCALE * CAMERA_HEIGHT * 3);
+            int cap_w = st->still_cap_w > 0 ? st->still_cap_w : CAMERA_WIDTH;
+            int cap_h = st->still_cap_h > 0 ? st->still_cap_h : CAMERA_HEIGHT;
             int scale = st->save_scale;
-            if (rgb_priv && upscale_priv && rotate_priv) {
+            if (scale < 1) scale = 1;
+            if (scale > MAX_SAVE_SCALE) scale = MAX_SAVE_SCALE;
+
+            uint8_t *rgb_priv = malloc(cap_w * cap_h * 3);
+            uint8_t *upscale_priv = (scale > 1)
+                                  ? malloc(scale * cap_w * scale * cap_h * 3)
+                                  : NULL;
+            uint8_t *rotate_priv = NULL;
+            if (st->rotate_quadrants != 0)
+                rotate_priv = malloc(scale * cap_w * scale * cap_h * 3);
+
+            if (rgb_priv && (scale == 1 || upscale_priv) &&
+                (st->rotate_quadrants == 0 || rotate_priv)) {
                 rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
-                                 CAMERA_WIDTH * CAMERA_HEIGHT);
-                nn_upscale(upscale_priv, rgb_priv, CAMERA_WIDTH, CAMERA_HEIGHT, scale);
-                int out_w = CAMERA_WIDTH * scale;
-                int out_h = CAMERA_HEIGHT * scale;
-                const uint8_t *save_buf = upscale_priv;
+                                 cap_w * cap_h);
+                pipeline_apply(rgb_priv, cap_w, cap_h, &st->still_recipe, 0);
+
+                int out_w = cap_w * scale;
+                int out_h = cap_h * scale;
+                const uint8_t *save_buf = rgb_priv;
+                if (scale > 1) {
+                    nn_upscale(upscale_priv, rgb_priv, cap_w, cap_h, scale);
+                    save_buf = upscale_priv;
+                }
                 if (st->rotate_quadrants != 0) {
-                    rotate_rgb888_quadrants(rotate_priv, upscale_priv, out_w, out_h,
+                    rotate_rgb888_quadrants(rotate_priv, save_buf, out_w, out_h,
                                             st->rotate_quadrants);
                     save_buf = rotate_priv;
                     int tmp = out_w;
@@ -165,6 +179,9 @@ Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.snapshot_buf2 = snapshot_buf2;
     s_save.rotate_quadrants = 0;
     s_save.anaglyph_mode = false;
+    s_save.still_cap_w = CAMERA_WIDTH;
+    s_save.still_cap_h = CAMERA_HEIGHT;
+    s_save.still_recipe = (EffectRecipe){0};
     s_save.wiggle_recipe = (EffectRecipe){0};
     s_save.anaglyph_recipe = (EffectRecipe){0};
     s_save.anaglyph_colors[0][0] = 255;
@@ -248,15 +265,21 @@ static void begin_anaglyph_capture(WiggleState *wig,
 // Helper: trigger a normal JPEG save on the background thread
 // ---------------------------------------------------------------------------
 
-static void begin_jpeg_save(AppState *app, u8 *filtered_buf) {
+static void begin_jpeg_save(AppState *app, u8 *buf, const EffectRecipe *recipe) {
     char save_path[64];
     if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
         settings_save_file_counter(file_counter_next());
-        memcpy(s_save.snapshot_buf, filtered_buf, CAMERA_SCREEN_SIZE);
+        int cap_size = app->cam_w * app->cam_h * 2;
+        memcpy(s_save.snapshot_buf, buf, cap_size);
         memcpy(s_save.save_path, save_path, sizeof(save_path));
         s_save.wiggle_mode = false;
         s_save.anaglyph_mode = false;
-        s_save.save_scale  = app->save_scale;
+        s_save.still_cap_w = app->cam_w;
+        s_save.still_cap_h = app->cam_h;
+        s_save.still_recipe = recipe ? *recipe : (EffectRecipe){0};
+        s_save.save_scale = app->save_scale;
+        if (s_save.save_scale < 1) s_save.save_scale = 1;
+        if (s_save.save_scale > MAX_SAVE_SCALE) s_save.save_scale = MAX_SAVE_SCALE;
         s_save.rotate_quadrants = capture_portrait_rotation(app);
         s_save.busy = true;
         app->save_flash = 20;
@@ -305,7 +328,8 @@ void timer_update(ShootState *shoot, WiggleState *wig, AppState *app,
                                app->cam_w, app->cam_h,
                                capture_portrait_rotation(app));
     } else if (!s_save.busy) {
-        begin_jpeg_save(app, filtered_buf);
+        (void)filtered_buf;
+        begin_jpeg_save(app, buf, recipe);
     }
 }
 
@@ -335,6 +359,7 @@ void shoot_trigger(ShootState *shoot, WiggleState *wig, AppState *app,
                                app->cam_w, app->cam_h,
                                capture_portrait_rotation(app));
     } else {
-        begin_jpeg_save(app, filtered_buf);
+        (void)filtered_buf;
+        begin_jpeg_save(app, buf, recipe);
     }
 }

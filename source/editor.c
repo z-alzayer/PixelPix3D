@@ -56,6 +56,11 @@ typedef struct {
     const char    *frame_path;
 } EditCompositeCtx;
 
+typedef enum {
+    EDIT_SOURCE_STILL,
+    EDIT_SOURCE_WIGGLE
+} EditSourceKind;
+
 static void edit_composite_cb(uint8_t *rgb888, int w, int h, void *ud) {
     EditCompositeCtx *ctx = (EditCompositeCtx *)ud;
     for (int si = 0; si < ctx->n_stickers; si++) {
@@ -78,9 +83,12 @@ static int round_to_int(float v) {
 static void remap_stickers_for_save(PlacedSticker *dst,
                                     const PlacedSticker *src,
                                     int src_w, int src_h,
-                                    bool wiggle_source) {
+                                    EditSourceKind source_kind) {
     int crop_x = 0, crop_y = 0, crop_w = src_w, crop_h = src_h;
-    if (wiggle_source) {
+    int display_x = 0, display_y = 0;
+    int display_w = CAMERA_WIDTH, display_h = CAMERA_HEIGHT;
+
+    if (source_kind == EDIT_SOURCE_WIGGLE || src_h <= src_w) {
         if ((long long)src_w * CAMERA_HEIGHT > (long long)src_h * CAMERA_WIDTH) {
             crop_h = src_h;
             crop_w = (src_h * CAMERA_WIDTH) / CAMERA_HEIGHT;
@@ -94,17 +102,33 @@ static void remap_stickers_for_save(PlacedSticker *dst,
             crop_x = 0;
             crop_y = (src_h - crop_h) / 2;
         }
+    } else {
+        if ((long long)crop_w * 4 > (long long)crop_h * 3) {
+            crop_w = (crop_h * 3) / 4;
+            if (crop_w < 1) crop_w = 1;
+            crop_x = (src_w - crop_w) / 2;
+        } else {
+            crop_h = (crop_w * 4) / 3;
+            if (crop_h < 1) crop_h = 1;
+            crop_y = (src_h - crop_h) / 2;
+        }
+
+        display_h = CAMERA_HEIGHT;
+        display_w = (display_h * 3) / 4;
+        if (display_w < 1) display_w = 1;
+        display_x = (CAMERA_WIDTH - display_w) / 2;
+        display_y = (CAMERA_HEIGHT - display_h) / 2;
     }
 
-    float scale_x = (float)crop_w / (float)CAMERA_WIDTH;
-    float scale_y = (float)crop_h / (float)CAMERA_HEIGHT;
+    float scale_x = (float)crop_w / (float)display_w;
+    float scale_y = (float)crop_h / (float)display_h;
     float sticker_scale = (scale_x + scale_y) * 0.5f;
 
     for (int i = 0; i < STICKER_MAX; i++) {
         dst[i] = src[i];
         if (!src[i].active) continue;
-        dst[i].x = crop_x + round_to_int((float)src[i].x * scale_x);
-        dst[i].y = crop_y + round_to_int((float)src[i].y * scale_y);
+        dst[i].x = crop_x + round_to_int((float)(src[i].x - display_x) * scale_x);
+        dst[i].y = crop_y + round_to_int((float)(src[i].y - display_y) * scale_y);
         dst[i].scale = src[i].scale * sticker_scale;
     }
 }
@@ -152,7 +176,8 @@ void edit_save(EditState *edit, GalleryState *gal,
             goto cleanup_wiggle;
         }
 
-        remap_stickers_for_save(remapped, edit->placed, src_w, src_h, true);
+        remap_stickers_for_save(remapped, edit->placed, src_w, src_h,
+                                EDIT_SOURCE_WIGGLE);
 
         if (overwrite) {
             snprintf(out_path, sizeof(out_path), "%s", src_path);
@@ -176,7 +201,8 @@ cleanup_wiggle:
         if (!load_image_rgb888_native(src_path, &save_rgb888, &src_w, &src_h))
             return;
 
-        remap_stickers_for_save(remapped, edit->placed, src_w, src_h, false);
+        remap_stickers_for_save(remapped, edit->placed, src_w, src_h,
+                                EDIT_SOURCE_STILL);
         edit_composite_cb(save_rgb888, src_w, src_h, &ctx);
 
         if (overwrite) {

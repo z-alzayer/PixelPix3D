@@ -765,7 +765,7 @@ int load_animation_rgb565_native(const char *path,
 }
 
 // Static output buffer for JPEG encoding.
-// 1 MB covers 4x upscaled output (1600x960 at quality 90 is ~600-800 KB).
+// 1 MB covers native or 2x still output at quality 90.
 // No runtime allocation during save; safe because saves are serialized via busy flag.
 #define JPEG_BUF_CAP (1024 * 1024)
 static uint8_t s_jpeg_buf[JPEG_BUF_CAP];
