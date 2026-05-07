@@ -618,7 +618,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 } else if (shoot->shoot_mode == SHOOT_MODE_WIGGLE) {
                     #define WIG_BTN_W  28
                     #define WIG_BTN_H  22
-                    #define WIG_VAL_W  36
+                    #define WIG_VAL_W  42
                     #define WIG_RST_W  22
                     #define WIG_MINUS_X  18
                     #define WIG_VAL_X    (WIG_MINUS_X + WIG_BTN_W + 2)
@@ -630,14 +630,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         int row_x_y = SHOOT_CONTENT_Y + 18;
                         if (ty >= row_x_y && ty < row_x_y + WIG_BTN_H) {
                             if (tx >= WIG_MINUS_X && tx < WIG_MINUS_X + WIG_BTN_W) {
-                                if (wig->offset_dx > -40) {
+                                if (wig->offset_dx > -WIGGLE_OFFSET_X_MAX) {
                                     wig->offset_dx--;
                                     wig->last_anaglyph_offset_dx = wig->offset_dx;
                                 }
                                 return true;
                             }
                             if (tx >= WIG_PLUS_X && tx < WIG_PLUS_X + WIG_BTN_W) {
-                                if (wig->offset_dx < 40) {
+                                if (wig->offset_dx < WIGGLE_OFFSET_X_MAX) {
                                     wig->offset_dx++;
                                     wig->last_anaglyph_offset_dx = wig->offset_dx;
                                 }

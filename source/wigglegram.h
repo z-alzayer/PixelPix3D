@@ -16,6 +16,8 @@ struct SaveThreadState;
 #define WIGGLE_FRAME_MAX 8
 #define WIGGLE_PREVIEW_MAX (WIGGLE_FRAME_MAX * 2 - 2)
 #define WIGGLE_DEFAULT_DELAY_MS 100
+#define WIGGLE_OFFSET_X_MAX VGA_WIDTH
+#define WIGGLE_OFFSET_Y_MAX VGA_HEIGHT
 
 // Auto-detected stereo alignment (global translation only).
 typedef struct {

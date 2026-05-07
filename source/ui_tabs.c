@@ -475,7 +475,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 // Layout per row: label | [-] [value] [+] [R]
                 #define WIG_BTN_W   28
                 #define WIG_BTN_H   22
-                #define WIG_VAL_W   36
+                #define WIG_VAL_W   42
                 #define WIG_RST_W   22
                 // x positions: label at 2, then [-] at 18, value, [+], [R]
                 #define WIG_MINUS_X  18.0f

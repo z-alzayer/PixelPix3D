@@ -392,10 +392,10 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         wig->dpad_repeat++;
         if (fire) {
             bool changed = false;
-            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -40) { wig->offset_dx--; changed = true; }
-            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  40) { wig->offset_dx++; changed = true; }
-            if ((dpad & KEY_DUP)    && wig->offset_dy <  10) { wig->offset_dy++; changed = true; }
-            if ((dpad & KEY_DDOWN)  && wig->offset_dy > -10) { wig->offset_dy--; changed = true; }
+            if ((dpad & KEY_DLEFT)  && wig->offset_dx > -WIGGLE_OFFSET_X_MAX) { wig->offset_dx--; changed = true; }
+            if ((dpad & KEY_DRIGHT) && wig->offset_dx <  WIGGLE_OFFSET_X_MAX) { wig->offset_dx++; changed = true; }
+            if ((dpad & KEY_DUP)    && wig->offset_dy <  WIGGLE_OFFSET_Y_MAX) { wig->offset_dy++; changed = true; }
+            if ((dpad & KEY_DDOWN)  && wig->offset_dy > -WIGGLE_OFFSET_Y_MAX) { wig->offset_dy--; changed = true; }
             if (changed) {
                 wig->rebuild = true;
                 remember_stereo_offsets(wig, stereo_output);
@@ -416,7 +416,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             int tx = wtouch.px, ty = wtouch.py;
             #define WBTW  28
             #define WBTH  22
-            #define WVALW 36
+            #define WVALW 42
             #define WRSTW 22
             #define WMINX 18
             #define WVALX (WMINX + WBTW + 2)
@@ -427,9 +427,9 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             int row_frames_y = SHOOT_CONTENT_Y + 66;
             int *val = NULL; int lo = 0, hi = 0;
             if (wtapped && tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
-                { val = &wig->offset_dx; lo = -40; hi = 40; }
+                { val = &wig->offset_dx; lo = -WIGGLE_OFFSET_X_MAX; hi = WIGGLE_OFFSET_X_MAX; }
             else if (wtapped && tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
-                { val = &wig->offset_dy; lo = -10; hi = 10; }
+                { val = &wig->offset_dy; lo = -WIGGLE_OFFSET_Y_MAX; hi = WIGGLE_OFFSET_Y_MAX; }
             else if (wtapped && stereo_output == STEREO_OUTPUT_WIGGLE &&
                      tx < 158 && ty >= row_frames_y && ty < row_frames_y + WBTH)
                 { val = &wig->n_frames; lo = 2; hi = WIGGLE_FRAME_MAX; }
