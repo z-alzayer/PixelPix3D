@@ -55,6 +55,19 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     shoot->timer_open = false;
 }
 
+static void render_bottom_ui(C3D_RenderTarget *bot,
+                             C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                             const AppState *app, const ShootState *shoot,
+                             const WiggleState *wig, const GalleryState *gal,
+                             const EditState *edit, bool comparing) {
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    draw_ui(bot, staticBuf, dynBuf,
+            app, shoot, wig, gal, edit,
+            false, comparing,
+            shoot->timer_active ? (shoot->timer_remaining_ms + 999) / 1000 : -1);
+    C3D_FrameEnd(0);
+}
+
 static void cycle_palette_backward(AppState *app) {
     app->params.palette = (app->params.palette <= PALETTE_NONE)
                         ? PALETTE_COUNT - 1
@@ -310,6 +323,7 @@ int main(void) {
         }
 
         bool do_save = false;
+        bool touch_active = (kHeld & KEY_TOUCH) != 0;
 
         if (!captureInterrupted) {
             // Physical button fallbacks (skip in gallery/edit mode — buttons have different roles)
@@ -410,8 +424,6 @@ int main(void) {
                 edit_save(&edit, &gal, true);
             if (edit.save_flash > 0) edit.save_flash--;
 
-            gallery_load_selected(&gal);
-
             if (!edit.active)
                 gallery_handle_dpad(&gal, kDown);
 
@@ -470,6 +482,19 @@ int main(void) {
 
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;
         bool comparing = (kHeld & KEY_SELECT) != 0;
+        bool live_effects_active = pipeline_recipe_has_effects(&live_recipe);
+        bool defer_gallery_load = touch_active && gal.mode && gal.loaded != gal.sel;
+
+        // Draw touch feedback before any decode/filter/camera work. The top
+        // preview can catch up after; bottom-screen controls should feel instant.
+        if (!defer_gallery_load)
+            gallery_load_selected(&gal);
+
+        render_bottom_ui(bot, staticBuf, dynBuf,
+                         &app, &shoot, &wig, &gal, &edit, comparing);
+
+        if (defer_gallery_load)
+            gallery_load_selected(&gal);
 
         if (wig.preview && !wiggle_preview_camera_paused && app.cam_active) {
             CAMU_StopCapture(PORT_BOTH);
@@ -526,14 +551,15 @@ int main(void) {
             }
             // Pause filter processing when save thread uses static filter buffers.
             // Unfiltered wiggle saves don't conflict, so allow live view updates.
-            if (!use3d && !comparing &&
+            bool defer_live_processing = touch_active && live_effects_active;
+            if (!use3d && !comparing && !defer_live_processing &&
                 (!s_save.busy || (s_save.wiggle_mode && !pipeline_recipe_has_effects(&s_save.wiggle_recipe)))) {
                 // Preview-only crop-to-fill for the live viewfinder.
                 const uint16_t *preview_src = (const uint16_t *)buf;
                 uint16_t *disp = (uint16_t *)filtered_buf;
                 crop_fill_rgb565(disp, CAMERA_WIDTH, CAMERA_HEIGHT,
                                  preview_src, app.cam_w, app.cam_h);
-                if (pipeline_recipe_has_effects(&live_recipe)) {
+                if (live_effects_active) {
                     rgb565_to_rgb888(rgb_buf, disp, CAMERA_WIDTH * CAMERA_HEIGHT);
                     pipeline_apply(rgb_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
                                    &live_recipe, app.frame_count);
@@ -566,14 +592,6 @@ int main(void) {
                           wiggle_preview_frames,
                           comparing, buf, filtered_buf,
                           app.cam_w, app.cam_h);
-
-        // Draw bottom screen UI with citro2d
-        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-        draw_ui(bot, staticBuf, dynBuf,
-                &app, &shoot, &wig, &gal, &edit,
-                false, comparing,
-                shoot.timer_active ? (shoot.timer_remaining_ms + 999) / 1000 : -1);
-        C3D_FrameEnd(0);
         app.frame_count++;
     }
 
