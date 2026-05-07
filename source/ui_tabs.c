@@ -529,10 +529,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
                 // -- Row 3: total animation frames --
                 if (stereo_output == STEREO_OUTPUT_WIGGLE) {
-                    float ry = cy + 60.0f;
-                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Fr");
-                      C2D_TextGetDimensions(&t,0.32f,0.32f,&tw,&th);
-                      C2D_DrawText(&t,C2D_WithColor,4.0f+(16.0f-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.32f,0.32f,CLR_DIM); }
+                    float label_y = cy + 54.0f;
+                    float ry = cy + 66.0f;
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Total frame count");
+                      C2D_TextGetDimensions(&t,0.22f,0.22f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,4.0f,label_y,0.5f,0.22f,0.22f,CLR_DIM); }
                     draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
                     { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"-");
                       C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);

@@ -223,6 +223,7 @@ int main(void) {
     WiggleState wig = {
         .preview          = false,
         .n_frames         = 4,
+        .preview_frame_count = 6,
         .delay_ms         = WIGGLE_DEFAULT_DELAY_MS,
         .preview_frame    = 0,
         .preview_last_tick = 0,

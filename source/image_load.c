@@ -954,11 +954,11 @@ int save_edited_apng(const char *path,
                      int w, int h,
                      composite_fn_t composite_fn, void *userdata)
 {
-    if (n_frames < 1 || n_frames > 8) return 0;
+    if (n_frames < 1 || n_frames > WIGGLE_PREVIEW_MAX) return 0;
     int npix = w * h;
 
-    uint8_t *rgb_bufs[8] = {0};
-    const uint8_t *frame_ptrs[8];
+    uint8_t *rgb_bufs[WIGGLE_PREVIEW_MAX] = {0};
+    const uint8_t *frame_ptrs[WIGGLE_PREVIEW_MAX];
 
     for (int f = 0; f < n_frames; f++) {
         rgb_bufs[f] = malloc(npix * 3);

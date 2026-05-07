@@ -46,6 +46,7 @@ typedef struct WiggleState {
     bool          preview;          // showing captured pair
     bool          filter_active;    // palette/fx applied to wiggle output
     int           n_frames;         // requested frame count
+    int           preview_frame_count;
     int           delay_ms;
     int           preview_frame;    // current cycling index
     u64           preview_last_tick;
@@ -71,7 +72,7 @@ typedef struct WiggleState {
 // ---------------------------------------------------------------------------
 
 #define GALLERY_MAX               256
-#define GALLERY_WIGGLE_MAX_FRAMES   8
+#define GALLERY_WIGGLE_MAX_FRAMES WIGGLE_PREVIEW_MAX
 
 typedef struct {
     bool  mode;              // gallery visible

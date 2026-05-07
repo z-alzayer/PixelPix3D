@@ -207,7 +207,7 @@ static void begin_wiggle_capture(WiggleState *wig,
     wig->capture_w  = cam_w;
     wig->capture_h  = cam_h;
     wig->capture_rotate_quadrants = rotate_quadrants;
-    wig->n_frames = build_wiggle_preview_frames(wiggle_preview_frames,
+    wig->preview_frame_count = build_wiggle_preview_frames(wiggle_preview_frames,
                                 wiggle_left, wiggle_right,
                                 cam_w, cam_h,
                                 wig->n_frames, NULL,
@@ -234,6 +234,7 @@ static void begin_anaglyph_capture(WiggleState *wig,
     wig->capture_h  = cam_h;
     wig->capture_rotate_quadrants = rotate_quadrants;
     wig->n_frames = 1;
+    wig->preview_frame_count = 1;
     wig->crop_w = CAMERA_WIDTH;
     wig->crop_h = CAMERA_HEIGHT;
     wig->preview = true;

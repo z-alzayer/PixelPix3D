@@ -12,8 +12,9 @@
 struct WiggleState;
 struct SaveThreadState;
 
-// Maximum number of animation frames in a wiggle preview / saved APNG.
-#define WIGGLE_PREVIEW_MAX 8
+// User-selected one-way strip count, and maximum mirrored loop length.
+#define WIGGLE_FRAME_MAX 8
+#define WIGGLE_PREVIEW_MAX (WIGGLE_FRAME_MAX * 2 - 2)
 #define WIGGLE_DEFAULT_DELAY_MS 100
 
 // Auto-detected stereo alignment (global translation only).
@@ -32,7 +33,7 @@ void wiggle_align(WiggleAlign *align,
 // Build preview frames from a stereo pair cropped to the overlap (AND) region.
 // Output frames are (w - |fdx|) x (h - |fdy|) pixels, stored row-major in dst.
 // out_w / out_h (if non-NULL) receive the actual crop dimensions.
-// Returns 2 (the actual frame count used).
+// Returns the mirrored loop frame count used for preview playback.
 int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
                                 const uint8_t *left_rgb565,
                                 const uint8_t *right_rgb565,
@@ -75,7 +76,7 @@ void wiggle_preview_tick(struct WiggleState *wig,
 bool wiggle_filter_busy(void);
 
 // Save a wiggle GIF from two raw RGB565 camera buffers.
-// n_frames: total ping-pong animation frames (2..8).
+// n_frames: one-way animation strip count (2..8), including left/right endpoints.
 // delay_ms: milliseconds per frame.
 // align: alignment result (pass NULL to skip offset correction).
 // offset_dx/dy: user alignment adjustment in pixels.
