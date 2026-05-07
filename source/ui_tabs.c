@@ -145,7 +145,10 @@ void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
 
     for (int i = 0; i < 4; i++) {
         float bx = (float)(i * NAV_SEG_W);
-        bool sel = (active_tab == i) || (i == TAB_MORE && active_tab >= TAB_MORE);
+        bool sel = (active_tab == i) ||
+                   (i == TAB_SHOOT && active_tab == TAB_ANAGLYPH_ED) ||
+                   (i == TAB_MORE && active_tab >= TAB_MORE &&
+                    active_tab != TAB_ANAGLYPH_ED);
 
         // Selected tab: white pill
         if (sel) {
@@ -198,6 +201,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
                     int wiggle_offset_dx, int wiggle_offset_dy,
+                    const uint8_t anaglyph_colors[2][3],
                     bool lomo_enabled, int lomo_preset, int lomo_strength,
                     bool bend_enabled, int bend_preset, int bend_strength) {
     C2D_Text t;
@@ -682,6 +686,23 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         C2D_DrawText(&ta, C2D_WithColor,
                                      DZONE_CX - aw * 0.5f, cy + 50.0f,
                                      0.5f, 0.36f, 0.36f, CLR_DIM);
+                        float sx0 = DZONE_CX - (2 * ANA_SWATCH_W + ANA_SWATCH_GAP) * 0.5f;
+                        float sy = cy + ANA_SWATCH_Y_OFF;
+                        for (int i = 0; i < 2; i++) {
+                            float sx = sx0 + i * (ANA_SWATCH_W + ANA_SWATCH_GAP);
+                            u32 col = C2D_Color32(anaglyph_colors[i][0],
+                                                   anaglyph_colors[i][1],
+                                                   anaglyph_colors[i][2], 255);
+                            draw_pill(sx, sy, ANA_SWATCH_W, ANA_SWATCH_H, col);
+                            C2D_DrawRectSolid(sx - 1.0f, sy - 1.0f, 0.4f,
+                                              ANA_SWATCH_W + 2.0f, 1.0f, CLR_DIVIDER);
+                            C2D_DrawRectSolid(sx - 1.0f, sy + ANA_SWATCH_H, 0.4f,
+                                              ANA_SWATCH_W + 2.0f, 1.0f, CLR_DIVIDER);
+                            C2D_DrawRectSolid(sx - 1.0f, sy - 1.0f, 0.4f,
+                                              1.0f, ANA_SWATCH_H + 2.0f, CLR_DIVIDER);
+                            C2D_DrawRectSolid(sx + ANA_SWATCH_W, sy - 1.0f, 0.4f,
+                                              1.0f, ANA_SWATCH_H + 2.0f, CLR_DIVIDER);
+                        }
                     }
                     #undef DZONE_X
                     #undef DZONE_W

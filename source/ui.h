@@ -58,6 +58,7 @@
 #define TAB_MORE   3
 #define TAB_PALETTE_ED  4   // entered from MORE
 #define TAB_CALIBRATE   5   // entered from MORE
+#define TAB_ANAGLYPH_ED 6   // entered from Ana colour swatches
 
 // Content area: y=0..200
 #define CONTENT_H  200
@@ -211,6 +212,12 @@
 #define SHOOT_PRESET_ROW_W      304
 #define SHOOT_PRESET_SAVE_W     132
 #define SHOOT_PRESET_SAVE_H      24
+
+// Anaglyph colour swatches inside the Wiggle/Ana panel right zone.
+#define ANA_SWATCH_W      34
+#define ANA_SWATCH_H      18
+#define ANA_SWATCH_GAP     8
+#define ANA_SWATCH_Y_OFF  68
 
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled

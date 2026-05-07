@@ -119,6 +119,98 @@ void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  0.5f, 0.40f, 0.40f, settings_flash ? CLR_WHITE : CLR_TEXT);
 }
 
+void draw_anaglyph_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                       const uint8_t colors[2][3],
+                       int selected_color, bool settings_flash) {
+    C2D_Text t;
+    (void)dynBuf;
+
+    C2D_TextParse(&t, staticBuf, "< Shoot");
+    C2D_DrawText(&t, C2D_WithColor, 4.0f, 4.0f, 0.5f, 0.38f, 0.38f, CLR_DIM);
+
+    float total_w = 2 * PALTAB_SWATCH_W + 12.0f;
+    float sx0 = (BOT_W - total_w) * 0.5f;
+    for (int i = 0; i < 2; i++) {
+        float sx = sx0 + i * (PALTAB_SWATCH_W + 12.0f);
+        u32 col = C2D_Color32(colors[i][0], colors[i][1], colors[i][2], 255);
+        draw_pill(sx, (float)PALTAB_SWATCH_Y,
+                  (float)PALTAB_SWATCH_W, (float)PALTAB_SWATCH_H, col);
+        if (i == selected_color) {
+            C2D_DrawRectSolid(sx - 2.0f, PALTAB_SWATCH_Y - 2.0f, 0.4f,
+                              PALTAB_SWATCH_W + 4.0f, 2.0f, CLR_SEL);
+            C2D_DrawRectSolid(sx - 2.0f, PALTAB_SWATCH_Y + PALTAB_SWATCH_H, 0.4f,
+                              PALTAB_SWATCH_W + 4.0f, 2.0f, CLR_SEL);
+            C2D_DrawRectSolid(sx - 2.0f, PALTAB_SWATCH_Y - 2.0f, 0.4f,
+                              2.0f, PALTAB_SWATCH_H + 4.0f, CLR_SEL);
+            C2D_DrawRectSolid(sx + PALTAB_SWATCH_W, PALTAB_SWATCH_Y - 2.0f, 0.4f,
+                              2.0f, PALTAB_SWATCH_H + 4.0f, CLR_SEL);
+        }
+    }
+
+    C2D_DrawRectSolid(0, PALTAB_SWATCH_Y + PALTAB_SWATCH_H + 2, 0.5f,
+                      BOT_W, 1, CLR_DIVIDER);
+
+    uint8_t cr = colors[selected_color][0];
+    uint8_t cg = colors[selected_color][1];
+    uint8_t cb = colors[selected_color][2];
+    float cur_h, cur_s, cur_v;
+    rgb_to_hsv(cr, cg, cb, &cur_h, &cur_s, &cur_v);
+
+    #define HS_COLS 32
+    #define HS_ROWS  4
+    float cw = (float)PALTAB_HS_W / HS_COLS;
+    float ch = (float)PALTAB_HS_H / HS_ROWS;
+    for (int col = 0; col < HS_COLS; col++) {
+        float hue = (col + 0.5f) / HS_COLS * 360.0f;
+        for (int row = 0; row < HS_ROWS; row++) {
+            float sat = 1.0f - (float)row / (HS_ROWS - 1);
+            uint8_t pr, pg, pb;
+            hsv_to_rgb(hue, sat, 1.0f, &pr, &pg, &pb);
+            C2D_DrawRectSolid(PALTAB_HS_X + col * cw, PALTAB_HS_Y + row * ch,
+                              0.5f, cw + 0.5f, ch + 0.5f,
+                              C2D_Color32(pr, pg, pb, 255));
+        }
+    }
+    float hx = PALTAB_HS_X + cur_h / 360.0f * PALTAB_HS_W;
+    float hy = PALTAB_HS_Y + (1.0f - cur_s) * PALTAB_HS_H;
+    C2D_DrawRectSolid(hx - 0.5f, (float)PALTAB_HS_Y, 0.4f, 1.0f, PALTAB_HS_H, CLR_SEL);
+    C2D_DrawRectSolid((float)PALTAB_HS_X, hy - 0.5f, 0.4f, PALTAB_HS_W, 1.0f, CLR_SEL);
+
+    #define VAL_SEGS 32
+    float sw = (float)PALTAB_VAL_W / VAL_SEGS;
+    for (int i = 0; i < VAL_SEGS; i++) {
+        float val = (float)i / (VAL_SEGS - 1);
+        uint8_t vr, vg, vb;
+        hsv_to_rgb(cur_h, cur_s, val, &vr, &vg, &vb);
+        C2D_DrawRectSolid(PALTAB_VAL_X + i * sw, (float)PALTAB_VAL_Y,
+                          0.5f, sw + 0.5f, (float)PALTAB_VAL_H,
+                          C2D_Color32(vr, vg, vb, 255));
+    }
+    float vx = PALTAB_VAL_X + cur_v * PALTAB_VAL_W;
+    C2D_DrawRectSolid(vx - 0.5f, (float)PALTAB_VAL_Y, 0.4f, 1.0f, PALTAB_VAL_H, CLR_SEL);
+    #undef HS_COLS
+    #undef HS_ROWS
+    #undef VAL_SEGS
+
+    draw_pill((float)PALTAB_RESET_X, (float)PALTAB_BTN_Y,
+              (float)PALTAB_RESET_W, (float)PALTAB_BTN_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Reset");
+    C2D_DrawText(&t, C2D_WithColor,
+                 PALTAB_RESET_X + 14.0f, PALTAB_BTN_Y + 2.0f,
+                 0.5f, 0.40f, 0.40f, CLR_TEXT);
+
+    u32 save_col = settings_flash ? CLR_CONFIRM : CLR_BTN;
+    draw_pill((float)PALTAB_SAVE_DEF_X, (float)PALTAB_BTN_Y,
+              (float)PALTAB_SAVE_DEF_W, (float)PALTAB_BTN_H, save_col);
+    C2D_TextParse(&t, staticBuf, "Save Default");
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 PALTAB_SAVE_DEF_X + (PALTAB_SAVE_DEF_W - tw) / 2.0f,
+                 PALTAB_BTN_Y + 2.0f,
+                 0.5f, 0.40f, 0.40f, settings_flash ? CLR_WHITE : CLR_TEXT);
+}
+
 // ---------------------------------------------------------------------------
 // Calibrate tab (accessed from MORE)
 // ---------------------------------------------------------------------------
@@ -267,6 +359,7 @@ void draw_ui(C3D_RenderTarget *bot,
                        wig->n_frames, wig->delay_ms,
                        wig->preview,
                        wig->offset_dx, wig->offset_dy,
+                       app->anaglyph_colors,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength);
     } else if (app->active_tab == TAB_STYLE) {
@@ -278,6 +371,9 @@ void draw_ui(C3D_RenderTarget *bot,
     } else if (app->active_tab == TAB_PALETTE_ED) {
         draw_palette_tab(staticBuf, dynBuf, app->user_palettes,
                          app->palette_sel_pal, app->palette_sel_color, settings_flash);
+    } else if (app->active_tab == TAB_ANAGLYPH_ED) {
+        draw_anaglyph_tab(staticBuf, dynBuf, app->anaglyph_colors,
+                          app->anaglyph_sel_color, settings_flash);
     } else if (app->active_tab == TAB_CALIBRATE) {
         draw_calibrate_tab(staticBuf, dynBuf, &app->ranges, settings_flash);
     }

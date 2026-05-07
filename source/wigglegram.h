@@ -54,10 +54,11 @@ void wiggle_preview_update(struct WiggleState *wig,
                            u32 kDown, u32 kHeld,
                            bool do_save,
                            u8 *wiggle_left, u8 *wiggle_right,
-                           int *save_flash,
-                           int save_scale,
-                           int stereo_output,
-                           const EffectRecipe *recipe);
+	                           int *save_flash,
+	                           int save_scale,
+	                           int stereo_output,
+	                           const EffectRecipe *recipe,
+	                           const uint8_t anaglyph_colors[2][3]);
 
 // Advance the wiggle preview animation: rebuild frames if offsets changed,
 // then cycle to the next frame based on wall-clock time.
@@ -65,9 +66,10 @@ void wiggle_preview_update(struct WiggleState *wig,
 // palette/fx to the preview frames after rebuilding.
 void wiggle_preview_tick(struct WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
-                         const u8 *wiggle_left, const u8 *wiggle_right,
-                         const EffectRecipe *recipe, int frame_count,
-                         int stereo_output);
+	                         const u8 *wiggle_left, const u8 *wiggle_right,
+	                         const EffectRecipe *recipe, int frame_count,
+	                         int stereo_output,
+	                         const uint8_t anaglyph_colors[2][3]);
 
 // Returns true while the wiggle preview filter is being applied frame-by-frame.
 bool wiggle_filter_busy(void);

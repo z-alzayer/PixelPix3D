@@ -119,7 +119,8 @@ static void save_thread_func(void *arg) {
                               st->wiggle_offset_dx,
                               st->wiggle_offset_dy,
                               st->rotate_quadrants,
-                              &st->anaglyph_recipe);
+                              &st->anaglyph_recipe,
+                              st->anaglyph_colors);
         } else {
             uint8_t *rgb_priv = malloc(CAMERA_WIDTH * CAMERA_HEIGHT * 3);
             uint8_t *upscale_priv = malloc(MAX_SAVE_SCALE * CAMERA_WIDTH *
@@ -166,6 +167,12 @@ Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.anaglyph_mode = false;
     s_save.wiggle_recipe = (EffectRecipe){0};
     s_save.anaglyph_recipe = (EffectRecipe){0};
+    s_save.anaglyph_colors[0][0] = 255;
+    s_save.anaglyph_colors[0][1] = 0;
+    s_save.anaglyph_colors[0][2] = 0;
+    s_save.anaglyph_colors[1][0] = 0;
+    s_save.anaglyph_colors[1][1] = 255;
+    s_save.anaglyph_colors[1][2] = 255;
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
     LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
     s_save.busy = false;

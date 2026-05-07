@@ -3,6 +3,7 @@
 
 #include "filter.h"
 #include "pipeline.h"
+#include <stdint.h>
 
 #define SETTINGS_PATH "sdmc:/3ds/pixelpix3d/settings.ini"
 
@@ -21,6 +22,9 @@ void settings_save_palettes(const PaletteDef *user_palettes);
 // Loads palette_N_M colour overrides from SETTINGS_PATH into user_palettes[].
 // Silently skips missing or out-of-bounds keys.
 void settings_load_palettes(PaletteDef *user_palettes);
+
+void settings_save_anaglyph_colors(const uint8_t colors[2][3]);
+void settings_load_anaglyph_colors(uint8_t colors[2][3]);
 
 // Appends bright_min/max/def etc. lines to SETTINGS_PATH (call after settings_save).
 void settings_save_ranges(const FilterRanges *r);

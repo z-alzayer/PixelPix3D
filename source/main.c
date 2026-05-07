@@ -188,6 +188,8 @@ int main(void) {
         .ranges           = FILTER_RANGES_DEFAULTS,
         .palette_sel_pal  = 0,
         .palette_sel_color = 0,
+        .anaglyph_colors  = { {255, 0, 0}, {0, 255, 255} },
+        .anaglyph_sel_color = 0,
         .cam_w            = VGA_WIDTH,
         .cam_h            = VGA_HEIGHT,
         .shutter_button   = 0,
@@ -288,6 +290,7 @@ int main(void) {
     for (int i = 0; i < PALETTE_COUNT; i++) app.user_palettes[i] = palettes[i];
     settings_load(&app.params, &app.save_scale, &app.shutter_button);
     settings_load_palettes(app.user_palettes);
+    settings_load_anaglyph_colors(app.anaglyph_colors);
     settings_load_ranges(&app.ranges);
     settings_load_pipeline_presets(shoot.presets);
     app.default_params = app.params;
@@ -386,6 +389,9 @@ int main(void) {
                 if (kDown & KEY_DDOWN)  { if (++app.palette_sel_pal   >= PALETTE_COUNT)                                 app.palette_sel_pal   = 0;                 app.palette_sel_color = 0; }
                 if (kDown & KEY_DLEFT)  { if (--app.palette_sel_color < 0)                                              app.palette_sel_color = app.user_palettes[app.palette_sel_pal].size - 1; }
                 if (kDown & KEY_DRIGHT) { if (++app.palette_sel_color >= app.user_palettes[app.palette_sel_pal].size)   app.palette_sel_color = 0; }
+            } else if (app.active_tab == TAB_ANAGLYPH_ED) {
+                if ((kDown & KEY_DLEFT) || (kDown & KEY_DRIGHT))
+                    app.anaglyph_sel_color = 1 - app.anaglyph_sel_color;
             }
 
             // While on palette editor, keep the live filter synced with the selected palette
@@ -437,6 +443,7 @@ int main(void) {
                 app.default_params = app.params;
                 settings_save(&app.default_params, app.save_scale, app.shutter_button);
                 settings_save_palettes(app.user_palettes);
+                settings_save_anaglyph_colors(app.anaglyph_colors);
                 settings_save_ranges(&app.ranges);
                 app.settings_flash = 20;
             }
@@ -465,7 +472,7 @@ int main(void) {
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
                                   app.save_scale, shoot.stereo_output,
-                                  &live_recipe);
+                                  &live_recipe, app.anaglyph_colors);
         } else if (shoot.timer_active) {
             timer_update(&shoot, &wig, &app, kDown,
                          buf, filtered_buf, wiggle_left, wiggle_right,
@@ -581,7 +588,8 @@ int main(void) {
         // Advance wiggle preview animation — clock-based, cycles all blended frames
         if (wig.preview) {
             wiggle_preview_tick(&wig, wiggle_preview_frames, wiggle_left, wiggle_right,
-                                &live_recipe, app.frame_count, shoot.stereo_output);
+                                &live_recipe, app.frame_count, shoot.stereo_output,
+                                app.anaglyph_colors);
         }
 
         gallery_tick(&gal);

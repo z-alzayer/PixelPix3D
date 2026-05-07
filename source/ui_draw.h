@@ -30,10 +30,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int stereo_output,
                     bool gb_enabled,
                     int shoot_timer_secs, bool timer_open,
-                    int wiggle_frames, int wiggle_delay_ms,
-                    bool wiggle_preview,
-                    int wiggle_offset_dx, int wiggle_offset_dy,
-                    bool lomo_enabled, int lomo_preset, int lomo_strength,
+	                    int wiggle_frames, int wiggle_delay_ms,
+	                    bool wiggle_preview,
+	                    int wiggle_offset_dx, int wiggle_offset_dy,
+	                    const uint8_t anaglyph_colors[2][3],
+	                    bool lomo_enabled, int lomo_preset, int lomo_strength,
                     bool bend_enabled, int bend_preset, int bend_strength);
 void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
@@ -58,10 +59,13 @@ void draw_more_tab(C2D_TextBuf staticBuf,
 // ---------------------------------------------------------------------------
 
 void draw_palette_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                      const PaletteDef *user_palettes,
-                      int palette_sel_pal, int palette_sel_color,
-                      bool settings_flash);
+	                      const PaletteDef *user_palettes,
+	                      int palette_sel_pal, int palette_sel_color,
+	                      bool settings_flash);
+void draw_anaglyph_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+	                   const uint8_t colors[2][3],
+	                   int selected_color, bool settings_flash);
 void draw_calibrate_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                        const FilterRanges *ranges, bool settings_flash);
+	                        const FilterRanges *ranges, bool settings_flash);
 
 #endif

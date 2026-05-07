@@ -13,6 +13,12 @@ static uint8_t luma_rgb(const uint8_t *p) {
     return (uint8_t)((77 * p[0] + 150 * p[1] + 29 * p[2]) >> 8);
 }
 
+static uint8_t mix_channel(uint8_t left_luma, uint8_t right_luma,
+                           uint8_t left_color, uint8_t right_color) {
+    int v = (left_luma * left_color + right_luma * right_color + 127) / 255;
+    return (uint8_t)(v > 255 ? 255 : v);
+}
+
 static void prepare_eye_buffers(const uint8_t *left_rgb565, int w, int h,
                                 const uint8_t *right_rgb565,
                                 const EffectRecipe *recipe,
@@ -34,7 +40,8 @@ static void prepare_eye_buffers(const uint8_t *left_rgb565, int w, int h,
 static void compose_anaglyph_rgb888(uint8_t *dst,
                                     const uint8_t *left_rgb,
                                     const uint8_t *right_rgb,
-                                    int offset_dx, int offset_dy) {
+                                    int offset_dx, int offset_dy,
+                                    const uint8_t colors[2][3]) {
     for (int y = 0; y < CAMERA_HEIGHT; y++) {
         for (int x = 0; x < CAMERA_WIDTH; x++) {
             int rx = x - offset_dx;
@@ -48,9 +55,9 @@ static void compose_anaglyph_rgb888(uint8_t *dst,
             int ridx = (ry * CAMERA_WIDTH + rx) * 3;
             uint8_t left_luma = luma_rgb(left_rgb + idx);
             uint8_t right_luma = luma_rgb(right_rgb + ridx);
-            dst[idx + 0] = left_luma;
-            dst[idx + 1] = right_luma;
-            dst[idx + 2] = right_luma;
+            dst[idx + 0] = mix_channel(left_luma, right_luma, colors[0][0], colors[1][0]);
+            dst[idx + 1] = mix_channel(left_luma, right_luma, colors[0][1], colors[1][1]);
+            dst[idx + 2] = mix_channel(left_luma, right_luma, colors[0][2], colors[1][2]);
         }
     }
 }
@@ -59,7 +66,8 @@ static void compose_anaglyph_rgb888_sized(uint8_t *dst,
                                           const uint8_t *left_rgb,
                                           const uint8_t *right_rgb,
                                           int width, int height,
-                                          int offset_dx, int offset_dy) {
+                                          int offset_dx, int offset_dy,
+                                          const uint8_t colors[2][3]) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int rx = x - offset_dx;
@@ -73,9 +81,9 @@ static void compose_anaglyph_rgb888_sized(uint8_t *dst,
             int ridx = (ry * width + rx) * 3;
             uint8_t left_luma = luma_rgb(left_rgb + idx);
             uint8_t right_luma = luma_rgb(right_rgb + ridx);
-            dst[idx + 0] = left_luma;
-            dst[idx + 1] = right_luma;
-            dst[idx + 2] = right_luma;
+            dst[idx + 0] = mix_channel(left_luma, right_luma, colors[0][0], colors[1][0]);
+            dst[idx + 1] = mix_channel(left_luma, right_luma, colors[0][1], colors[1][1]);
+            dst[idx + 2] = mix_channel(left_luma, right_luma, colors[0][2], colors[1][2]);
         }
     }
 }
@@ -84,12 +92,13 @@ void build_anaglyph_preview_frame(uint16_t *dst_rgb565,
                                   const uint8_t *left_rgb565, int w, int h,
                                   const uint8_t *right_rgb565,
                                   int offset_dx, int offset_dy,
-                                  const EffectRecipe *recipe) {
+                                  const EffectRecipe *recipe,
+                                  const uint8_t colors[2][3]) {
     static uint8_t preview_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
     prepare_eye_buffers(left_rgb565, w, h, right_rgb565, recipe,
                         s_left_rgb, s_right_rgb);
     compose_anaglyph_rgb888(preview_rgb, s_left_rgb, s_right_rgb,
-                            offset_dx, offset_dy);
+                            offset_dx, offset_dy, colors);
     rgb888_to_rgb565(dst_rgb565, preview_rgb, CAMERA_WIDTH * CAMERA_HEIGHT);
 }
 
@@ -136,7 +145,8 @@ int save_anaglyph_png(const char *path,
                       const uint8_t *right_rgb565,
                       int offset_dx, int offset_dy,
                       int rotate_quadrants,
-                      const EffectRecipe *recipe) {
+                      const EffectRecipe *recipe,
+                      const uint8_t colors[2][3]) {
     int npix = w * h;
     uint8_t *left_rgb = malloc((size_t)npix * 3);
     uint8_t *right_rgb = malloc((size_t)npix * 3);
@@ -150,7 +160,7 @@ int save_anaglyph_png(const char *path,
         pipeline_apply(right_rgb, w, h, recipe, 0);
     }
     compose_anaglyph_rgb888_sized(left_rgb, left_rgb, right_rgb,
-                                  w, h, offset_dx, offset_dy);
+                                  w, h, offset_dx, offset_dy, colors);
 
     const uint8_t *frame = left_rgb;
     int out_w = w;

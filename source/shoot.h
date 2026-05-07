@@ -33,6 +33,7 @@ typedef struct SaveThreadState {
     int           wiggle_cap_h;    // (240 or 480)
     EffectRecipe  wiggle_recipe;   // snapshot of the active processing recipe
     EffectRecipe  anaglyph_recipe; // snapshot of the active processing recipe
+    uint8_t       anaglyph_colors[2][3];
     volatile bool busy;            // main sets true on trigger; worker clears on finish
     volatile bool quit;            // main sets true at shutdown
     LightEvent    request_event;   // RESET_ONESHOT: main signals worker to start

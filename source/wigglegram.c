@@ -352,7 +352,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            int *save_flash,
                            int save_scale,
                            int stereo_output,
-                           const EffectRecipe *recipe) {
+                           const EffectRecipe *recipe,
+                           const uint8_t anaglyph_colors[2][3]) {
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
     if (dpad) {
@@ -523,6 +524,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->rotate_quadrants = wig->capture_rotate_quadrants;
             save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
             save->anaglyph_recipe = recipe ? *recipe : (EffectRecipe){0};
+            memcpy(save->anaglyph_colors, anaglyph_colors, sizeof(save->anaglyph_colors));
             if (wig->has_align) save->wiggle_align_result = wig->align_res;
             save->busy = true;
             *save_flash = 20;
@@ -548,6 +550,8 @@ static int  s_filter_next = 0;
 static bool s_filter_pending = false;
 static EffectRecipe s_last_recipe;
 static bool s_last_recipe_valid = false;
+static uint8_t s_last_anaglyph_colors[2][3];
+static bool s_last_anaglyph_colors_valid = false;
 
 bool wiggle_filter_busy(void) {
     return s_filter_pending;
@@ -585,7 +589,8 @@ void wiggle_preview_tick(WiggleState *wig,
                          uint16_t preview_frames[][CAMERA_WIDTH * CAMERA_HEIGHT],
                          const u8 *wiggle_left, const u8 *wiggle_right,
                          const EffectRecipe *recipe, int frame_count,
-                         int stereo_output) {
+                         int stereo_output,
+                         const uint8_t anaglyph_colors[2][3]) {
     if (!s_last_recipe_valid || !same_effect_recipe(recipe, &s_last_recipe)) {
         wig->rebuild = true;
         s_filter_applied = false;
@@ -594,6 +599,15 @@ void wiggle_preview_tick(WiggleState *wig,
                            stereo_output == STEREO_OUTPUT_WIGGLE;
         s_last_recipe = recipe ? *recipe : (EffectRecipe){0};
         s_last_recipe_valid = true;
+    }
+    if (stereo_output == STEREO_OUTPUT_ANAGLYPH &&
+        (!s_last_anaglyph_colors_valid ||
+         memcmp(s_last_anaglyph_colors, anaglyph_colors,
+                sizeof(s_last_anaglyph_colors)) != 0)) {
+        wig->rebuild = true;
+        memcpy(s_last_anaglyph_colors, anaglyph_colors,
+               sizeof(s_last_anaglyph_colors));
+        s_last_anaglyph_colors_valid = true;
     }
 
     bool effects_wanted = pipeline_recipe_has_effects(recipe);
@@ -604,7 +618,7 @@ void wiggle_preview_tick(WiggleState *wig,
                                          wiggle_left, wig->capture_w, wig->capture_h,
                                          wiggle_right,
                                          wig->offset_dx, wig->offset_dy,
-                                         recipe);
+                                         recipe, anaglyph_colors);
             wig->n_frames = 1;
             wig->crop_w = CAMERA_WIDTH;
             wig->crop_h = CAMERA_HEIGHT;

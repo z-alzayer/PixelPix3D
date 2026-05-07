@@ -655,8 +655,22 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         #undef OPILL_H
                         #undef OPILL_GAP
 
-                        if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE)
+                        if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE) {
+                            float total_aw = 2 * ANA_SWATCH_W + ANA_SWATCH_GAP;
+                            float ax0 = 160.0f + (160.0f - total_aw) * 0.5f;
+                            float ay = (float)SHOOT_CONTENT_Y + ANA_SWATCH_Y_OFF;
+                            if (ty >= (int)ay && ty < (int)(ay + ANA_SWATCH_H)) {
+                                for (int i = 0; i < 2; i++) {
+                                    float bx = ax0 + i * (ANA_SWATCH_W + ANA_SWATCH_GAP);
+                                    if (tx >= (int)bx && tx < (int)(bx + ANA_SWATCH_W)) {
+                                        app->anaglyph_sel_color = i;
+                                        app->active_tab = TAB_ANAGLYPH_ED;
+                                        return true;
+                                    }
+                                }
+                            }
                             return true;
+                        }
 
                         // Preset pills row
                         float py0 = (float)SHOOT_CONTENT_Y + 42.0f;
@@ -920,6 +934,79 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                            &cur_h, &cur_s, &cur_v);
                 hsv_to_rgb(cur_h, cur_s, v,
                            &pal->colors[ci][0], &pal->colors[ci][1], &pal->colors[ci][2]);
+                return true;
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Anaglyph colour editor tab inputs
+    // -----------------------------------------------------------------------
+    if (app->active_tab == TAB_ANAGLYPH_ED) {
+        if (tapped && ty < NAV_Y) {
+            if (hit(tx, ty, 0, 0, 60, 20)) {
+                app->active_tab = TAB_SHOOT;
+                return true;
+            }
+            if (ty >= PALTAB_SWATCH_Y && ty < PALTAB_SWATCH_Y + PALTAB_SWATCH_H) {
+                float total_w = 2 * PALTAB_SWATCH_W + 12.0f;
+                float sx0 = (BOT_W - total_w) * 0.5f;
+                for (int i = 0; i < 2; i++) {
+                    float sx = sx0 + i * (PALTAB_SWATCH_W + 12.0f);
+                    if (tx >= (int)sx && tx < (int)(sx + PALTAB_SWATCH_W)) {
+                        app->anaglyph_sel_color = i;
+                        return true;
+                    }
+                }
+            }
+            if (hit(tx, ty, PALTAB_RESET_X, PALTAB_BTN_Y, PALTAB_RESET_W, PALTAB_BTN_H)) {
+                app->anaglyph_colors[0][0] = 255;
+                app->anaglyph_colors[0][1] = 0;
+                app->anaglyph_colors[0][2] = 0;
+                app->anaglyph_colors[1][0] = 0;
+                app->anaglyph_colors[1][1] = 255;
+                app->anaglyph_colors[1][2] = 255;
+                return true;
+            }
+            if (hit(tx, ty, PALTAB_SAVE_DEF_X, PALTAB_BTN_Y, PALTAB_SAVE_DEF_W, PALTAB_BTN_H)) {
+                *do_defaults_save = true;
+                return true;
+            }
+        }
+        if (touched && ty < NAV_Y) {
+            int ci = app->anaglyph_sel_color;
+            float cur_h, cur_s, cur_v;
+            if (ty >= PALTAB_HS_Y && ty < PALTAB_HS_Y + PALTAB_HS_H) {
+                int cx = tx < PALTAB_HS_X ? PALTAB_HS_X :
+                         (tx > PALTAB_HS_X + PALTAB_HS_W ? PALTAB_HS_X + PALTAB_HS_W : tx);
+                int cy = ty < PALTAB_HS_Y ? PALTAB_HS_Y :
+                         (ty > PALTAB_HS_Y + PALTAB_HS_H ? PALTAB_HS_Y + PALTAB_HS_H : ty);
+                float h = (float)(cx - PALTAB_HS_X) / PALTAB_HS_W * 360.0f;
+                float s = 1.0f - (float)(cy - PALTAB_HS_Y) / PALTAB_HS_H;
+                if (s < 0.0f) s = 0.0f;
+                if (s > 1.0f) s = 1.0f;
+                rgb_to_hsv(app->anaglyph_colors[ci][0],
+                           app->anaglyph_colors[ci][1],
+                           app->anaglyph_colors[ci][2],
+                           &cur_h, &cur_s, &cur_v);
+                hsv_to_rgb(h, s, cur_v,
+                           &app->anaglyph_colors[ci][0],
+                           &app->anaglyph_colors[ci][1],
+                           &app->anaglyph_colors[ci][2]);
+                return true;
+            }
+            if (ty >= PALTAB_VAL_Y && ty < PALTAB_VAL_Y + PALTAB_VAL_H) {
+                float v = (float)(tx - PALTAB_VAL_X) / PALTAB_VAL_W;
+                if (v < 0.0f) v = 0.0f;
+                if (v > 1.0f) v = 1.0f;
+                rgb_to_hsv(app->anaglyph_colors[ci][0],
+                           app->anaglyph_colors[ci][1],
+                           app->anaglyph_colors[ci][2],
+                           &cur_h, &cur_s, &cur_v);
+                hsv_to_rgb(cur_h, cur_s, v,
+                           &app->anaglyph_colors[ci][0],
+                           &app->anaglyph_colors[ci][1],
+                           &app->anaglyph_colors[ci][2]);
                 return true;
             }
         }

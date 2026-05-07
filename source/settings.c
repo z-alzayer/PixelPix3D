@@ -186,6 +186,47 @@ void settings_load_palettes(PaletteDef *user_palettes) {
     fclose(f);
 }
 
+void settings_save_anaglyph_colors(const uint8_t colors[2][3]) {
+    char val[16];
+    snprintf(val, sizeof(val), "%02X%02X%02X",
+             colors[0][0], colors[0][1], colors[0][2]);
+    ini_set_key("anaglyph_left", val);
+    snprintf(val, sizeof(val), "%02X%02X%02X",
+             colors[1][0], colors[1][1], colors[1][2]);
+    ini_set_key("anaglyph_right", val);
+}
+
+void settings_load_anaglyph_colors(uint8_t colors[2][3]) {
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) return;
+
+    char line[64];
+    while (fgets(line, sizeof(line), f)) {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '#' || line[0] == '\0') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = line;
+        const char *val = eq + 1;
+
+        int idx = -1;
+        if (strcmp(key, "anaglyph_left") == 0) idx = 0;
+        else if (strcmp(key, "anaglyph_right") == 0) idx = 1;
+        if (idx < 0) continue;
+
+        unsigned int rgb = 0;
+        if (sscanf(val, "%06X", &rgb) != 1) continue;
+        colors[idx][0] = (uint8_t)((rgb >> 16) & 0xFF);
+        colors[idx][1] = (uint8_t)((rgb >> 8) & 0xFF);
+        colors[idx][2] = (uint8_t)(rgb & 0xFF);
+    }
+    fclose(f);
+}
+
 int settings_load_file_counter(void) {
     FILE *f = fopen(SETTINGS_PATH, "r");
     if (!f) return 0;
