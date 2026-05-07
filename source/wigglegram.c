@@ -30,6 +30,36 @@ static void remember_stereo_offsets(WiggleState *wig, int stereo_output) {
     }
 }
 
+static const int s_delay_anchors[] = {50, 100, 250, 500, 750, 1000};
+#define DELAY_ANCHOR_COUNT ((int)(sizeof(s_delay_anchors) / sizeof(s_delay_anchors[0])))
+
+static int wiggle_clamp_delay_ms(int delay_ms) {
+    if (delay_ms < 50) return 50;
+    if (delay_ms > 1000) return 1000;
+    return (delay_ms + 5) / 10 * 10;
+}
+
+static int wiggle_delay_from_slider_x(int tx, float track_x, float track_w) {
+    float t = ((float)tx - track_x) / track_w;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float pos = t * (float)(DELAY_ANCHOR_COUNT - 1);
+    int seg = (int)pos;
+    if (seg >= DELAY_ANCHOR_COUNT - 1)
+        return s_delay_anchors[DELAY_ANCHOR_COUNT - 1];
+    float local = pos - (float)seg;
+    int a = s_delay_anchors[seg];
+    int b = s_delay_anchors[seg + 1];
+    return wiggle_clamp_delay_ms(a + (int)((float)(b - a) * local + 0.5f));
+}
+
+static void wiggle_set_delay_ms(WiggleState *wig, int delay_ms) {
+    delay_ms = wiggle_clamp_delay_ms(delay_ms);
+    if (wig->delay_ms == delay_ms) return;
+    wig->delay_ms = delay_ms;
+    reset_wiggle_preview_phase(wig);
+}
+
 static int wiggle_normalize_frame_count(int n_frames) {
     if (n_frames < 2) n_frames = 2;
     if (n_frames > WIGGLE_FRAME_MAX) n_frames = WIGGLE_FRAME_MAX;
@@ -381,7 +411,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         touchPosition wtouch;
         hidTouchRead(&wtouch);
         bool wtapped = (kDown & KEY_TOUCH) != 0;
-        if (wtapped) {
+        bool wtouched = (kHeld & KEY_TOUCH) != 0;
+        if (wtapped || wtouched) {
             int tx = wtouch.px, ty = wtouch.py;
             #define WBTW  28
             #define WBTH  22
@@ -395,11 +426,11 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             int row_y_y = SHOOT_CONTENT_Y + 32;
             int row_frames_y = SHOOT_CONTENT_Y + 66;
             int *val = NULL; int lo = 0, hi = 0;
-            if (tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
+            if (wtapped && tx < 158 && ty >= row_x_y && ty < row_x_y + WBTH)
                 { val = &wig->offset_dx; lo = -40; hi = 40; }
-            else if (tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
+            else if (wtapped && tx < 158 && ty >= row_y_y && ty < row_y_y + WBTH)
                 { val = &wig->offset_dy; lo = -10; hi = 10; }
-            else if (stereo_output == STEREO_OUTPUT_WIGGLE &&
+            else if (wtapped && stereo_output == STEREO_OUTPUT_WIGGLE &&
                      tx < 158 && ty >= row_frames_y && ty < row_frames_y + WBTH)
                 { val = &wig->n_frames; lo = 2; hi = WIGGLE_FRAME_MAX; }
             if (val) {
@@ -432,53 +463,30 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
 
             // Delay controls live on the right half of the wiggle preview UI.
             if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE) {
-                float py0 = (float)SHOOT_CONTENT_Y + 42.0f;
-                #define DPILL_W   32
-                #define DPILL_H   16
-                #define DPILL_GAP  3
-                static const int presets[4] = {50, 100, 200, 500};
-                float total_pw = 4 * DPILL_W + 3 * DPILL_GAP;
-                float px0 = 160.0f + (160.0f - total_pw) * 0.5f;
-                if (ty >= (int)py0 && ty < (int)(py0 + DPILL_H)) {
-                    for (int i = 0; i < 4; i++) {
-                        float bx = px0 + i * (DPILL_W + DPILL_GAP);
-                        if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
-                            wig->delay_ms = presets[i];
-                            reset_wiggle_preview_phase(wig);
-                            break;
-                        }
-                    }
-                }
-                #undef DPILL_W
-                #undef DPILL_H
-                #undef DPILL_GAP
-
-                float sy = (float)SHOOT_CONTENT_Y + 64.0f;
+                float sy = (float)SHOOT_CONTENT_Y + 62.0f;
                 #define DSTEP_BTN_W  22
                 #define DSTEP_BTN_H  18
-                #define DSTEP_VAL_W  54
-                float total_sw = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
-                float sx0 = 160.0f + (160.0f - total_sw) * 0.5f;
+                #define DTRACK_X     192.0f
+                #define DTRACK_W      96.0f
+                float minus_x = 164.0f;
+                float plus_x = 320.0f - 4.0f - DSTEP_BTN_W;
                 if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
-                    if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
-                        wig->delay_ms -= 10;
-                        if (wig->delay_ms < 10) wig->delay_ms = 10;
-                        reset_wiggle_preview_phase(wig);
-                    }
-                    float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
-                    if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
-                        wig->delay_ms += 10;
-                        if (wig->delay_ms > 1000) wig->delay_ms = 1000;
-                        reset_wiggle_preview_phase(wig);
-                    }
+                    if (wtapped && tx >= (int)minus_x && tx < (int)(minus_x + DSTEP_BTN_W))
+                        wiggle_set_delay_ms(wig, wig->delay_ms - 10);
+                    else if (wtapped && tx >= (int)plus_x && tx < (int)(plus_x + DSTEP_BTN_W))
+                        wiggle_set_delay_ms(wig, wig->delay_ms + 10);
+                    else if (tx >= (int)(DTRACK_X - 8.0f) &&
+                             tx < (int)(DTRACK_X + DTRACK_W + 8.0f))
+                        wiggle_set_delay_ms(wig, wiggle_delay_from_slider_x(tx, DTRACK_X, DTRACK_W));
                 }
                 #undef DSTEP_BTN_W
                 #undef DSTEP_BTN_H
-                #undef DSTEP_VAL_W
+                #undef DTRACK_X
+                #undef DTRACK_W
 
             }
 
-            if (ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
+            if (wtapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
                 do_save = true;
 
             #undef WBTW
@@ -492,13 +500,9 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         }
     }
 
-    // L/R bumpers cycle through delay presets (50 → 100 → 200 → 500)
+    // L/R bumpers nudge delay in 10ms steps.
     if (stereo_output == STEREO_OUTPUT_WIGGLE && (kDown & KEY_L || kDown & KEY_R)) {
-        static const int delay_presets[] = {50, 100, 200, 500};
-        int cur = 0;
-        for (int i = 0; i < 4; i++) if (wig->delay_ms == delay_presets[i]) { cur = i; break; }
-        wig->delay_ms = delay_presets[(cur + (kDown & KEY_L ? 3 : 1)) % 4];
-        reset_wiggle_preview_phase(wig);
+        wiggle_set_delay_ms(wig, wig->delay_ms + ((kDown & KEY_L) ? -10 : 10));
     }
 
     if (kDown & KEY_B) {

@@ -7,6 +7,29 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
+static const int s_delay_anchors[] = {50, 100, 250, 500, 750, 1000};
+#define DELAY_ANCHOR_COUNT ((int)(sizeof(s_delay_anchors) / sizeof(s_delay_anchors[0])))
+
+static int clamp_wiggle_delay_ms(int delay_ms) {
+    if (delay_ms < 50) return 50;
+    if (delay_ms > 1000) return 1000;
+    return (delay_ms + 5) / 10 * 10;
+}
+
+static int wiggle_delay_from_slider_x(int tx, float track_x, float track_w) {
+    float t = ((float)tx - track_x) / track_w;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float pos = t * (float)(DELAY_ANCHOR_COUNT - 1);
+    int seg = (int)pos;
+    if (seg >= DELAY_ANCHOR_COUNT - 1)
+        return s_delay_anchors[DELAY_ANCHOR_COUNT - 1];
+    float local = pos - (float)seg;
+    int a = s_delay_anchors[seg];
+    int b = s_delay_anchors[seg + 1];
+    return clamp_wiggle_delay_ms(a + (int)((float)(b - a) * local + 0.5f));
+}
+
 static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
                                     FilterParams *p, float cy) {
     const int fx_btn_w = 100;
@@ -631,15 +654,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     // X/Y offset buttons for wiggle preview are handled in
                     // wigglegram.c while camera capture is paused.
 
-                    // Delay: preset pills + stepper (right zone x=160..319)
-                    if (tapped && tx >= 160) {
+                    // Delay slider and stepper (right zone x=160..319)
+                    if ((tapped || touched) && tx >= 160) {
                         #define OPILL_W   54
                         #define OPILL_H   17
                         #define OPILL_GAP  5
                         float out_total_w = 2 * OPILL_W + OPILL_GAP;
                         float out_px0 = 160.0f + (160.0f - out_total_w) * 0.5f;
                         float out_py0 = (float)SHOOT_CONTENT_Y + 20.0f;
-                        if (ty >= (int)out_py0 && ty < (int)(out_py0 + OPILL_H)) {
+                        if (tapped && ty >= (int)out_py0 && ty < (int)(out_py0 + OPILL_H)) {
                             if (tx >= (int)out_px0 && tx < (int)(out_px0 + OPILL_W)) {
                                 shoot->stereo_output = STEREO_OUTPUT_WIGGLE;
                                 return true;
@@ -656,6 +679,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         #undef OPILL_GAP
 
                         if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE) {
+                            if (!tapped) return false;
                             float total_aw = 2 * ANA_SWATCH_W + ANA_SWATCH_GAP;
                             float ax0 = 160.0f + (160.0f - total_aw) * 0.5f;
                             float ay = (float)SHOOT_CONTENT_Y + ANA_SWATCH_Y_OFF;
@@ -672,50 +696,33 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                             return true;
                         }
 
-                        // Preset pills row
-                        float py0 = (float)SHOOT_CONTENT_Y + 42.0f;
-                        #define DPILL_W   32
-                        #define DPILL_H   16
-                        #define DPILL_GAP  3
-                        static const int presets[4] = {50, 100, 200, 500};
-                        float total_pw = 4 * DPILL_W + 3 * DPILL_GAP;
-                        float px0 = 160.0f + (160.0f - total_pw) * 0.5f;
-                        if (ty >= (int)py0 && ty < (int)(py0 + DPILL_H)) {
-                            for (int i = 0; i < 4; i++) {
-                                float bx = px0 + i * (DPILL_W + DPILL_GAP);
-                                if (tx >= (int)bx && tx < (int)(bx + DPILL_W)) {
-                                    wig->delay_ms = presets[i];
-                                    return true;
-                                }
-                            }
-                        }
-                        #undef DPILL_W
-                        #undef DPILL_H
-                        #undef DPILL_GAP
-
-                        // Stepper row
-                        float sy = (float)SHOOT_CONTENT_Y + 64.0f;
+                        // Stepper row plus non-linear slider.
+                        float sy = (float)SHOOT_CONTENT_Y + 62.0f;
                         #define DSTEP_BTN_W  22
                         #define DSTEP_BTN_H  18
-                        #define DSTEP_VAL_W  54
-                        float total_sw = 2 * DSTEP_BTN_W + DSTEP_VAL_W + 4;
-                        float sx0 = 160.0f + (160.0f - total_sw) * 0.5f;
+                        #define DTRACK_X     192.0f
+                        #define DTRACK_W      96.0f
+                        float minus_x = 164.0f;
+                        float plus_x = 320.0f - 4.0f - DSTEP_BTN_W;
                         if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
-                            if (tx >= (int)sx0 && tx < (int)(sx0 + DSTEP_BTN_W)) {
-                                wig->delay_ms -= 10;
-                                if (wig->delay_ms < 10) wig->delay_ms = 10;
+                            if (tapped && tx >= (int)minus_x && tx < (int)(minus_x + DSTEP_BTN_W)) {
+                                wig->delay_ms = clamp_wiggle_delay_ms(wig->delay_ms - 10);
                                 return true;
                             }
-                            float px_btn = sx0 + DSTEP_BTN_W + 2 + DSTEP_VAL_W + 2;
-                            if (tx >= (int)px_btn && tx < (int)(px_btn + DSTEP_BTN_W)) {
-                                wig->delay_ms += 10;
-                                if (wig->delay_ms > 1000) wig->delay_ms = 1000;
+                            if (tapped && tx >= (int)plus_x && tx < (int)(plus_x + DSTEP_BTN_W)) {
+                                wig->delay_ms = clamp_wiggle_delay_ms(wig->delay_ms + 10);
+                                return true;
+                            }
+                            if (tx >= (int)(DTRACK_X - 8.0f) &&
+                                tx < (int)(DTRACK_X + DTRACK_W + 8.0f)) {
+                                wig->delay_ms = wiggle_delay_from_slider_x(tx, DTRACK_X, DTRACK_W);
                                 return true;
                             }
                         }
                         #undef DSTEP_BTN_W
                         #undef DSTEP_BTN_H
-                        #undef DSTEP_VAL_W
+                        #undef DTRACK_X
+                        #undef DTRACK_W
                     }
 
                     #undef WIG_BTN_W
