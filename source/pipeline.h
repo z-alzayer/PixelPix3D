@@ -28,10 +28,10 @@ typedef enum {
 
 typedef enum {
     REMAP_STYLE_ASCII = 0,
-    REMAP_STYLE_EDGE = 1,
+    REMAP_STYLE_TOON = 1,
     REMAP_STYLE_COLOR = 2,
-    REMAP_STYLE_BLOCK = 3,
-    REMAP_STYLE_OLDSKOOL = 4,
+    REMAP_STYLE_PINK_WASH = 3,
+    REMAP_STYLE_CCD_TINT = 4,
     REMAP_STYLE_MATRIX = 5,
 } RemapStyle;
 

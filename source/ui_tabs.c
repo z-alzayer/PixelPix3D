@@ -1205,14 +1205,18 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
 
     static const char *style_labels[REMAP_STYLE_COUNT] = {
-        "ASCII", "Edge", "Color", "Block", "Old", "Matrix"
+        "ASCII", "Color", "Matrix", "Toon", "Pink", "CCD"
+    };
+    static const int style_vals[REMAP_STYLE_COUNT] = {
+        REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+        REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
     };
     for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
         int row = i / 3;
         int col = i % 3;
         float bx = (float)(STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP));
         float by = (float)(STYLE_REMAP_Y0 + row * (STYLE_REMAP_BTN_H + STYLE_REMAP_GAP));
-        bool sel = remap_enabled && remap_style == i;
+        bool sel = remap_enabled && remap_style == style_vals[i];
         draw_pill(bx, by, STYLE_REMAP_BTN_W, STYLE_REMAP_BTN_H,
                   sel ? CLR_ACCENT : CLR_BTN);
         C2D_TextParse(&t, staticBuf, style_labels[i]);
@@ -1227,21 +1231,40 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     C2D_DrawRectSolid(8, STYLE_CELL_LABEL_Y - 8, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
 
     char buf[16];
-    C2D_TextParse(&t, staticBuf, "Cell");
+    bool toon_mode = remap_enabled && remap_style == REMAP_STYLE_TOON;
+    C2D_TextParse(&t, staticBuf, toon_mode ? "Threshold" : "Cell");
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_CELL_LABEL_Y, 0.5f, sc, sc, CLR_TEXT);
-    snprintf(buf, sizeof(buf), "%dpx", remap_cell_size);
+    int shown_cell = remap_cell_size;
+    if (toon_mode && shown_cell < 1) shown_cell = 1;
+    if (!toon_mode && shown_cell < 4) shown_cell = 4;
+    if (shown_cell > 16) shown_cell = 16;
+    if (toon_mode)
+        snprintf(buf, sizeof(buf), "%d", shown_cell);
+    else
+        snprintf(buf, sizeof(buf), "%dpx", shown_cell);
     C2D_TextParse(&t, staticBuf, buf);
     C2D_DrawText(&t, C2D_WithColor, 280.0f, (float)STYLE_CELL_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
-    draw_slider(0, (float)STYLE_CELL_Y, 4.0f, 16.0f, (float)remap_cell_size);
+    draw_slider(0, (float)STYLE_CELL_Y,
+                toon_mode ? 1.0f : 4.0f,
+                16.0f,
+                (float)shown_cell);
 
-    C2D_TextParse(&t, staticBuf, "Strength");
+    C2D_TextParse(&t, staticBuf, toon_mode ? "Clusters" : "Strength");
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_STRENGTH_Y - 18.0f,
                  0.5f, sc, sc, remap_enabled ? CLR_TEXT : CLR_TRACK);
-    snprintf(buf, sizeof(buf), "%d", remap_strength);
+    int shown_strength = remap_strength;
+    if (toon_mode) {
+        if (shown_strength < 2) shown_strength = 2;
+        if (shown_strength > 15) shown_strength = 15;
+    }
+    snprintf(buf, sizeof(buf), "%d", shown_strength);
     C2D_TextParse(&t, staticBuf, buf);
     C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)STYLE_STRENGTH_Y - 18.0f,
                  0.5f, sc, sc, CLR_DIM);
-    draw_slider(0, (float)STYLE_STRENGTH_Y, 0.0f, 10.0f, (float)remap_strength);
+    draw_slider(0, (float)STYLE_STRENGTH_Y,
+                toon_mode ? 2.0f : 0.0f,
+                toon_mode ? 15.0f : 10.0f,
+                (float)shown_strength);
 }
 
 // ---------------------------------------------------------------------------

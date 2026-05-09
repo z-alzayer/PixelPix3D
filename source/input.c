@@ -757,8 +757,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         if (tapped && ty >= STYLE_REMAP_Y0 &&
             ty < STYLE_REMAP_Y0 + 2 * STYLE_REMAP_BTN_H + STYLE_REMAP_GAP) {
             static const int style_vals[REMAP_STYLE_COUNT] = {
-                REMAP_STYLE_ASCII, REMAP_STYLE_EDGE, REMAP_STYLE_COLOR,
-                REMAP_STYLE_BLOCK, REMAP_STYLE_OLDSKOOL, REMAP_STYLE_MATRIX
+                REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+                REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
             };
             for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
                 int row = i / 3;
@@ -770,6 +770,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         shoot->remap_enabled = false;
                     else {
                         shoot->remap_style = style_vals[i];
+                        if (shoot->remap_style == REMAP_STYLE_TOON && shoot->remap_strength < 2)
+                            shoot->remap_strength = 2;
+                        else if (shoot->remap_style != REMAP_STYLE_TOON && shoot->remap_strength > 10)
+                            shoot->remap_strength = 10;
                         shoot->remap_enabled = true;
                     }
                     wig->rebuild = true;
@@ -783,8 +787,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             float t_val = (float)(tx - TRACK_X) / TRACK_W;
             if (t_val < 0.0f) t_val = 0.0f;
             if (t_val > 1.0f) t_val = 1.0f;
-            int val = 4 + (int)(t_val * 12.0f + 0.5f);
-            if (val < 4) val = 4;
+            int min_val = shoot->remap_style == REMAP_STYLE_TOON ? 1 : 4;
+            int val = min_val + (int)(t_val * (16 - min_val) + 0.5f);
+            if (val < min_val) val = min_val;
             if (val > 16) val = 16;
             shoot->remap_cell_size = val;
             wig->rebuild = true;
@@ -796,9 +801,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             float t_val = (float)(tx - TRACK_X) / TRACK_W;
             if (t_val < 0.0f) t_val = 0.0f;
             if (t_val > 1.0f) t_val = 1.0f;
-            shoot->remap_strength = (int)(t_val * 10.0f + 0.5f);
-            if (shoot->remap_strength < 0) shoot->remap_strength = 0;
-            if (shoot->remap_strength > 10) shoot->remap_strength = 10;
+            if (shoot->remap_style == REMAP_STYLE_TOON) {
+                shoot->remap_strength = 2 + (int)(t_val * 13.0f + 0.5f);
+                if (shoot->remap_strength < 2) shoot->remap_strength = 2;
+                if (shoot->remap_strength > 15) shoot->remap_strength = 15;
+            } else {
+                shoot->remap_strength = (int)(t_val * 10.0f + 0.5f);
+                if (shoot->remap_strength < 0) shoot->remap_strength = 0;
+                if (shoot->remap_strength > 10) shoot->remap_strength = 10;
+            }
             wig->rebuild = true;
             return true;
         }

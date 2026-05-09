@@ -43,10 +43,28 @@ static int clamp_remap_style(int style) {
     return style;
 }
 
+static int clamp_remap_strength_for_style(int style, int strength) {
+    if (style == REMAP_STYLE_TOON) {
+        if (strength < 2) return 2;
+        if (strength > 15) return 15;
+        return strength;
+    }
+    return clamp_strength(strength);
+}
+
 static int clamp_remap_cell_size(int cell_size) {
     if (cell_size < 4) return 4;
     if (cell_size > 16) return 16;
     return cell_size;
+}
+
+static int clamp_remap_cell_for_style(int style, int cell_size) {
+    if (style == REMAP_STYLE_TOON) {
+        if (cell_size < 1) return 1;
+        if (cell_size > 16) return 16;
+        return cell_size;
+    }
+    return clamp_remap_cell_size(cell_size);
 }
 
 static float strength_mix(float neutral, float target, int strength) {
@@ -136,35 +154,370 @@ static uint8_t remap_glyph_alpha(char ch, int x, int y, int cell_w, int cell_h) 
     return (glyph5x7(ch, gy) & (1 << (4 - gx))) ? 255 : 0;
 }
 
-static char ascii_char_for_luma(int lum, bool matrix) {
-    static const char ramp[] = "@#W%*+=-:,.` ";
-    static const char matrix_ramp[] = "MW#@7531|:. ";
-    const char *r = matrix ? matrix_ramp : ramp;
-    int n = matrix ? (int)sizeof(matrix_ramp) - 2 : (int)sizeof(ramp) - 2;
+static char ascii_char_for_luma(int lum) {
+    static const char ramp[] = "@#*=-. ";
+    int n = (int)sizeof(ramp) - 2;
     int idx = (lum * n + 127) / 255;
     if (idx < 0) idx = 0;
     if (idx > n) idx = n;
-    return r[idx];
+    return ramp[idx];
+}
+
+#define REMAP_GRID_MAX_COLS 160
+#define REMAP_GRID_MAX_ROWS 120
+#define REMAP_GRID_MAX_CELLS (REMAP_GRID_MAX_COLS * REMAP_GRID_MAX_ROWS)
+#define REMAP_TOON_MAX_PIXELS (640 * 480)
+#define REMAP_TOON_MAX_CLUSTERS 15
+#define REMAP_TOON_EDGE_CELL_SIZE 6
+
+static uint8_t s_remap_luma[REMAP_GRID_MAX_CELLS];
+static uint8_t s_remap_norm[REMAP_GRID_MAX_CELLS];
+static uint8_t s_remap_band[REMAP_GRID_MAX_CELLS];
+static uint8_t s_remap_r[REMAP_GRID_MAX_CELLS];
+static uint8_t s_remap_g[REMAP_GRID_MAX_CELLS];
+static uint8_t s_remap_b[REMAP_GRID_MAX_CELLS];
+static uint8_t s_toon_gray[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_blur[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_nms[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_edge[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_edge_tmp[REMAP_TOON_MAX_PIXELS];
+static int s_toon_center_r[REMAP_TOON_MAX_CLUSTERS];
+static int s_toon_center_g[REMAP_TOON_MAX_CLUSTERS];
+static int s_toon_center_b[REMAP_TOON_MAX_CLUSTERS];
+
+static int remap_hist_percentile(const int hist[32], int target) {
+    int accum = 0;
+    for (int i = 0; i < 32; i++) {
+        accum += hist[i];
+        if (accum >= target) return i;
+    }
+    return 31;
+}
+
+static int remap_normalize_luma(int lum, int lo, int hi) {
+    if (hi <= lo) return lum;
+    int v = (lum - lo) * 255 / (hi - lo);
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return v;
+}
+
+static uint8_t remap_clamp_u8(int v) {
+    if (v < 0) return 0;
+    if (v > 255) return 255;
+    return (uint8_t)v;
+}
+
+static int remap_abs_i(int v) {
+    return v < 0 ? -v : v;
+}
+
+static int remap_toon_cluster_count(int strength) {
+    if (strength < 2) return 2;
+    if (strength > REMAP_TOON_MAX_CLUSTERS) return REMAP_TOON_MAX_CLUSTERS;
+    return strength;
+}
+
+static int remap_toon_stroke_radius(int cell_size) {
+    if (cell_size >= 16) return 3;
+    if (cell_size >= 12) return 2;
+    if (cell_size >= 8)  return 1;
+    return 0;
+}
+
+static int remap_toon_edge_threshold(int threshold_control) {
+    int threshold = 4 + (threshold_control - 1) * 4;
+    if (threshold < 4) threshold = 4;
+    if (threshold > 64) threshold = 64;
+    return threshold;
+}
+
+static int remap_toon_distance(int r, int g, int b, int c) {
+    int dr = r - s_toon_center_r[c];
+    int dg = g - s_toon_center_g[c];
+    int db = b - s_toon_center_b[c];
+    return dr * dr + dg * dg + db * db;
+}
+
+static int remap_toon_nearest_center(int r, int g, int b, int clusters) {
+    int best = 0;
+    int best_dist = remap_toon_distance(r, g, b, 0);
+    for (int c = 1; c < clusters; c++) {
+        int dist = remap_toon_distance(r, g, b, c);
+        if (dist < best_dist) {
+            best = c;
+            best_dist = dist;
+        }
+    }
+    return best;
+}
+
+static int remap_toon_sample_step(int pixels) {
+    if (pixels > 180000) return 3;
+    if (pixels > 50000) return 2;
+    return 1;
+}
+
+static void remap_toon_init_centers(const uint8_t *rgb, int w, int h, int clusters) {
+    int step = remap_toon_sample_step(w * h);
+    for (int c = 0; c < clusters; c++) {
+        int target = clusters > 1 ? c * 255 / (clusters - 1) : 128;
+        int best_delta = 999;
+        int best_idx = 0;
+        for (int y = 0; y < h; y += step) {
+            int row = y * w * 3;
+            for (int x = 0; x < w; x += step) {
+                int idx = row + x * 3;
+                int r = rgb[idx + 0];
+                int g = rgb[idx + 1];
+                int b = rgb[idx + 2];
+                int lum = (77 * r + 150 * g + 29 * b) >> 8;
+                int delta = remap_abs_i(lum - target);
+                if (delta < best_delta) {
+                    best_delta = delta;
+                    best_idx = idx;
+                }
+            }
+        }
+        s_toon_center_r[c] = rgb[best_idx + 0];
+        s_toon_center_g[c] = rgb[best_idx + 1];
+        s_toon_center_b[c] = rgb[best_idx + 2];
+    }
+}
+
+static void remap_toon_kmeans(const uint8_t *rgb, int w, int h, int clusters) {
+    remap_toon_init_centers(rgb, w, h, clusters);
+    int step = remap_toon_sample_step(w * h);
+
+    for (int iter = 0; iter < 8; iter++) {
+        long sum_r[REMAP_TOON_MAX_CLUSTERS] = {0};
+        long sum_g[REMAP_TOON_MAX_CLUSTERS] = {0};
+        long sum_b[REMAP_TOON_MAX_CLUSTERS] = {0};
+        int count[REMAP_TOON_MAX_CLUSTERS] = {0};
+
+        for (int y = 0; y < h; y += step) {
+            int row = y * w * 3;
+            for (int x = 0; x < w; x += step) {
+                int idx = row + x * 3;
+                int r = rgb[idx + 0];
+                int g = rgb[idx + 1];
+                int b = rgb[idx + 2];
+                int c = remap_toon_nearest_center(r, g, b, clusters);
+                sum_r[c] += r;
+                sum_g[c] += g;
+                sum_b[c] += b;
+                count[c]++;
+            }
+        }
+
+        int shift = 0;
+        for (int c = 0; c < clusters; c++) {
+            if (count[c] <= 0) continue;
+            int nr = (int)(sum_r[c] / count[c]);
+            int ng = (int)(sum_g[c] / count[c]);
+            int nb = (int)(sum_b[c] / count[c]);
+            shift += remap_abs_i(nr - s_toon_center_r[c]);
+            shift += remap_abs_i(ng - s_toon_center_g[c]);
+            shift += remap_abs_i(nb - s_toon_center_b[c]);
+            s_toon_center_r[c] = nr;
+            s_toon_center_g[c] = ng;
+            s_toon_center_b[c] = nb;
+        }
+        if (shift <= clusters * 2) break;
+    }
+}
+
+static void remap_toon_build_canny_edges(const uint8_t *rgb, int w, int h,
+                                         int threshold_control) {
+    int pixels = w * h;
+    memset(s_toon_edge, 0, pixels);
+    memset(s_toon_edge_tmp, 0, pixels);
+    memset(s_toon_nms, 0, pixels);
+    if (w < 3 || h < 3) return;
+
+    for (int i = 0; i < pixels; i++) {
+        int idx = i * 3;
+        int r = rgb[idx + 0];
+        int g = rgb[idx + 1];
+        int b = rgb[idx + 2];
+        s_toon_gray[i] = (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
+    }
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int sum = 0;
+            int count = 0;
+            for (int oy = -1; oy <= 1; oy++) {
+                int sy = y + oy;
+                if (sy < 0) sy = 0;
+                else if (sy >= h) sy = h - 1;
+                for (int ox = -1; ox <= 1; ox++) {
+                    int sx = x + ox;
+                    if (sx < 0) sx = 0;
+                    else if (sx >= w) sx = w - 1;
+                    sum += s_toon_gray[sy * w + sx];
+                    count++;
+                }
+            }
+            s_toon_blur[y * w + x] = (uint8_t)(sum / count);
+        }
+    }
+
+    for (int y = 1; y < h - 1; y++) {
+        for (int x = 1; x < w - 1; x++) {
+            int i = y * w + x;
+            int tl = s_toon_blur[i - w - 1];
+            int tc = s_toon_blur[i - w];
+            int tr = s_toon_blur[i - w + 1];
+            int ml = s_toon_blur[i - 1];
+            int mr = s_toon_blur[i + 1];
+            int bl = s_toon_blur[i + w - 1];
+            int bc = s_toon_blur[i + w];
+            int br = s_toon_blur[i + w + 1];
+            int gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+            int gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
+            int mag = (remap_abs_i(gx) + remap_abs_i(gy)) / 4;
+            if (mag > 255) mag = 255;
+            s_toon_edge_tmp[i] = (uint8_t)mag;
+        }
+    }
+
+    for (int y = 1; y < h - 1; y++) {
+        for (int x = 1; x < w - 1; x++) {
+            int i = y * w + x;
+            int tl = s_toon_blur[i - w - 1];
+            int tc = s_toon_blur[i - w];
+            int tr = s_toon_blur[i - w + 1];
+            int ml = s_toon_blur[i - 1];
+            int mr = s_toon_blur[i + 1];
+            int bl = s_toon_blur[i + w - 1];
+            int bc = s_toon_blur[i + w];
+            int br = s_toon_blur[i + w + 1];
+            int gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
+            int gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
+            int ax = remap_abs_i(gx);
+            int ay = remap_abs_i(gy);
+            int mag = s_toon_edge_tmp[i];
+            int n1, n2;
+            if (ax > ay * 2) {
+                n1 = s_toon_edge_tmp[i - 1];
+                n2 = s_toon_edge_tmp[i + 1];
+            } else if (ay > ax * 2) {
+                n1 = s_toon_edge_tmp[i - w];
+                n2 = s_toon_edge_tmp[i + w];
+            } else if ((gx < 0) == (gy < 0)) {
+                n1 = s_toon_edge_tmp[i - w - 1];
+                n2 = s_toon_edge_tmp[i + w + 1];
+            } else {
+                n1 = s_toon_edge_tmp[i - w + 1];
+                n2 = s_toon_edge_tmp[i + w - 1];
+            }
+            s_toon_nms[i] = (mag >= n1 && mag >= n2) ? (uint8_t)mag : 0;
+        }
+    }
+
+    int high = remap_toon_edge_threshold(threshold_control);
+    int low = high / 2;
+    for (int i = 0; i < pixels; i++) {
+        s_toon_edge[i] = s_toon_nms[i] >= high ? 255
+                       : s_toon_nms[i] >= low  ? 128 : 0;
+    }
+
+    for (int pass = 0; pass < 2; pass++) {
+        for (int y = 1; y < h - 1; y++) {
+            for (int x = 1; x < w - 1; x++) {
+                int i = y * w + x;
+                if (s_toon_edge[i] != 128) continue;
+                if (s_toon_edge[i - 1] == 255 || s_toon_edge[i + 1] == 255 ||
+                    s_toon_edge[i - w] == 255 || s_toon_edge[i + w] == 255 ||
+                    s_toon_edge[i - w - 1] == 255 || s_toon_edge[i - w + 1] == 255 ||
+                    s_toon_edge[i + w - 1] == 255 || s_toon_edge[i + w + 1] == 255)
+                    s_toon_edge[i] = 255;
+            }
+        }
+    }
+    for (int i = 0; i < pixels; i++)
+        if (s_toon_edge[i] != 255) s_toon_edge[i] = 0;
+
+    int radius = remap_toon_stroke_radius(REMAP_TOON_EDGE_CELL_SIZE);
+    if (radius <= 0) return;
+    memcpy(s_toon_edge_tmp, s_toon_edge, pixels);
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int mark = 0;
+            for (int oy = -radius; oy <= radius && !mark; oy++) {
+                int sy = y + oy;
+                if (sy < 0 || sy >= h) continue;
+                for (int ox = -radius; ox <= radius; ox++) {
+                    int sx = x + ox;
+                    if (sx < 0 || sx >= w) continue;
+                    if (s_toon_edge_tmp[sy * w + sx]) {
+                        mark = 1;
+                        break;
+                    }
+                }
+            }
+            s_toon_edge[y * w + x] = mark ? 255 : 0;
+        }
+    }
+}
+
+static void apply_toon_remap(uint8_t *rgb, int w, int h,
+                             int cell_size, int clusters) {
+    int pixels = w * h;
+    if (pixels <= 0 || pixels > REMAP_TOON_MAX_PIXELS) return;
+
+    clusters = remap_toon_cluster_count(clusters);
+    remap_toon_build_canny_edges(rgb, w, h, cell_size);
+    remap_toon_kmeans(rgb, w, h, clusters);
+
+    for (int i = 0; i < pixels; i++) {
+        int idx = i * 3;
+        if (s_toon_edge[i]) {
+            rgb[idx + 0] = 0;
+            rgb[idx + 1] = 0;
+            rgb[idx + 2] = 0;
+            continue;
+        }
+        int c = remap_toon_nearest_center(rgb[idx + 0], rgb[idx + 1], rgb[idx + 2],
+                                          clusters);
+        rgb[idx + 0] = (uint8_t)s_toon_center_r[c];
+        rgb[idx + 1] = (uint8_t)s_toon_center_g[c];
+        rgb[idx + 2] = (uint8_t)s_toon_center_b[c];
+    }
 }
 
 static void apply_remap(uint8_t *rgb, int w, int h, int style,
                         int cell_size, int strength) {
-    strength = clamp_strength(strength);
+    style = clamp_remap_style(style);
+    strength = clamp_remap_strength_for_style(style, strength);
     if (strength <= 0) return;
 
-    style = clamp_remap_style(style);
-    cell_size = clamp_remap_cell_size(cell_size);
+    cell_size = clamp_remap_cell_for_style(style, cell_size);
+    if (style == REMAP_STYLE_TOON) {
+        apply_toon_remap(rgb, w, h, cell_size, strength);
+        return;
+    }
 
-    for (int by = 0; by < h; by += cell_size) {
+    int cols = (w + cell_size - 1) / cell_size;
+    int rows = (h + cell_size - 1) / cell_size;
+    if (cols <= 0 || rows <= 0 ||
+        cols > REMAP_GRID_MAX_COLS || rows > REMAP_GRID_MAX_ROWS)
+        return;
+
+    int hist[32] = {0};
+    int total_cells = cols * rows;
+
+    for (int cy = 0; cy < rows; cy++) {
+        int by = cy * cell_size;
         int bh = cell_size;
         if (by + bh > h) bh = h - by;
-        for (int bx = 0; bx < w; bx += cell_size) {
+        for (int cx = 0; cx < cols; cx++) {
+            int bx = cx * cell_size;
             int bw = cell_size;
             if (bx + bw > w) bw = w - bx;
 
-            long sr = 0, sg = 0, sb = 0;
-            long l_left = 0, l_right = 0, l_top = 0, l_bot = 0;
-            int n_left = 0, n_right = 0, n_top = 0, n_bot = 0;
+            long sr = 0, sg = 0, sb = 0, sl = 0;
             int count = bw * bh;
             for (int y = 0; y < bh; y++) {
                 int row = ((by + y) * w + bx) * 3;
@@ -177,76 +530,108 @@ static void apply_remap(uint8_t *rgb, int w, int h, int style,
                     sr += r;
                     sg += g;
                     sb += b;
-                    if (x < bw / 2) { l_left += l; n_left++; }
-                    else { l_right += l; n_right++; }
-                    if (y < bh / 2) { l_top += l; n_top++; }
-                    else { l_bot += l; n_bot++; }
+                    sl += l;
                 }
             }
 
+            int i = cy * cols + cx;
             int ar = (int)(sr / count);
             int ag = (int)(sg / count);
             int ab = (int)(sb / count);
-            int lum = (77 * ar + 150 * ag + 29 * ab) >> 8;
-            int avg_left = n_left ? (int)(l_left / n_left) : lum;
-            int avg_right = n_right ? (int)(l_right / n_right) : lum;
-            int avg_top = n_top ? (int)(l_top / n_top) : lum;
-            int avg_bot = n_bot ? (int)(l_bot / n_bot) : lum;
-            int dx = avg_right - avg_left;
-            int dy = avg_bot - avg_top;
-            int adx = dx < 0 ? -dx : dx;
-            int ady = dy < 0 ? -dy : dy;
-            int edge = adx + ady;
+            int lum = (int)(sl / count);
+            s_remap_r[i] = (uint8_t)ar;
+            s_remap_g[i] = (uint8_t)ag;
+            s_remap_b[i] = (uint8_t)ab;
+            s_remap_luma[i] = (uint8_t)lum;
+            hist[lum >> 3]++;
+        }
+    }
 
-            char ch = ascii_char_for_luma(lum, false);
+    int trim = total_cells / 50;
+    int lo_bin = remap_hist_percentile(hist, trim);
+    int hi_bin = remap_hist_percentile(hist, total_cells - trim);
+    int lo = lo_bin * 8;
+    int hi = hi_bin * 8 + 7;
+    if (hi < lo + 24) {
+        lo -= 24;
+        hi += 24;
+        if (lo < 0) lo = 0;
+        if (hi > 255) hi = 255;
+    }
+
+    for (int i = 0; i < total_cells; i++) {
+        int norm = remap_normalize_luma(s_remap_luma[i], lo, hi);
+        s_remap_norm[i] = (uint8_t)norm;
+        int band = (norm * 5) / 256;
+        if (band < 0) band = 0;
+        if (band > 4) band = 4;
+        s_remap_band[i] = (uint8_t)band;
+    }
+
+    for (int cy = 0; cy < rows; cy++) {
+        int by = cy * cell_size;
+        int bh = cell_size;
+        if (by + bh > h) bh = h - by;
+        for (int cx = 0; cx < cols; cx++) {
+            int bx = cx * cell_size;
+            int bw = cell_size;
+            if (bx + bw > w) bw = w - bx;
+
+            int i = cy * cols + cx;
+            int norm = s_remap_norm[i];
+            int ar = s_remap_r[i];
+            int ag = s_remap_g[i];
+            int ab = s_remap_b[i];
+
+            char ch = ascii_char_for_luma(norm);
             int bg_r = 238, bg_g = 236, bg_b = 222;
             int ink_r = 18, ink_g = 20, ink_b = 18;
-            bool block_mode = false;
-            int block_fill = 0;
+            bool glyph_mode = true;
 
-            if (style == REMAP_STYLE_EDGE || style == REMAP_STYLE_OLDSKOOL) {
-                int threshold = style == REMAP_STYLE_EDGE ? 42 : 32;
-                if (edge < threshold) {
-                    ch = (style == REMAP_STYLE_OLDSKOOL && lum < 86) ? '.' : ' ';
-                } else if (adx > ady * 2) {
-                    ch = (style == REMAP_STYLE_OLDSKOOL) ? ')' : '|';
-                } else if (ady > adx * 2) {
-                    ch = (style == REMAP_STYLE_OLDSKOOL) ? '_' : '-';
-                } else {
-                    ch = ((dx < 0) == (dy < 0)) ? '\\' : '/';
-                }
-                bg_r = 238; bg_g = 236; bg_b = 222;
-                ink_r = 14; ink_g = 14; ink_b = 16;
-            } else if (style == REMAP_STYLE_COLOR) {
-                ch = ascii_char_for_luma(lum, false);
+            if (style == REMAP_STYLE_COLOR) {
+                ch = ascii_char_for_luma(norm);
                 bg_r = 4; bg_g = 5; bg_b = 7;
                 ink_r = ar + 36; if (ink_r > 255) ink_r = 255;
                 ink_g = ag + 36; if (ink_g > 255) ink_g = 255;
                 ink_b = ab + 36; if (ink_b > 255) ink_b = 255;
-            } else if (style == REMAP_STYLE_BLOCK) {
-                block_mode = true;
-                block_fill = 7 - (lum * 7 + 127) / 255;
-                if (block_fill < 0) block_fill = 0;
-                if (block_fill > 7) block_fill = 7;
-                bg_r = 236; bg_g = 238; bg_b = 224;
-                ink_r = 16; ink_g = 20; ink_b = 18;
             } else if (style == REMAP_STYLE_MATRIX) {
-                ch = ascii_char_for_luma(lum, true);
+                ch = (norm > 232) ? ' ' : (((cx * 3 + cy * 5 + (norm >> 5)) & 1) ? '1' : '0');
                 bg_r = 0; bg_g = 12; bg_b = 8;
-                ink_r = 64; ink_g = 255; ink_b = 116;
+                int glow = 255 - norm;
+                ink_r = 8 + glow / 5;
+                ink_g = 96 + glow * 150 / 255;
+                ink_b = 34 + glow / 4;
+            } else if (style == REMAP_STYLE_PINK_WASH ||
+                       style == REMAP_STYLE_CCD_TINT) {
+                glyph_mode = false;
             }
 
             for (int y = 0; y < bh; y++) {
                 int row = ((by + y) * w + bx) * 3;
                 for (int x = 0; x < bw; x++) {
                     int idx = row + x * 3;
-                    int gy = (y * 7) / (bh > 0 ? bh : 1);
-                    uint8_t alpha = block_mode
-                                  ? (gy >= 7 - block_fill ? 255 : 0)
-                                  : remap_glyph_alpha(ch, x, y, bw, bh);
-                    int rr = (bg_r * (255 - alpha) + ink_r * alpha) / 255;
-                    int rg = (bg_g * (255 - alpha) + ink_g * alpha) / 255;
-                    int rb = (bg_b * (255 - alpha) + ink_b * alpha) / 255;
+                    int src_r = rgb[idx + 0];
+                    int src_g = rgb[idx + 1];
+                    int src_b = rgb[idx + 2];
+                    int rr, rg, rb;
+                    if (glyph_mode) {
+                        uint8_t alpha = remap_glyph_alpha(ch, x, y, bw, bh);
+                        rr = (bg_r * (255 - alpha) + ink_r * alpha) / 255;
+                        rg = (bg_g * (255 - alpha) + ink_g * alpha) / 255;
+                        rb = (bg_b * (255 - alpha) + ink_b * alpha) / 255;
+                    } else if (style == REMAP_STYLE_PINK_WASH) {
+                        rr = remap_clamp_u8((src_r * 5) / 4 + 58);
+                        rg = remap_clamp_u8((src_g * 11) / 10 + 18);
+                        rb = remap_clamp_u8((src_b * 6) / 5 + 52);
+                        rr = (rr * 3 + 255) / 4;
+                        rg = (rg * 3 + 206) / 4;
+                        rb = (rb * 3 + 238) / 4;
+                    } else {
+                        int lum = (77 * src_r + 150 * src_g + 29 * src_b) >> 8;
+                        rr = remap_clamp_u8(lum + (src_r - lum) * 3 / 4 - 18);
+                        rg = remap_clamp_u8(lum + (src_g - lum) * 4 / 5 + 14);
+                        rb = remap_clamp_u8(lum + (src_b - lum) * 4 / 5 + 40);
+                    }
                     rgb[idx + 0] = (uint8_t)((rgb[idx + 0] * (10 - strength) + rr * strength) / 10);
                     rgb[idx + 1] = (uint8_t)((rgb[idx + 1] * (10 - strength) + rg * strength) / 10);
                     rgb[idx + 2] = (uint8_t)((rgb[idx + 2] * (10 - strength) + rb * strength) / 10);
@@ -294,8 +679,8 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
     pipe->gb.params = *gb_params;
     pipe->remap.enabled = remap_enabled;
     pipe->remap.style = clamp_remap_style(remap_style);
-    pipe->remap.cell_size = clamp_remap_cell_size(remap_cell_size);
-    pipe->remap.strength = clamp_strength(remap_strength);
+    pipe->remap.cell_size = clamp_remap_cell_for_style(pipe->remap.style, remap_cell_size);
+    pipe->remap.strength = clamp_remap_strength_for_style(pipe->remap.style, remap_strength);
     pipe->base.enabled = lomo_enabled;
     pipe->base.preset = lomo_preset;
     pipe->base.strength = clamp_strength(lomo_strength);
@@ -315,8 +700,8 @@ void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
     out->gb_params = pipe->gb.params;
     out->use_remap = pipe->remap.enabled;
     out->remap_style = clamp_remap_style(pipe->remap.style);
-    out->remap_cell_size = clamp_remap_cell_size(pipe->remap.cell_size);
-    out->remap_strength = clamp_strength(pipe->remap.strength);
+    out->remap_cell_size = clamp_remap_cell_for_style(out->remap_style, pipe->remap.cell_size);
+    out->remap_strength = clamp_remap_strength_for_style(out->remap_style, pipe->remap.strength);
     out->use_bend = pipe->bend.enabled;
     out->bend_preset = pipe->bend.preset;
     out->bend_strength = clamp_strength(pipe->bend.strength);
@@ -421,7 +806,7 @@ void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
     }
     if (pipe->remap.enabled) {
         static const char *remap_names[REMAP_STYLE_COUNT] = {
-            "ASCII", "Edge", "Color", "Block", "Old", "Matrix"
+            "ASCII", "Toon", "Color", "Pink", "CCD", "Matrix"
         };
         int style = clamp_remap_style(pipe->remap.style);
         snprintf(generated + strlen(generated), sizeof(generated) - strlen(generated),
@@ -453,8 +838,8 @@ void pipeline_preset_capture(PipelinePreset *preset, const EffectPipeline *pipe,
     preset->gb_params = pipe->gb.params;
     preset->remap_enabled = pipe->remap.enabled;
     preset->remap_style = clamp_remap_style(pipe->remap.style);
-    preset->remap_cell_size = clamp_remap_cell_size(pipe->remap.cell_size);
-    preset->remap_strength = clamp_strength(pipe->remap.strength);
+    preset->remap_cell_size = clamp_remap_cell_for_style(preset->remap_style, pipe->remap.cell_size);
+    preset->remap_strength = clamp_remap_strength_for_style(preset->remap_style, pipe->remap.strength);
     preset->base_enabled = pipe->base.enabled;
     preset->base_preset = pipe->base.preset;
     preset->base_strength = clamp_strength(pipe->base.strength);
@@ -470,8 +855,8 @@ void pipeline_preset_apply(EffectPipeline *pipe, const PipelinePreset *preset) {
     pipe->gb.params = preset->gb_params;
     pipe->remap.enabled = preset->remap_enabled;
     pipe->remap.style = clamp_remap_style(preset->remap_style);
-    pipe->remap.cell_size = clamp_remap_cell_size(preset->remap_cell_size);
-    pipe->remap.strength = clamp_strength(preset->remap_strength);
+    pipe->remap.cell_size = clamp_remap_cell_for_style(pipe->remap.style, preset->remap_cell_size);
+    pipe->remap.strength = clamp_remap_strength_for_style(pipe->remap.style, preset->remap_strength);
     pipe->base.enabled = preset->base_enabled;
     pipe->base.preset = preset->base_preset;
     pipe->base.strength = clamp_strength(preset->base_strength);

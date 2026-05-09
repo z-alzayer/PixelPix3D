@@ -384,10 +384,13 @@ int main(void) {
                 if (kDown & KEY_DRIGHT) { app.params.palette = (app.params.palette >= PALETTE_COUNT - 1) ? PALETTE_NONE : app.params.palette + 1; }
                 }
             } else if (app.active_tab == TAB_STYLE) {
-                if (kDown & KEY_DLEFT)  { if (shoot.remap_cell_size > 4) shoot.remap_cell_size--; wig.rebuild = true; }
+                int cell_min = shoot.remap_style == REMAP_STYLE_TOON ? 1 : 4;
+                if (kDown & KEY_DLEFT)  { if (shoot.remap_cell_size > cell_min) shoot.remap_cell_size--; wig.rebuild = true; }
                 if (kDown & KEY_DRIGHT) { if (shoot.remap_cell_size < 16) shoot.remap_cell_size++; wig.rebuild = true; }
-                if (kDown & KEY_DUP)    { shoot.remap_strength++; if (shoot.remap_strength > 10) shoot.remap_strength = 10; wig.rebuild = true; }
-                if (kDown & KEY_DDOWN)  { shoot.remap_strength--; if (shoot.remap_strength < 0) shoot.remap_strength = 0; wig.rebuild = true; }
+                int remap_min = shoot.remap_style == REMAP_STYLE_TOON ? 2 : 0;
+                int remap_max = shoot.remap_style == REMAP_STYLE_TOON ? 15 : 10;
+                if (kDown & KEY_DUP)    { shoot.remap_strength++; if (shoot.remap_strength > remap_max) shoot.remap_strength = remap_max; wig.rebuild = true; }
+                if (kDown & KEY_DDOWN)  { shoot.remap_strength--; if (shoot.remap_strength < remap_min) shoot.remap_strength = remap_min; wig.rebuild = true; }
             } else if (app.active_tab == TAB_FX) {
                 if (kDown & KEY_DUP)    { app.params.fx_mode--; if (app.params.fx_mode < 0)  app.params.fx_mode = 6; }
                 if (kDown & KEY_DDOWN)  { app.params.fx_mode++; if (app.params.fx_mode > 6)  app.params.fx_mode = 0; }
