@@ -116,20 +116,15 @@
 // Section label
 #define STYLE_LABEL_Y     8
 
-// Palette buttons: 2 rows of 4 then row of 3 (or 4+3), large tap targets
-// Row 1: 4 buttons, Row 2: 3 buttons (+ "None")
-#define STYLE_PAL_Y0     28   // top of first palette row
-#define STYLE_PAL_H      36   // height of each palette button
-#define STYLE_PAL_GAP     4
-#define STYLE_PAL_Y1    (STYLE_PAL_Y0 + STYLE_PAL_H + STYLE_PAL_GAP)
-// 4 buttons per row: w = (320 - 5*4) / 4 = 300/4 = 75
-#define STYLE_PAL_W      75
-// Row 1: 4 palettes; Row 2: 3 palettes + None
-// x of button i in row: 4 + i*(75+4)
-
-// Pixel size section
-#define STYLE_PX_LABEL_Y  114
-#define STYLE_PX_Y       130   // snap slider centre y
+// Remap style grid + controls.
+#define STYLE_REMAP_X0       8
+#define STYLE_REMAP_Y0      30
+#define STYLE_REMAP_BTN_W   98
+#define STYLE_REMAP_BTN_H   30
+#define STYLE_REMAP_GAP      5
+#define STYLE_CELL_LABEL_Y  112
+#define STYLE_CELL_Y        132
+#define STYLE_STRENGTH_Y    170
 #define PX_STOPS          8
 
 // ---------------------------------------------------------------------------

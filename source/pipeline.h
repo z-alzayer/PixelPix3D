@@ -24,11 +24,25 @@ typedef enum {
 } PipelinePanel;
 
 #define PIPELINE_PRESET_COUNT 4
+#define REMAP_STYLE_COUNT     6
+
+typedef enum {
+    REMAP_STYLE_ASCII = 0,
+    REMAP_STYLE_EDGE = 1,
+    REMAP_STYLE_COLOR = 2,
+    REMAP_STYLE_BLOCK = 3,
+    REMAP_STYLE_OLDSKOOL = 4,
+    REMAP_STYLE_MATRIX = 5,
+} RemapStyle;
 
 typedef struct {
     char name[24];
     bool gb_enabled;
     FilterParams gb_params;
+    bool remap_enabled;
+    int  remap_style;
+    int  remap_cell_size;
+    int  remap_strength;
     bool base_enabled;
     int  base_preset;
     int  base_strength;
@@ -58,6 +72,13 @@ typedef struct {
 
 typedef struct {
     bool enabled;
+    int  style;
+    int  cell_size;
+    int  strength;
+} RemapStageState;
+
+typedef struct {
+    bool enabled;
     int  fx_mode;
     int  fx_intensity;
 } PostFxStageState;
@@ -68,6 +89,7 @@ typedef struct {
     bool            panel_open;
     BaseLookState   base;
     GBStageState    gb;
+    RemapStageState remap;
     BendStageState  bend;
     PostFxStageState post;
 } EffectPipeline;
@@ -78,6 +100,10 @@ typedef struct {
     int          lomo_strength;
     bool         use_gb;
     FilterParams gb_params;
+    bool         use_remap;
+    int          remap_style;
+    int          remap_cell_size;
+    int          remap_strength;
     bool         use_bend;
     int          bend_preset;
     int          bend_strength;
@@ -93,6 +119,8 @@ void pipeline_state_sync_legacy(EffectPipeline *pipe,
                                 int capture_mode,
                                 bool gb_enabled,
                                 const FilterParams *gb_params,
+                                bool remap_enabled, int remap_style,
+                                int remap_cell_size, int remap_strength,
                                 bool lomo_enabled, int lomo_preset, int lomo_strength,
                                 bool bend_enabled, int bend_preset, int bend_strength,
                                 int post_fx_mode, int post_fx_intensity,

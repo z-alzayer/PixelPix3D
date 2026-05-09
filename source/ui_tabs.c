@@ -1195,65 +1195,53 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 // ---------------------------------------------------------------------------
 
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                    const FilterParams *p, const FilterRanges *ranges) {
+                    bool remap_enabled, int remap_style,
+                    int remap_cell_size, int remap_strength) {
     float sc = 0.44f;
     C2D_Text t;
     (void)dynBuf;
 
-    C2D_TextParse(&t, staticBuf, "Style");
+    C2D_TextParse(&t, staticBuf, "Remap");
     C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
 
-    // --- Palette buttons: 4+3 grid ---
-    const char *pal_names[7] = {"GB", "Gray", "GBC", "Shell", "GBA", "DB", "Clr"};
-    static const int row_count[2] = {4, 3};
-    int pal_idx = 0;
-    for (int row = 0; row < 2; row++) {
-        int count = row_count[row];
-        float row_y = (float)STYLE_PAL_Y0 + row * (STYLE_PAL_H + STYLE_PAL_GAP);
-        float total_w = count * STYLE_PAL_W + (count - 1) * STYLE_PAL_GAP;
-        float start_x = (BOT_W - total_w) / 2.0f;
-        for (int col = 0; col < count; col++) {
-            int pal_val = (pal_idx < 6) ? pal_idx : PALETTE_NONE;
-            bool sel = (p->palette == pal_val);
-            float bx = start_x + col * (STYLE_PAL_W + STYLE_PAL_GAP);
-            draw_pill(bx, row_y, STYLE_PAL_W, STYLE_PAL_H,
-                      sel ? CLR_ACCENT : CLR_BTN);
-            C2D_TextParse(&t, staticBuf, pal_names[pal_idx]);
-            float tw = 0, th = 0;
-            C2D_TextGetDimensions(&t, sc, sc, &tw, &th);
-            float tlx = bx + (STYLE_PAL_W - tw) / 2.0f;
-            float tly = row_y + (STYLE_PAL_H - th) / 2.0f - 1.0f;
-            C2D_DrawText(&t, C2D_WithColor, tlx, tly, 0.5f, sc, sc,
-                         sel ? CLR_WHITE : CLR_TEXT);
-            pal_idx++;
-        }
+    static const char *style_labels[REMAP_STYLE_COUNT] = {
+        "ASCII", "Edge", "Color", "Block", "Old", "Matrix"
+    };
+    for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
+        int row = i / 3;
+        int col = i % 3;
+        float bx = (float)(STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP));
+        float by = (float)(STYLE_REMAP_Y0 + row * (STYLE_REMAP_BTN_H + STYLE_REMAP_GAP));
+        bool sel = remap_enabled && remap_style == i;
+        draw_pill(bx, by, STYLE_REMAP_BTN_W, STYLE_REMAP_BTN_H,
+                  sel ? CLR_ACCENT : CLR_BTN);
+        C2D_TextParse(&t, staticBuf, style_labels[i]);
+        float tw = 0, th = 0;
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     bx + ((float)STYLE_REMAP_BTN_W - tw) * 0.5f,
+                     by + ((float)STYLE_REMAP_BTN_H - th) * 0.5f - 1.0f,
+                     0.5f, 0.40f, 0.40f, sel ? CLR_WHITE : CLR_TEXT);
     }
 
-    C2D_DrawRectSolid(8, STYLE_PX_LABEL_Y - 4, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
+    C2D_DrawRectSolid(8, STYLE_CELL_LABEL_Y - 8, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
 
-    // --- Pixel Size section ---
-    C2D_TextParse(&t, staticBuf, "Pixel Size");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_PX_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
-
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%dpx", p->pixel_size);
+    char buf[16];
+    C2D_TextParse(&t, staticBuf, "Cell");
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_CELL_LABEL_Y, 0.5f, sc, sc, CLR_TEXT);
+    snprintf(buf, sizeof(buf), "%dpx", remap_cell_size);
     C2D_TextParse(&t, staticBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 280.0f, (float)STYLE_PX_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
+    C2D_DrawText(&t, C2D_WithColor, 280.0f, (float)STYLE_CELL_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
+    draw_slider(0, (float)STYLE_CELL_Y, 4.0f, 16.0f, (float)remap_cell_size);
 
-    C2D_TextParse(&t, staticBuf, "1");
-    C2D_DrawText(&t, C2D_WithColor, px_stop_x(1) - 2.0f, (float)STYLE_PX_Y + 14.0f,
-                 0.5f, 0.36f, 0.36f, CLR_DIM);
-    C2D_TextParse(&t, staticBuf, "4");
-    C2D_DrawText(&t, C2D_WithColor, px_stop_x(4) - 3.0f, (float)STYLE_PX_Y + 14.0f,
-                 0.5f, 0.36f, 0.36f, CLR_DIM);
-    C2D_TextParse(&t, staticBuf, "8");
-    C2D_DrawText(&t, C2D_WithColor, px_stop_x(8) - 3.0f, (float)STYLE_PX_Y + 14.0f,
-                 0.5f, 0.36f, 0.36f, CLR_DIM);
-
-    draw_snap_slider((float)STYLE_PX_Y, p->pixel_size);
-
-    C2D_DrawRectSolid(8, STYLE_PX_Y + 24, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
-    (void)ranges;
+    C2D_TextParse(&t, staticBuf, "Strength");
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_STRENGTH_Y - 18.0f,
+                 0.5f, sc, sc, remap_enabled ? CLR_TEXT : CLR_TRACK);
+    snprintf(buf, sizeof(buf), "%d", remap_strength);
+    C2D_TextParse(&t, staticBuf, buf);
+    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)STYLE_STRENGTH_Y - 18.0f,
+                 0.5f, sc, sc, CLR_DIM);
+    draw_slider(0, (float)STYLE_STRENGTH_Y, 0.0f, 10.0f, (float)remap_strength);
 }
 
 // ---------------------------------------------------------------------------

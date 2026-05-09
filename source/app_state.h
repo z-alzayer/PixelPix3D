@@ -23,6 +23,10 @@ typedef struct {
     int  preset_selected;  // active preset slot
     int  shoot_timer_secs; // 0 = disabled
     bool gb_enabled;
+    bool remap_enabled;
+    int  remap_style;
+    int  remap_cell_size;
+    int  remap_strength;
     int  lomo_preset;
     int  lomo_strength;
     bool lomo_enabled;

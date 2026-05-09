@@ -330,6 +330,22 @@ void settings_save_pipeline_presets(const PipelinePreset presets[PIPELINE_PRESET
         snprintf(val, sizeof(val), "%d", presets[i].gb_enabled ? 1 : 0);
         ini_set_key(key, val);
 
+        snprintf(key, sizeof(key), "preset_%d_remap_enabled", i);
+        snprintf(val, sizeof(val), "%d", presets[i].remap_enabled ? 1 : 0);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_remap_style", i);
+        snprintf(val, sizeof(val), "%d", presets[i].remap_style);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_remap_cell_size", i);
+        snprintf(val, sizeof(val), "%d", presets[i].remap_cell_size);
+        ini_set_key(key, val);
+
+        snprintf(key, sizeof(key), "preset_%d_remap_strength", i);
+        snprintf(val, sizeof(val), "%d", presets[i].remap_strength);
+        ini_set_key(key, val);
+
         snprintf(key, sizeof(key), "preset_%d_base_enabled", i);
         snprintf(val, sizeof(val), "%d", presets[i].base_enabled ? 1 : 0);
         ini_set_key(key, val);
@@ -432,6 +448,10 @@ void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT
         PipelinePreset *p = &presets[idx];
         if      (strcmp(field, "name") == 0)          snprintf(p->name, sizeof(p->name), "%s", val);
         else if (strcmp(field, "gb_enabled") == 0)    p->gb_enabled = atoi(val) != 0;
+        else if (strcmp(field, "remap_enabled") == 0) p->remap_enabled = atoi(val) != 0;
+        else if (strcmp(field, "remap_style") == 0)   p->remap_style = atoi(val);
+        else if (strcmp(field, "remap_cell_size") == 0) p->remap_cell_size = atoi(val);
+        else if (strcmp(field, "remap_strength") == 0) p->remap_strength = atoi(val);
         else if (strcmp(field, "base_enabled") == 0)  p->base_enabled = atoi(val) != 0;
         else if (strcmp(field, "base_preset") == 0)   p->base_preset = atoi(val);
         else if (strcmp(field, "base_strength") == 0) p->base_strength = atoi(val);

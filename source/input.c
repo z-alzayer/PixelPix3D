@@ -77,6 +77,8 @@ static void sync_pipeline_from_legacy(ShootState *shoot, WiggleState *wig,
                                (shoot->capture_mode == CAPTURE_MODE_STEREO)
                                    ? wig->filter_active : shoot->gb_enabled,
                                &app->params,
+                               shoot->remap_enabled, shoot->remap_style,
+                               shoot->remap_cell_size, shoot->remap_strength,
                                shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                                shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
                                app->params.fx_mode, app->params.fx_intensity,
@@ -106,6 +108,10 @@ static void apply_preset_to_legacy(ShootState *shoot, WiggleState *wig,
     app->params.fx_intensity = shoot->pipeline.post.fx_intensity;
     shoot->gb_enabled = shoot->pipeline.gb.enabled;
     wig->filter_active = shoot->pipeline.gb.enabled;
+    shoot->remap_enabled = shoot->pipeline.remap.enabled;
+    shoot->remap_style = shoot->pipeline.remap.style;
+    shoot->remap_cell_size = shoot->pipeline.remap.cell_size;
+    shoot->remap_strength = shoot->pipeline.remap.strength;
     shoot->lomo_enabled = shoot->pipeline.base.enabled;
     shoot->lomo_preset = shoot->pipeline.base.preset;
     shoot->lomo_strength = shoot->pipeline.base.strength;
@@ -748,47 +754,54 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // STYLE tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_STYLE && ty < NAV_Y) {
-
-        // Palette buttons row 1
-        if (tapped && ty >= STYLE_PAL_Y0 && ty < STYLE_PAL_Y0 + STYLE_PAL_H) {
-            int count = 4;
-            float total_w = count * STYLE_PAL_W + (count - 1) * STYLE_PAL_GAP;
-            float start_x = (BOT_W - total_w) / 2.0f;
-            for (int col = 0; col < count; col++) {
-                float bx = start_x + col * (STYLE_PAL_W + STYLE_PAL_GAP);
-                if (tx >= (int)bx && tx < (int)(bx + STYLE_PAL_W)) {
-                    p->palette = col;
-                    return true;
-                }
-            }
-        }
-        // Palette buttons row 2
-        if (tapped && ty >= STYLE_PAL_Y1 && ty < STYLE_PAL_Y1 + STYLE_PAL_H) {
-            int count = 3;
-            float total_w = count * STYLE_PAL_W + (count - 1) * STYLE_PAL_GAP;
-            float start_x = (BOT_W - total_w) / 2.0f;
-            for (int col = 0; col < count; col++) {
-                float bx = start_x + col * (STYLE_PAL_W + STYLE_PAL_GAP);
-                if (tx >= (int)bx && tx < (int)(bx + STYLE_PAL_W)) {
-                    p->palette = (col < 2) ? (4 + col) : PALETTE_NONE;
+        if (tapped && ty >= STYLE_REMAP_Y0 &&
+            ty < STYLE_REMAP_Y0 + 2 * STYLE_REMAP_BTN_H + STYLE_REMAP_GAP) {
+            static const int style_vals[REMAP_STYLE_COUNT] = {
+                REMAP_STYLE_ASCII, REMAP_STYLE_EDGE, REMAP_STYLE_COLOR,
+                REMAP_STYLE_BLOCK, REMAP_STYLE_OLDSKOOL, REMAP_STYLE_MATRIX
+            };
+            for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
+                int row = i / 3;
+                int col = i % 3;
+                int bx = STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP);
+                int by = STYLE_REMAP_Y0 + row * (STYLE_REMAP_BTN_H + STYLE_REMAP_GAP);
+                if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, STYLE_REMAP_BTN_H)) {
+                    if (shoot->remap_enabled && shoot->remap_style == style_vals[i])
+                        shoot->remap_enabled = false;
+                    else {
+                        shoot->remap_style = style_vals[i];
+                        shoot->remap_enabled = true;
+                    }
+                    wig->rebuild = true;
                     return true;
                 }
             }
         }
 
-        // Pixel-size snap slider
-        if (ty >= STYLE_PX_Y - 14 && ty < STYLE_PX_Y + 14 &&
+        if (ty >= STYLE_CELL_Y - 14 && ty < STYLE_CELL_Y + 14 &&
             tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
             float t_val = (float)(tx - TRACK_X) / TRACK_W;
             if (t_val < 0.0f) t_val = 0.0f;
             if (t_val > 1.0f) t_val = 1.0f;
-            int val = (int)(t_val * (PX_STOPS - 1) + 0.5f) + 1;
-            if (val < 1) val = 1;
-            if (val > PX_STOPS) val = PX_STOPS;
-            p->pixel_size = val;
+            int val = 4 + (int)(t_val * 12.0f + 0.5f);
+            if (val < 4) val = 4;
+            if (val > 16) val = 16;
+            shoot->remap_cell_size = val;
+            wig->rebuild = true;
             return true;
         }
 
+        if (ty >= STYLE_STRENGTH_Y - 14 && ty < STYLE_STRENGTH_Y + 14 &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            shoot->remap_strength = (int)(t_val * 10.0f + 0.5f);
+            if (shoot->remap_strength < 0) shoot->remap_strength = 0;
+            if (shoot->remap_strength > 10) shoot->remap_strength = 10;
+            wig->rebuild = true;
+            return true;
+        }
     }
 
     // -----------------------------------------------------------------------

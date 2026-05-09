@@ -47,6 +47,7 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     FilterParams defaults = FILTER_DEFAULTS;
     app->params = defaults;
     shoot->gb_enabled = false;
+    shoot->remap_enabled = false;
     shoot->lomo_enabled = false;
     shoot->bend_enabled = false;
     wig->filter_active = false;
@@ -209,6 +210,10 @@ int main(void) {
         .preset_selected  = 0,
         .shoot_timer_secs = 0,
         .gb_enabled       = false,
+        .remap_enabled    = false,
+        .remap_style      = REMAP_STYLE_ASCII,
+        .remap_cell_size  = 8,
+        .remap_strength   = 10,
         .lomo_preset      = 0,
         .lomo_strength    = 10,
         .lomo_enabled     = false,
@@ -379,9 +384,10 @@ int main(void) {
                 if (kDown & KEY_DRIGHT) { app.params.palette = (app.params.palette >= PALETTE_COUNT - 1) ? PALETTE_NONE : app.params.palette + 1; }
                 }
             } else if (app.active_tab == TAB_STYLE) {
-                // Pixel size
-                if (kDown & KEY_DLEFT)  { if (app.params.pixel_size > 1) app.params.pixel_size--; }
-                if (kDown & KEY_DRIGHT) { if (app.params.pixel_size < PX_STOPS) app.params.pixel_size++; }
+                if (kDown & KEY_DLEFT)  { if (shoot.remap_cell_size > 4) shoot.remap_cell_size--; wig.rebuild = true; }
+                if (kDown & KEY_DRIGHT) { if (shoot.remap_cell_size < 16) shoot.remap_cell_size++; wig.rebuild = true; }
+                if (kDown & KEY_DUP)    { shoot.remap_strength++; if (shoot.remap_strength > 10) shoot.remap_strength = 10; wig.rebuild = true; }
+                if (kDown & KEY_DDOWN)  { shoot.remap_strength--; if (shoot.remap_strength < 0) shoot.remap_strength = 0; wig.rebuild = true; }
             } else if (app.active_tab == TAB_FX) {
                 if (kDown & KEY_DUP)    { app.params.fx_mode--; if (app.params.fx_mode < 0)  app.params.fx_mode = 6; }
                 if (kDown & KEY_DDOWN)  { app.params.fx_mode++; if (app.params.fx_mode > 6)  app.params.fx_mode = 0; }
@@ -463,6 +469,8 @@ int main(void) {
                                    (shoot.capture_mode == CAPTURE_MODE_STEREO)
                                        ? wig.filter_active : shoot.gb_enabled,
                                    &app.params,
+                                   shoot.remap_enabled, shoot.remap_style,
+                                   shoot.remap_cell_size, shoot.remap_strength,
                                    shoot.lomo_enabled, shoot.lomo_preset, shoot.lomo_strength,
                                    shoot.bend_enabled, shoot.bend_preset, shoot.bend_strength,
                                    app.params.fx_mode, app.params.fx_intensity,

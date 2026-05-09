@@ -363,7 +363,9 @@ void draw_ui(C3D_RenderTarget *bot,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength);
     } else if (app->active_tab == TAB_STYLE) {
-        draw_style_tab(staticBuf, dynBuf, &app->params, &app->ranges);
+        draw_style_tab(staticBuf, dynBuf,
+                       shoot->remap_enabled, shoot->remap_style,
+                       shoot->remap_cell_size, shoot->remap_strength);
     } else if (app->active_tab == TAB_FX) {
         draw_fx_tab(staticBuf, dynBuf, shoot->presets, shoot->preset_selected, settings_flash);
     } else if (app->active_tab == TAB_MORE) {

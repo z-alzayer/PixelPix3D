@@ -46,7 +46,8 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                            float sticker_pending_scale, float sticker_pending_angle,
                            bool sticker_placing);
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                    const FilterParams *p, const FilterRanges *ranges);
+                    bool remap_enabled, int remap_style,
+                    int remap_cell_size, int remap_strength);
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  const PipelinePreset *presets, int preset_selected,
                  bool settings_flash);
