@@ -480,9 +480,9 @@ int main(void) {
                                    shoot.shoot_mode, shoot.shoot_mode_open);
         EffectRecipe live_recipe;
         pipeline_build_recipe(&live_recipe, &shoot.pipeline);
-        // Wiggle preview: B cancels, Save button confirms and writes APNG
-        // D-pad and touch buttons work unconditionally (outside captureInterrupted guard)
-        if (wig.preview) {
+        // Wiggle preview controls live on Shoot; other tabs can tweak effects
+        // without the confirm UI consuming their touches.
+        if (wig.preview && app.active_tab == TAB_SHOOT) {
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
                                   wiggle_left, wiggle_right, &app.save_flash,
                                   app.save_scale, shoot.stereo_output,
