@@ -166,6 +166,7 @@ static void save_thread_func(void *arg) {
 
         st->busy = false;
         LightEvent_Signal(&st->done_event);
+        settings_save_file_counter(file_counter_next());
     }
     threadExit(0);
 }
@@ -276,7 +277,6 @@ static void begin_anaglyph_capture(WiggleState *wig,
 static void begin_jpeg_save(AppState *app, u8 *buf, const EffectRecipe *recipe) {
     char save_path[64];
     if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
-        settings_save_file_counter(file_counter_next());
         int cap_size = app->cam_w * app->cam_h * 2;
         memcpy(s_save.snapshot_buf, buf, cap_size);
         memcpy(s_save.save_path, save_path, sizeof(save_path));

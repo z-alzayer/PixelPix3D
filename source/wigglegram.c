@@ -656,7 +656,6 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                       ? next_anaglyph_path(SAVE_DIR, save_path, sizeof(save_path))
                       : next_wiggle_path(SAVE_DIR, save_path, sizeof(save_path));
         if (has_path) {
-            settings_save_file_counter(file_counter_next());
             // wiggle_left/right already hold the raw RGB565 snapshots
             int cap_size = wig->capture_w * wig->capture_h * 2;
             memcpy(save->snapshot_buf,  wiggle_left,  cap_size);

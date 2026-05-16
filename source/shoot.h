@@ -13,7 +13,7 @@
 // Background save thread state
 // ---------------------------------------------------------------------------
 
-#define SAVE_THREAD_STACK_SIZE (64 * 1024)
+#define SAVE_THREAD_STACK_SIZE (256 * 1024)
 
 typedef struct SaveThreadState {
     uint8_t      *snapshot_buf;    // malloc'd once, VGA_SCREEN_SIZE bytes (RGB565)
