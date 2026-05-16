@@ -223,6 +223,15 @@
 #define SHOOT_GB_TOGGLE_H   (SHOOT_BACK_H - 4)
 #define SHOOT_CONTENT_Y    (SHOOT_BACK_Y + SHOOT_BACK_H + 4)  // ~67
 #define SHOOT_CONTENT_H    (SHOOT_SAVE_Y - SHOOT_CONTENT_Y)   // ~91
+#define SHOOT_STEREO_OUT_X  136
+#define SHOOT_STEREO_OUT_Y  (SHOOT_BACK_Y + 2)
+#define SHOOT_STEREO_OUT_W   48
+#define SHOOT_STEREO_OUT_H   16
+#define SHOOT_STEREO_OUT_GAP  5
+#define SHOOT_MANUAL_ALIGN_X 178
+#define SHOOT_MANUAL_ALIGN_Y (SHOOT_CONTENT_Y + 52)
+#define SHOOT_MANUAL_ALIGN_W 124
+#define SHOOT_MANUAL_ALIGN_H  22
 
 // Horizontal sliders inside GB Cam panel (4 sliders stacked)
 // Each row: label + slider + value. Rows at relative offsets from SHOOT_CONTENT_Y
@@ -272,7 +281,7 @@
 #define ANA_SWATCH_W      34
 #define ANA_SWATCH_H      18
 #define ANA_SWATCH_GAP     8
-#define ANA_SWATCH_Y_OFF  68
+#define ANA_SWATCH_Y_OFF  20
 
 // ---------------------------------------------------------------------------
 // FX tab geometry (y=0..200) — largely reusing existing layout, restyled

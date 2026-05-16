@@ -95,8 +95,69 @@ static void draw_align_image(const uint16_t *src, int src_w, int src_h,
     }
 }
 
+static void draw_wiggle_delay_control(C2D_TextBuf staticBuf,
+                                      int delay_ms,
+                                      float center_x,
+                                      float title_y,
+                                      float sy,
+                                      float minus_x,
+                                      float track_x,
+                                      float track_w,
+                                      float plus_x) {
+    C2D_Text t;
+    char title[18];
+    snprintf(title, sizeof(title), "Delay %dms", delay_ms);
+    float tw = 0, th = 0;
+    C2D_TextParse(&t, staticBuf, title);
+    C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 center_x - tw * 0.5f, title_y,
+                 0.5f, 0.32f, 0.32f, CLR_DIM);
+
+    #define DSTEP_BTN_W  22.0f
+    #define DSTEP_BTN_H  18.0f
+    #define DTRACK_H      4.0f
+    float track_y = sy + (DSTEP_BTN_H - DTRACK_H) * 0.5f;
+    float knob_x = track_x + wiggle_delay_to_slider_t(delay_ms) * track_w;
+
+    draw_pill(minus_x, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
+    {
+        C2D_Text tm; float mw = 0, mh = 0;
+        C2D_TextParse(&tm, staticBuf, "-");
+        C2D_TextGetDimensions(&tm, 0.44f, 0.44f, &mw, &mh);
+        C2D_DrawText(&tm, C2D_WithColor,
+                     minus_x + (DSTEP_BTN_W - mw) * 0.5f,
+                     sy + (DSTEP_BTN_H - mh) * 0.5f,
+                     0.5f, 0.44f, 0.44f, CLR_TEXT);
+    }
+
+    C2D_DrawRectSolid(track_x, track_y, 0.5f, track_w, DTRACK_H, CLR_TRACK);
+    C2D_DrawRectSolid(track_x, track_y, 0.55f, knob_x - track_x, DTRACK_H, CLR_FILL);
+    for (int i = 0; i < DELAY_ANCHOR_COUNT; i++) {
+        float tx = track_x + ((float)i / (float)(DELAY_ANCHOR_COUNT - 1)) * track_w;
+        C2D_DrawRectSolid(tx - 0.5f, track_y - 3.0f, 0.6f, 1.0f, 10.0f, CLR_DIM);
+    }
+    draw_rounded_rect(knob_x - 4.0f, sy + 2.0f, 8.0f, 14.0f, 3.0f, CLR_HANDLE);
+
+    draw_pill(plus_x, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
+    {
+        C2D_Text tp; float pw = 0, ph = 0;
+        C2D_TextParse(&tp, staticBuf, "+");
+        C2D_TextGetDimensions(&tp, 0.44f, 0.44f, &pw, &ph);
+        C2D_DrawText(&tp, C2D_WithColor,
+                     plus_x + (DSTEP_BTN_W - pw) * 0.5f,
+                     sy + (DSTEP_BTN_H - ph) * 0.5f,
+                     0.5f, 0.44f, 0.44f, CLR_TEXT);
+    }
+    #undef DSTEP_BTN_W
+    #undef DSTEP_BTN_H
+    #undef DTRACK_H
+}
+
 static void draw_wiggle_align_panel(C2D_TextBuf staticBuf,
                                     int offset_dx, int offset_dy,
+                                    int stereo_output,
+                                    int delay_ms,
                                     int capture_w, int capture_h,
                                     const u8 *wiggle_left,
                                     const u8 *wiggle_right,
@@ -105,8 +166,8 @@ static void draw_wiggle_align_panel(C2D_TextBuf staticBuf,
     const float scale = 2.0f;
     const float box_w = WIGGLE_ALIGN_THUMB_W * scale;
     const float box_h = WIGGLE_ALIGN_THUMB_H * scale;
-    const float box_x = (BOT_W - box_w) * 0.5f;
-    const float box_y = 58.0f;
+    const float box_x = (float)WIGGLE_ALIGN_BOX_X;
+    const float box_y = (float)WIGGLE_ALIGN_BOX_Y;
 
     C2D_DrawRectSolid(0, (float)SHOOT_PANEL_Y, 0.47f,
                       BOT_W, (float)SHOOT_PANEL_H, CLR_BG);
@@ -150,6 +211,18 @@ static void draw_wiggle_align_panel(C2D_TextBuf staticBuf,
     C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
     C2D_DrawText(&t, C2D_WithColor, BOT_W - tw - 8.0f, 46.0f,
                  0.5f, 0.34f, 0.34f, dragging ? CLR_ACCENT : CLR_DIM);
+
+    if (stereo_output == STEREO_OUTPUT_WIGGLE) {
+        draw_wiggle_delay_control(staticBuf, delay_ms,
+                                  245.0f, 78.0f, 96.0f,
+                                  178.0f, 210.0f, 64.0f, 290.0f);
+    } else {
+        C2D_TextParse(&t, staticBuf, "Ana Align");
+        C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     245.0f - tw * 0.5f, 86.0f,
+                     0.5f, 0.34f, 0.34f, CLR_DIM);
+    }
 }
 
 static bool preset_is_empty(const PipelinePreset *preset) {
@@ -606,6 +679,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
             if (shoot_mode == SHOOT_MODE_WIGGLE && wiggle_manual_align) {
                 draw_wiggle_align_panel(staticBuf, wiggle_offset_dx, wiggle_offset_dy,
+                                        stereo_output,
+                                        wiggle_delay_ms,
                                         wiggle_capture_w, wiggle_capture_h,
                                         wiggle_left, wiggle_right,
                                         wiggle_align_dragging);
@@ -641,10 +716,36 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
             };
             C2D_TextParse(&t, staticBuf, mode_titles[shoot_mode]);
             C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
-            C2D_DrawText(&t, C2D_WithColor,
-                         (float)SHOOT_BACK_W + 8.0f + ((BOT_W - SHOOT_BACK_W - 12.0f) - tw) * 0.5f,
-                         (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
-                         0.5f, 0.46f, 0.46f, CLR_ACCENT);
+            if (shoot_mode == SHOOT_MODE_WIGGLE) {
+                C2D_DrawText(&t, C2D_WithColor,
+                             82.0f,
+                             (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                             0.5f, 0.46f, 0.46f, CLR_ACCENT);
+                static const char *out_labels[2] = {"Wiggle", "Ana"};
+                const int out_vals[2] = {STEREO_OUTPUT_WIGGLE, STEREO_OUTPUT_ANAGLYPH};
+                for (int i = 0; i < 2; i++) {
+                    float bx = (float)SHOOT_STEREO_OUT_X +
+                               i * (SHOOT_STEREO_OUT_W + SHOOT_STEREO_OUT_GAP);
+                    bool sel = (stereo_output == out_vals[i]);
+                    draw_pill(bx, (float)SHOOT_STEREO_OUT_Y,
+                              (float)SHOOT_STEREO_OUT_W,
+                              (float)SHOOT_STEREO_OUT_H,
+                              sel ? CLR_ACCENT : CLR_BTN);
+                    C2D_Text tp; float pw = 0, ph = 0;
+                    C2D_TextParse(&tp, staticBuf, out_labels[i]);
+                    C2D_TextGetDimensions(&tp, 0.29f, 0.29f, &pw, &ph);
+                    C2D_DrawText(&tp, C2D_WithColor,
+                                 bx + (SHOOT_STEREO_OUT_W - pw) * 0.5f,
+                                 SHOOT_STEREO_OUT_Y + (SHOOT_STEREO_OUT_H - ph) * 0.5f,
+                                 0.5f, 0.29f, 0.29f,
+                                 sel ? CLR_WHITE : CLR_TEXT);
+                }
+            } else {
+                C2D_DrawText(&t, C2D_WithColor,
+                             (float)SHOOT_BACK_W + 8.0f + ((BOT_W - SHOOT_BACK_W - 12.0f) - tw) * 0.5f,
+                             (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
+                             0.5f, 0.46f, 0.46f, CLR_ACCENT);
+            }
             if (shoot_mode == SHOOT_MODE_LOMO ||
                 shoot_mode == SHOOT_MODE_BEND ||
                 shoot_mode == SHOOT_MODE_FX) {
@@ -834,118 +935,37 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     #define DZONE_X    160
                     #define DZONE_W    160
                     #define DZONE_CX   (DZONE_X + DZONE_W / 2)
-                    // Output selector
-                    {
-                        C2D_Text td; float lw = 0, lh = 0;
-                        C2D_TextParse(&td, staticBuf, "Output");
-                        C2D_TextGetDimensions(&td, 0.36f, 0.36f, &lw, &lh);
-                        C2D_DrawText(&td, C2D_WithColor,
-                                     DZONE_CX - lw * 0.5f, cy + 4.0f,
-                                     0.5f, 0.36f, 0.36f, CLR_DIM);
-                    }
-                    {
-                        static const char *out_labels[2] = {"Wiggle", "Ana"};
-                        const int out_vals[2] = {STEREO_OUTPUT_WIGGLE, STEREO_OUTPUT_ANAGLYPH};
-                        #define OPILL_W   54
-                        #define OPILL_H   17
-                        #define OPILL_GAP  5
-                        float total_w = 2 * OPILL_W + OPILL_GAP;
-                        float px0 = DZONE_X + (DZONE_W - total_w) * 0.5f;
-                        float py0 = cy + 20.0f;
-                        for (int i = 0; i < 2; i++) {
-                            float bx = px0 + i * (OPILL_W + OPILL_GAP);
-                            bool sel = (stereo_output == out_vals[i]);
-                            draw_pill(bx, py0, OPILL_W, OPILL_H,
-                                      sel ? CLR_ACCENT : CLR_BTN);
-                            C2D_Text tp; float tw = 0, th = 0;
-                            C2D_TextParse(&tp, staticBuf, out_labels[i]);
-                            C2D_TextGetDimensions(&tp, 0.32f, 0.32f, &tw, &th);
-                            C2D_DrawText(&tp, C2D_WithColor,
-                                         bx + (OPILL_W - tw) * 0.5f,
-                                         py0 + (OPILL_H - th) * 0.5f,
-                                         0.5f, 0.32f, 0.32f,
-                                         sel ? CLR_WHITE : CLR_TEXT);
-                        }
-                        #undef OPILL_W
-                        #undef OPILL_H
-                        #undef OPILL_GAP
-                    }
-
                     if (wiggle_preview) {
-                        draw_pill(DZONE_X + 18.0f, cy + 43.0f, 124.0f, 22.0f, CLR_BTN);
+                        draw_pill((float)SHOOT_MANUAL_ALIGN_X,
+                                  (float)SHOOT_MANUAL_ALIGN_Y,
+                                  (float)SHOOT_MANUAL_ALIGN_W,
+                                  (float)SHOOT_MANUAL_ALIGN_H, CLR_BTN);
                         C2D_Text ta; float aw = 0, ah = 0;
                         C2D_TextParse(&ta, staticBuf, "Manual Align");
                         C2D_TextGetDimensions(&ta, 0.34f, 0.34f, &aw, &ah);
                         C2D_DrawText(&ta, C2D_WithColor,
-                                     DZONE_X + 18.0f + (124.0f - aw) * 0.5f,
-                                     cy + 43.0f + (22.0f - ah) * 0.5f,
+                                     SHOOT_MANUAL_ALIGN_X + (SHOOT_MANUAL_ALIGN_W - aw) * 0.5f,
+                                     SHOOT_MANUAL_ALIGN_Y + (SHOOT_MANUAL_ALIGN_H - ah) * 0.5f,
                                      0.5f, 0.34f, 0.34f, CLR_TEXT);
                     }
 
                     // Delay: non-linear slider plus 10ms step buttons.
-                    if (stereo_output == STEREO_OUTPUT_WIGGLE && !wiggle_preview) {
-                        char title[18];
-                        snprintf(title, sizeof(title), "Delay %dms", wiggle_delay_ms);
-                        C2D_Text td; float tw = 0, th = 0;
-                        C2D_TextParse(&td, staticBuf, title);
-                        C2D_TextGetDimensions(&td, 0.32f, 0.32f, &tw, &th);
-                        C2D_DrawText(&td, C2D_WithColor,
-                                     DZONE_CX - tw * 0.5f, cy + 43.0f,
-                                     0.5f, 0.32f, 0.32f, CLR_DIM);
-
-                        #define DSTEP_BTN_W  22
-                        #define DSTEP_BTN_H  18
-                        #define DTRACK_X     (DZONE_X + 32.0f)
-                        #define DTRACK_W     96.0f
-                        #define DTRACK_H      4.0f
-                        float sy = cy + 62.0f;
-                        float minus_x = DZONE_X + 4.0f;
-                        float plus_x = DZONE_X + DZONE_W - 4.0f - DSTEP_BTN_W;
-                        float track_y = sy + (DSTEP_BTN_H - DTRACK_H) * 0.5f;
-                        float knob_x = DTRACK_X + wiggle_delay_to_slider_t(wiggle_delay_ms) * DTRACK_W;
-
-                        draw_pill(minus_x, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
-                        {
-                            C2D_Text tm; float mw = 0, mh = 0;
-                            C2D_TextParse(&tm, staticBuf, "-");
-                            C2D_TextGetDimensions(&tm, 0.44f, 0.44f, &mw, &mh);
-                            C2D_DrawText(&tm, C2D_WithColor,
-                                         minus_x + (DSTEP_BTN_W - mw) * 0.5f,
-                                         sy + (DSTEP_BTN_H - mh) * 0.5f,
-                                         0.5f, 0.44f, 0.44f, CLR_TEXT);
-                        }
-
-                        C2D_DrawRectSolid(DTRACK_X, track_y, 0.5f, DTRACK_W, DTRACK_H, CLR_TRACK);
-                        C2D_DrawRectSolid(DTRACK_X, track_y, 0.55f, knob_x - DTRACK_X, DTRACK_H, CLR_FILL);
-                        for (int i = 0; i < DELAY_ANCHOR_COUNT; i++) {
-                            float tx = DTRACK_X + ((float)i / (float)(DELAY_ANCHOR_COUNT - 1)) * DTRACK_W;
-                            C2D_DrawRectSolid(tx - 0.5f, track_y - 3.0f, 0.6f, 1.0f, 10.0f, CLR_DIM);
-                        }
-                        draw_rounded_rect(knob_x - 4.0f, sy + 2.0f, 8.0f, 14.0f, 3.0f, CLR_HANDLE);
-
-                        draw_pill(plus_x, sy, DSTEP_BTN_W, DSTEP_BTN_H, CLR_BTN);
-                        {
-                            C2D_Text tp; float pw = 0, ph = 0;
-                            C2D_TextParse(&tp, staticBuf, "+");
-                            C2D_TextGetDimensions(&tp, 0.44f, 0.44f, &pw, &ph);
-                            C2D_DrawText(&tp, C2D_WithColor,
-                                         plus_x + (DSTEP_BTN_W - pw) * 0.5f,
-                                         sy + (DSTEP_BTN_H - ph) * 0.5f,
-                                         0.5f, 0.44f, 0.44f, CLR_TEXT);
-                        }
-                        #undef DSTEP_BTN_W
-                        #undef DSTEP_BTN_H
-                        #undef DTRACK_X
-                        #undef DTRACK_W
-                        #undef DTRACK_H
+                    if (stereo_output == STEREO_OUTPUT_WIGGLE) {
+                        float delay_title_y = wiggle_preview ? cy + 8.0f : cy + 30.0f;
+                        float delay_sy = wiggle_preview ? cy + 24.0f : cy + 50.0f;
+                        draw_wiggle_delay_control(staticBuf, wiggle_delay_ms,
+                                                  DZONE_CX, delay_title_y, delay_sy,
+                                                  DZONE_X + 4.0f, DZONE_X + 32.0f,
+                                                  96.0f,
+                                                  DZONE_X + DZONE_W - 4.0f - 22.0f);
                     }
                     if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
                         C2D_Text ta; float aw = 0, ah = 0;
-                        C2D_TextParse(&ta, staticBuf, "red/cyan PNG");
-                        C2D_TextGetDimensions(&ta, 0.36f, 0.36f, &aw, &ah);
+                        C2D_TextParse(&ta, staticBuf, "Colors");
+                        C2D_TextGetDimensions(&ta, 0.32f, 0.32f, &aw, &ah);
                         C2D_DrawText(&ta, C2D_WithColor,
-                                     DZONE_CX - aw * 0.5f, cy + 50.0f,
-                                     0.5f, 0.36f, 0.36f, CLR_DIM);
+                                     DZONE_CX - aw * 0.5f, cy + 4.0f,
+                                     0.5f, 0.32f, 0.32f, CLR_DIM);
                         float sx0 = DZONE_CX - (2 * ANA_SWATCH_W + ANA_SWATCH_GAP) * 0.5f;
                         float sy = cy + ANA_SWATCH_Y_OFF;
                         for (int i = 0; i < 2; i++) {

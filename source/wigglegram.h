@@ -20,6 +20,9 @@ struct SaveThreadState;
 #define WIGGLE_OFFSET_Y_MAX VGA_HEIGHT
 #define WIGGLE_ALIGN_THUMB_W 80
 #define WIGGLE_ALIGN_THUMB_H 48
+#define WIGGLE_ALIGN_BOX_X 8
+#define WIGGLE_ALIGN_BOX_Y 58
+#define WIGGLE_ALIGN_DRAG_DAMPING 4
 
 // Auto-detected stereo alignment (global translation only).
 typedef struct {

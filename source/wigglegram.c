@@ -90,6 +90,39 @@ static void wiggle_set_delay_ms(WiggleState *wig, int delay_ms) {
     reset_wiggle_preview_phase(wig);
 }
 
+static bool wiggle_handle_delay_touch(WiggleState *wig,
+                                      int tx, int ty,
+                                      bool tapped, bool touched,
+                                      float sy,
+                                      float minus_x,
+                                      float track_x,
+                                      float track_w,
+                                      float plus_x) {
+    if (!tapped && !touched) return false;
+
+    #define DSTEP_BTN_W  22.0f
+    #define DSTEP_BTN_H  18.0f
+    if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
+        if (tapped && tx >= (int)minus_x && tx < (int)(minus_x + DSTEP_BTN_W)) {
+            wiggle_set_delay_ms(wig, wig->delay_ms - 10);
+            return true;
+        }
+        if (tapped && tx >= (int)plus_x && tx < (int)(plus_x + DSTEP_BTN_W)) {
+            wiggle_set_delay_ms(wig, wig->delay_ms + 10);
+            return true;
+        }
+        if (tx >= (int)(track_x - 8.0f) &&
+            tx < (int)(track_x + track_w + 8.0f)) {
+            wiggle_set_delay_ms(wig, wiggle_delay_from_slider_x(tx, track_x, track_w));
+            return true;
+        }
+    }
+    #undef DSTEP_BTN_W
+    #undef DSTEP_BTN_H
+
+    return false;
+}
+
 static int wiggle_normalize_frame_count(int n_frames) {
     if (n_frames < 2) n_frames = 2;
     if (n_frames > WIGGLE_FRAME_MAX) n_frames = WIGGLE_FRAME_MAX;
@@ -420,14 +453,14 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     bool wtapped = (kDown & KEY_TOUCH) != 0;
     bool wtouched = (kHeld & KEY_TOUCH) != 0;
 
-    #define ALIGN_BOX_X 80
-    #define ALIGN_BOX_Y 58
+    #define ALIGN_BOX_X WIGGLE_ALIGN_BOX_X
+    #define ALIGN_BOX_Y WIGGLE_ALIGN_BOX_Y
     #define ALIGN_BOX_W (WIGGLE_ALIGN_THUMB_W * 2)
     #define ALIGN_BOX_H (WIGGLE_ALIGN_THUMB_H * 2)
-    #define ALIGN_BTN_X 178
-    #define ALIGN_BTN_Y (SHOOT_CONTENT_Y + 43)
-    #define ALIGN_BTN_W 124
-    #define ALIGN_BTN_H 22
+    #define ALIGN_BTN_X SHOOT_MANUAL_ALIGN_X
+    #define ALIGN_BTN_Y SHOOT_MANUAL_ALIGN_Y
+    #define ALIGN_BTN_W SHOOT_MANUAL_ALIGN_W
+    #define ALIGN_BTN_H SHOOT_MANUAL_ALIGN_H
 
     if (wig->manual_align) {
         if (!wiggle_manual_align_ready())
@@ -460,8 +493,10 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         }
 
         if (wtouched && wig->align_dragging) {
-            int dx = ((wtouch.px - wig->align_touch_start_x) * wig->capture_w) / ALIGN_BOX_W;
-            int dy = ((wtouch.py - wig->align_touch_start_y) * wig->capture_h) / ALIGN_BOX_H;
+            int dx = ((wtouch.px - wig->align_touch_start_x) * wig->capture_w) /
+                     (ALIGN_BOX_W * WIGGLE_ALIGN_DRAG_DAMPING);
+            int dy = ((wtouch.py - wig->align_touch_start_y) * wig->capture_h) /
+                     (ALIGN_BOX_H * WIGGLE_ALIGN_DRAG_DAMPING);
             int new_dx = wig->align_start_dx + dx;
             int new_dy = wig->align_start_dy + dy;
             if (new_dx < -WIGGLE_OFFSET_X_MAX) new_dx = -WIGGLE_OFFSET_X_MAX;
@@ -481,6 +516,13 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 reset_wiggle_preview_phase(wig);
                 wig->align_changed = false;
             }
+        }
+
+        if (!wig->align_dragging && stereo_output == STEREO_OUTPUT_WIGGLE) {
+            int tx = wtouch.px, ty = wtouch.py;
+            if (wiggle_handle_delay_touch(wig, tx, ty, wtapped, wtouched,
+                                          96.0f, 178.0f, 210.0f, 64.0f, 290.0f))
+                return;
         }
 
         bool cancel = wtapped && wtouch.px >= SHOOT_CLEAR_X &&
@@ -581,7 +623,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 }
             }
 
-            if (wtapped && stereo_output == STEREO_OUTPUT_WIGGLE &&
+            if (wtapped &&
                 tx >= ALIGN_BTN_X && tx < ALIGN_BTN_X + ALIGN_BTN_W &&
                 ty >= ALIGN_BTN_Y && ty < ALIGN_BTN_Y + ALIGN_BTN_H) {
                 wiggle_manual_align_prepare(wiggle_left, wiggle_right,
@@ -593,28 +635,11 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             }
 
             // Delay controls live on the right half of the wiggle preview UI.
-            if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE && !wig->preview) {
-                float sy = (float)SHOOT_CONTENT_Y + 62.0f;
-                #define DSTEP_BTN_W  22
-                #define DSTEP_BTN_H  18
-                #define DTRACK_X     192.0f
-                #define DTRACK_W      96.0f
-                float minus_x = 164.0f;
-                float plus_x = 320.0f - 4.0f - DSTEP_BTN_W;
-                if (ty >= (int)sy && ty < (int)(sy + DSTEP_BTN_H)) {
-                    if (wtapped && tx >= (int)minus_x && tx < (int)(minus_x + DSTEP_BTN_W))
-                        wiggle_set_delay_ms(wig, wig->delay_ms - 10);
-                    else if (wtapped && tx >= (int)plus_x && tx < (int)(plus_x + DSTEP_BTN_W))
-                        wiggle_set_delay_ms(wig, wig->delay_ms + 10);
-                    else if (tx >= (int)(DTRACK_X - 8.0f) &&
-                             tx < (int)(DTRACK_X + DTRACK_W + 8.0f))
-                        wiggle_set_delay_ms(wig, wiggle_delay_from_slider_x(tx, DTRACK_X, DTRACK_W));
-                }
-                #undef DSTEP_BTN_W
-                #undef DSTEP_BTN_H
-                #undef DTRACK_X
-                #undef DTRACK_W
-
+            if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE) {
+                float sy = (float)SHOOT_CONTENT_Y + (wig->preview ? 24.0f : 50.0f);
+                if (wiggle_handle_delay_touch(wig, tx, ty, wtapped, wtouched,
+                                              sy, 164.0f, 192.0f, 96.0f, 294.0f))
+                    return;
             }
 
             if (wtapped && tx >= SHOOT_PRIMARY_X &&

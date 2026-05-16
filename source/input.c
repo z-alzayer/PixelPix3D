@@ -30,6 +30,57 @@ static int wiggle_delay_from_slider_x(int tx, float track_x, float track_w) {
     return clamp_wiggle_delay_ms(a + (int)((float)(b - a) * local + 0.5f));
 }
 
+static void set_stereo_output(ShootState *shoot, WiggleState *wig, int output) {
+    if (shoot->stereo_output == output) return;
+
+    if (shoot->stereo_output == STEREO_OUTPUT_ANAGLYPH) {
+        wig->last_anaglyph_offset_dx = wig->offset_dx;
+        wig->last_anaglyph_offset_dy = wig->offset_dy;
+    } else {
+        wig->last_wiggle_offset_dx = wig->offset_dx;
+        wig->last_wiggle_offset_dy = wig->offset_dy;
+    }
+
+    shoot->stereo_output = output;
+    if (output == STEREO_OUTPUT_ANAGLYPH) {
+        wig->offset_dx = wig->last_anaglyph_offset_dx;
+        wig->offset_dy = wig->last_anaglyph_offset_dy;
+    } else {
+        wig->offset_dx = wig->last_wiggle_offset_dx;
+        wig->offset_dy = wig->last_wiggle_offset_dy;
+    }
+
+    if (wig->preview) {
+        wig->manual_align = false;
+        wig->align_dragging = false;
+        wig->align_changed = false;
+        wig->rebuild = true;
+        wig->preview_frame = 0;
+        wig->preview_last_tick = svcGetSystemTick();
+    }
+}
+
+static bool handle_stereo_output_touch(int tx, int ty, bool tapped,
+                                       ShootState *shoot, WiggleState *wig) {
+    if (!tapped || shoot->shoot_mode != SHOOT_MODE_WIGGLE)
+        return false;
+    if (ty < SHOOT_STEREO_OUT_Y ||
+        ty >= SHOOT_STEREO_OUT_Y + SHOOT_STEREO_OUT_H)
+        return false;
+
+    int wiggle_x = SHOOT_STEREO_OUT_X;
+    int ana_x = SHOOT_STEREO_OUT_X + SHOOT_STEREO_OUT_W + SHOOT_STEREO_OUT_GAP;
+    if (tx >= wiggle_x && tx < wiggle_x + SHOOT_STEREO_OUT_W) {
+        set_stereo_output(shoot, wig, STEREO_OUTPUT_WIGGLE);
+        return true;
+    }
+    if (tx >= ana_x && tx < ana_x + SHOOT_STEREO_OUT_W) {
+        set_stereo_output(shoot, wig, STEREO_OUTPUT_ANAGLYPH);
+        return true;
+    }
+    return false;
+}
+
 static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
                                     FilterParams *p, float cy) {
     const int fx_btn_w = 100;
@@ -482,6 +533,24 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 shoot->shoot_mode_open = false;
                 return true;
             }
+            if (!wig->manual_align &&
+                handle_stereo_output_touch(tx, ty, tapped, shoot, wig))
+                return true;
+            if (!wig->manual_align &&
+                tapped && shoot->stereo_output == STEREO_OUTPUT_ANAGLYPH &&
+                ty >= SHOOT_CONTENT_Y + ANA_SWATCH_Y_OFF &&
+                ty < SHOOT_CONTENT_Y + ANA_SWATCH_Y_OFF + ANA_SWATCH_H) {
+                float total_aw = 2 * ANA_SWATCH_W + ANA_SWATCH_GAP;
+                float ax0 = 160.0f + (160.0f - total_aw) * 0.5f;
+                for (int i = 0; i < 2; i++) {
+                    float bx = ax0 + i * (ANA_SWATCH_W + ANA_SWATCH_GAP);
+                    if (tx >= (int)bx && tx < (int)(bx + ANA_SWATCH_W)) {
+                        app->anaglyph_sel_color = i;
+                        app->active_tab = TAB_ANAGLYPH_ED;
+                        return true;
+                    }
+                }
+            }
             if (ty >= SHOOT_CONTENT_Y && ty < SHOOT_SAVE_Y)
                 return false;
         }
@@ -565,6 +634,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     shoot->tune_open = !shoot->tune_open;
                     return true;
                 }
+
+                if (handle_stereo_output_touch(tx, ty, tapped, shoot, wig))
+                    return true;
 
                 if (shoot->tune_open &&
                     (shoot->shoot_mode == SHOOT_MODE_LOMO ||
@@ -749,30 +821,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     // X/Y offset buttons for wiggle preview are handled in
                     // wigglegram.c while camera capture is paused.
 
-                    // Delay slider and stepper (right zone x=160..319)
+                    // Delay, colour swatches, and preview controls live in the
+                    // right zone; output selection is in the title row.
                     if ((tapped || touched) && tx >= 160) {
-                        #define OPILL_W   54
-                        #define OPILL_H   17
-                        #define OPILL_GAP  5
-                        float out_total_w = 2 * OPILL_W + OPILL_GAP;
-                        float out_px0 = 160.0f + (160.0f - out_total_w) * 0.5f;
-                        float out_py0 = (float)SHOOT_CONTENT_Y + 20.0f;
-                        if (tapped && ty >= (int)out_py0 && ty < (int)(out_py0 + OPILL_H)) {
-                            if (tx >= (int)out_px0 && tx < (int)(out_px0 + OPILL_W)) {
-                                shoot->stereo_output = STEREO_OUTPUT_WIGGLE;
-                                return true;
-                            }
-                            float ana_x = out_px0 + OPILL_W + OPILL_GAP;
-                            if (tx >= (int)ana_x && tx < (int)(ana_x + OPILL_W)) {
-                                shoot->stereo_output = STEREO_OUTPUT_ANAGLYPH;
-                                wig->preview = false;
-                                return true;
-                            }
-                        }
-                        #undef OPILL_W
-                        #undef OPILL_H
-                        #undef OPILL_GAP
-
                         if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE) {
                             if (!tapped) return false;
                             float total_aw = 2 * ANA_SWATCH_W + ANA_SWATCH_GAP;
@@ -792,7 +843,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         }
 
                         // Stepper row plus non-linear slider.
-                        float sy = (float)SHOOT_CONTENT_Y + 62.0f;
+                        float sy = (float)SHOOT_CONTENT_Y + 50.0f;
                         #define DSTEP_BTN_W  22
                         #define DSTEP_BTN_H  18
                         #define DTRACK_X     192.0f
