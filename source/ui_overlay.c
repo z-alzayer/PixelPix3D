@@ -381,8 +381,6 @@ void draw_ui(C3D_RenderTarget *bot,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
                        shoot->presets, shoot->preset_selected, settings_flash);
-    } else if (app->active_tab == TAB_FX) {
-        draw_fx_tab(staticBuf, dynBuf, shoot->presets, shoot->preset_selected, settings_flash);
     } else if (app->active_tab == TAB_MORE) {
         draw_more_tab(staticBuf, &app->params, app->save_scale, app->shutter_button, settings_flash);
     } else if (app->active_tab == TAB_PALETTE_ED) {

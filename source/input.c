@@ -2,6 +2,7 @@
 #include "lomo.h"
 #include "bend.h"
 #include "settings.h"
+#include "anaglyph.h"
 
 bool hit(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
@@ -420,7 +421,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             app->active_tab = TAB_SHOOT;
         } else if (seg == TAB_STYLE) {
             app->active_tab = TAB_STYLE;
-        } else if (seg == TAB_FX) {
+        } else if (seg == NAV_SEG_GALLERY) {
             *do_gallery_toggle = true;
         } else if (seg == TAB_MORE) {
             app->active_tab = TAB_MORE;
@@ -1157,30 +1158,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     }
 
     // -----------------------------------------------------------------------
-    // FX tab inputs
-    // -----------------------------------------------------------------------
-    if (app->active_tab == TAB_FX && ty < NAV_Y) {
-        if (tapped) {
-            for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
-                int by = 62 + i * 28;
-                if (hit(tx, ty, 8, by, 304, 24)) {
-                    shoot->preset_selected = i;
-                    apply_preset_to_legacy(shoot, wig, app, i);
-                    return true;
-                }
-            }
-            if (hit(tx, ty, 24, 170, 132, 24)) {
-                reset_all_presets(shoot, wig, app);
-                return true;
-            }
-            if (hit(tx, ty, 164, 170, 132, 24)) {
-                save_current_to_preset(shoot, wig, app, shoot->preset_selected);
-                return true;
-            }
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // MORE tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_MORE && tapped && ty < NAV_Y) {
@@ -1332,12 +1309,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
             if (hit(tx, ty, PALTAB_RESET_X, PALTAB_BTN_Y, PALTAB_RESET_W, PALTAB_BTN_H)) {
-                app->anaglyph_colors[0][0] = 255;
-                app->anaglyph_colors[0][1] = 0;
-                app->anaglyph_colors[0][2] = 0;
-                app->anaglyph_colors[1][0] = 0;
-                app->anaglyph_colors[1][1] = 255;
-                app->anaglyph_colors[1][2] = 255;
+                anaglyph_default_colors(app->anaglyph_colors);
                 return true;
             }
             if (hit(tx, ty, PALTAB_SAVE_DEF_X, PALTAB_BTN_Y, PALTAB_SAVE_DEF_W, PALTAB_BTN_H)) {

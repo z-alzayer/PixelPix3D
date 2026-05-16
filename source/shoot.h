@@ -28,8 +28,6 @@ typedef struct SaveThreadState {
     EffectRecipe  still_recipe;    // snapshot of active processing recipe
     int           wiggle_n_frames;
     int           wiggle_delay_ms;
-    WiggleAlign   wiggle_align_result;
-    bool          wiggle_has_align;
     int           wiggle_offset_dx;
     int           wiggle_offset_dy;
     int           wiggle_cap_w;    // capture resolution (400 or 640)

@@ -10,6 +10,10 @@ static void ensure_settings_dir(void) {
     mkdir("sdmc:/3ds/pixelpix3d", 0777);
 }
 
+#define SETTINGS_MAX_LINES 384
+#define SETTINGS_LINE_LEN   64
+static char s_ini_lines[SETTINGS_MAX_LINES][SETTINGS_LINE_LEN];
+
 // ---------------------------------------------------------------------------
 // Helper: update or append a key=value in the INI file (no duplicates).
 // Reads the file, replaces the first matching line, writes it back.
@@ -17,7 +21,6 @@ static void ensure_settings_dir(void) {
 static void ini_set_key(const char *key, const char *value) {
     ensure_settings_dir();
 
-    char lines[384][64];
     int n_lines = 0;
     bool found = false;
     int key_len = (int)strlen(key);
@@ -29,28 +32,28 @@ static void ini_set_key(const char *key, const char *value) {
             bool is_match = (strncmp(tmp, key, key_len) == 0 && tmp[key_len] == '=');
             if (is_match && found)
                 continue;  // drop duplicate
-            if (n_lines >= 384)
+            if (n_lines >= SETTINGS_MAX_LINES)
                 continue;  // drop overflow lines
             if (is_match) {
-                snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
+                snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN, "%s=%s\n", key, value);
                 found = true;
             } else {
-                memcpy(lines[n_lines], tmp, 64);
+                snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN, "%s", tmp);
             }
             n_lines++;
         }
         fclose(f);
     }
 
-    if (!found && n_lines < 384) {
-        snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
+    if (!found && n_lines < SETTINGS_MAX_LINES) {
+        snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN, "%s=%s\n", key, value);
         n_lines++;
     }
 
     f = fopen(SETTINGS_PATH, "w");
     if (!f) return;
     for (int i = 0; i < n_lines; i++)
-        fputs(lines[i], f);
+        fputs(s_ini_lines[i], f);
     fclose(f);
 }
 
@@ -188,13 +191,56 @@ void settings_load_palettes(PaletteDef *user_palettes) {
 }
 
 void settings_save_anaglyph_colors(const uint8_t colors[2][3]) {
-    char val[16];
-    snprintf(val, sizeof(val), "%02X%02X%02X",
+    ensure_settings_dir();
+
+    char left_val[8], right_val[8];
+    snprintf(left_val, sizeof(left_val), "%02X%02X%02X",
              colors[0][0], colors[0][1], colors[0][2]);
-    ini_set_key("anaglyph_left", val);
-    snprintf(val, sizeof(val), "%02X%02X%02X",
+    snprintf(right_val, sizeof(right_val), "%02X%02X%02X",
              colors[1][0], colors[1][1], colors[1][2]);
-    ini_set_key("anaglyph_right", val);
+
+    int n_lines = 0;
+    bool found_left = false;
+    bool found_right = false;
+
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (f) {
+        char tmp[64];
+        while (fgets(tmp, sizeof(tmp), f)) {
+            bool is_left = strncmp(tmp, "anaglyph_left=", 14) == 0;
+            bool is_right = strncmp(tmp, "anaglyph_right=", 15) == 0;
+            if ((is_left && found_left) || (is_right && found_right))
+                continue;
+            if (n_lines >= SETTINGS_MAX_LINES)
+                continue;
+            if (is_left) {
+                snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN,
+                         "anaglyph_left=%s\n", left_val);
+                found_left = true;
+            } else if (is_right) {
+                snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN,
+                         "anaglyph_right=%s\n", right_val);
+                found_right = true;
+            } else {
+                snprintf(s_ini_lines[n_lines], SETTINGS_LINE_LEN, "%s", tmp);
+            }
+            n_lines++;
+        }
+        fclose(f);
+    }
+
+    if (!found_left && n_lines < SETTINGS_MAX_LINES)
+        snprintf(s_ini_lines[n_lines++], SETTINGS_LINE_LEN,
+                 "anaglyph_left=%s\n", left_val);
+    if (!found_right && n_lines < SETTINGS_MAX_LINES)
+        snprintf(s_ini_lines[n_lines++], SETTINGS_LINE_LEN,
+                 "anaglyph_right=%s\n", right_val);
+
+    f = fopen(SETTINGS_PATH, "w");
+    if (!f) return;
+    for (int i = 0; i < n_lines; i++)
+        fputs(s_ini_lines[i], f);
+    fclose(f);
 }
 
 void settings_load_anaglyph_colors(uint8_t colors[2][3]) {
@@ -219,8 +265,10 @@ void settings_load_anaglyph_colors(uint8_t colors[2][3]) {
         else if (strcmp(key, "anaglyph_right") == 0) idx = 1;
         if (idx < 0) continue;
 
+        if (strlen(val) != 6) continue;
         unsigned int rgb = 0;
-        if (sscanf(val, "%06X", &rgb) != 1) continue;
+        char extra = '\0';
+        if (sscanf(val, "%6X%c", &rgb, &extra) != 1) continue;
         colors[idx][0] = (uint8_t)((rgb >> 16) & 0xFF);
         colors[idx][1] = (uint8_t)((rgb >> 8) & 0xFF);
         colors[idx][2] = (uint8_t)(rgb & 0xFF);

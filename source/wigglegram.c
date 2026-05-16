@@ -20,36 +20,6 @@ static void reset_wiggle_preview_phase(WiggleState *wig) {
     wig->preview_last_tick = svcGetSystemTick();
 }
 
-static uint16_t s_align_thumb_l[WIGGLE_ALIGN_THUMB_W * WIGGLE_ALIGN_THUMB_H];
-static uint16_t s_align_thumb_r[WIGGLE_ALIGN_THUMB_W * WIGGLE_ALIGN_THUMB_H];
-static bool s_align_thumbs_ready = false;
-
-void wiggle_manual_align_prepare(const uint8_t *left_rgb565,
-                                 const uint8_t *right_rgb565,
-                                 int w, int h) {
-    if (!left_rgb565 || !right_rgb565 || w <= 0 || h <= 0) {
-        s_align_thumbs_ready = false;
-        return;
-    }
-    crop_fill_rgb565(s_align_thumb_l, WIGGLE_ALIGN_THUMB_W, WIGGLE_ALIGN_THUMB_H,
-                     (const uint16_t *)left_rgb565, w, h);
-    crop_fill_rgb565(s_align_thumb_r, WIGGLE_ALIGN_THUMB_W, WIGGLE_ALIGN_THUMB_H,
-                     (const uint16_t *)right_rgb565, w, h);
-    s_align_thumbs_ready = true;
-}
-
-void wiggle_manual_align_invalidate(void) {
-    s_align_thumbs_ready = false;
-}
-
-bool wiggle_manual_align_ready(void) {
-    return s_align_thumbs_ready;
-}
-
-const uint16_t *wiggle_manual_align_thumb(bool right) {
-    return right ? s_align_thumb_r : s_align_thumb_l;
-}
-
 static void remember_stereo_offsets(WiggleState *wig, int stereo_output) {
     if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
         wig->last_anaglyph_offset_dx = wig->offset_dx;
@@ -140,92 +110,10 @@ static int wiggle_interp_weight_for_frame(int frame, int strip_frames) {
     return (strip_index * 256) / (strip_frames - 1);
 }
 
-// ---------------------------------------------------------------------------
-// wiggle_align — find global translation via block-matching on downsampled luma
-// ---------------------------------------------------------------------------
-
-#define DS_W  80
-#define DS_H  48
-#define GLOBAL_SEARCH_X  20
-#define GLOBAL_SEARCH_Y   6
-
-static void downsample_luma(const uint16_t *src, int w, int h,
-                            uint8_t *dst, int dw, int dh)
-{
-    int bw = w / dw, bh = h / dh, bdiv = bw * bh;
-    for (int by = 0; by < dh; by++) {
-        for (int bx = 0; bx < dw; bx++) {
-            int sum = 0;
-            for (int dy = 0; dy < bh; dy++) {
-                const uint16_t *row = src + (by * bh + dy) * w + bx * bw;
-                for (int dx = 0; dx < bw; dx++) {
-                    uint16_t p = row[dx];
-                    sum += ((p >> 11) & 0x1f) * 2
-                         + ((p >>  5) & 0x3f) * 2
-                         +  (p        & 0x1f);
-                }
-            }
-            dst[by * dw + bx] = (uint8_t)(sum / bdiv);
-        }
-    }
-}
-
-static int sad_region(const uint8_t *a, const uint8_t *b,
-                      int x0, int y0, int dx, int dy,
-                      int rw, int rh, int stride)
-{
-    int s = 0;
-    for (int ry = 0; ry < rh; ry++) {
-        const uint8_t *ra = a + (y0 + ry) * stride + x0;
-        const uint8_t *rb = b + (y0 + ry + dy) * stride + x0 + dx;
-        for (int rx = 0; rx < rw; rx++) {
-            int d = ra[rx] - rb[rx];
-            s += d < 0 ? -d : d;
-        }
-    }
-    return s;
-}
-
-void wiggle_align(WiggleAlign *align,
-                  const uint8_t *left_rgb565,
-                  const uint8_t *right_rgb565,
-                  int w, int h)
-{
-    static uint8_t luma_l[DS_W * DS_H];
-    static uint8_t luma_r[DS_W * DS_H];
-
-    downsample_luma((const uint16_t *)left_rgb565,  w, h, luma_l, DS_W, DS_H);
-    downsample_luma((const uint16_t *)right_rgb565, w, h, luma_r, DS_W, DS_H);
-
-    int margin_x = GLOBAL_SEARCH_X + 2;
-    int margin_y = GLOBAL_SEARCH_Y + 2;
-    int x0 = margin_x, y0 = margin_y;
-    int rw = DS_W - 2 * margin_x;
-    int rh = DS_H - 2 * margin_y;
-
-    if (rw <= 0 || rh <= 0) { align->global_dx = 0; align->global_dy = 0; return; }
-
-    int best_sad = 0x7fffffff, best_dx = 0, best_dy = 0;
-    for (int dy = -GLOBAL_SEARCH_Y; dy <= GLOBAL_SEARCH_Y; dy++) {
-        for (int dx = -GLOBAL_SEARCH_X; dx <= GLOBAL_SEARCH_X; dx++) {
-            int s = sad_region(luma_l, luma_r, x0, y0, dx, dy, rw, rh, DS_W);
-            if (s < best_sad) { best_sad = s; best_dx = dx; best_dy = dy; }
-        }
-    }
-
-    // Convert DS-space offset to full-res pixels
-    align->global_dx = best_dx * w / DS_W;
-    align->global_dy = best_dy * h / DS_H;
-}
-
-// ---------------------------------------------------------------------------
-// build_wiggle_preview_frames — crop both frames to the overlap (AND) region
-// ---------------------------------------------------------------------------
 int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
                                 const uint8_t *left_rgb565,
                                 const uint8_t *right_rgb565,
                                 int src_w, int src_h, int nf,
-                                const WiggleAlign *align,
                                 int offset_dx, int offset_dy,
                                 int *out_w, int *out_h)
 {
@@ -234,8 +122,8 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
     int strip_frames = wiggle_normalize_frame_count(nf);
     int sequence_frames = wiggle_sequence_frame_count(strip_frames);
 
-    int fdx = (align ? align->global_dx : 0) + offset_dx;
-    int fdy = (align ? align->global_dy : 0) + offset_dy;
+    int fdx = offset_dx;
+    int fdy = offset_dy;
 
     // Overlap dimensions at full capture resolution
     int ow = src_w - (fdx < 0 ? -fdx : fdx);
@@ -346,7 +234,6 @@ int save_wiggle_gif(const char *path,
                     const uint8_t *left_rgb565,  int w, int h,
                     const uint8_t *right_rgb565,
                     int n_frames, int delay_ms,
-                    const WiggleAlign *align,
                     int offset_dx, int offset_dy,
                     int rotate_quadrants,
                     const EffectRecipe *recipe)
@@ -354,8 +241,8 @@ int save_wiggle_gif(const char *path,
     int strip_frames = wiggle_normalize_frame_count(n_frames);
     int sequence_frames = wiggle_sequence_frame_count(strip_frames);
 
-    int fdx = (align ? align->global_dx : 0) + offset_dx;
-    int fdy = (align ? align->global_dy : 0) + offset_dy;
+    int fdx = offset_dx;
+    int fdy = offset_dy;
 
     // Overlap dimensions
     int ow = w - (fdx < 0 ? -fdx : fdx);
@@ -442,6 +329,7 @@ int save_wiggle_gif(const char *path,
 void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            u32 kDown, u32 kHeld,
                            bool do_save,
+                           bool controls_visible,
                            u8 *wiggle_left, u8 *wiggle_right,
                            int *save_flash,
                            int save_scale,
@@ -462,11 +350,17 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     #define ALIGN_BTN_W SHOOT_MANUAL_ALIGN_W
     #define ALIGN_BTN_H SHOOT_MANUAL_ALIGN_H
 
-    if (wig->manual_align) {
-        if (!wiggle_manual_align_ready())
-            wiggle_manual_align_prepare(wiggle_left, wiggle_right,
-                                        wig->capture_w, wig->capture_h);
+    if (!controls_visible) {
+        wig->dpad_repeat = 0;
+        if (wig->manual_align || wig->align_dragging || wig->align_changed) {
+            wig->manual_align = false;
+            wig->align_dragging = false;
+            wig->align_changed = false;
+        }
+        goto save_or_cancel;
+    }
 
+    if (wig->manual_align) {
         bool changed = false;
         if (kDown & KEY_DLEFT)  { wig->offset_dx--; changed = true; }
         if (kDown & KEY_DRIGHT) { wig->offset_dx++; changed = true; }
@@ -626,8 +520,6 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             if (wtapped &&
                 tx >= ALIGN_BTN_X && tx < ALIGN_BTN_X + ALIGN_BTN_W &&
                 ty >= ALIGN_BTN_Y && ty < ALIGN_BTN_Y + ALIGN_BTN_H) {
-                wiggle_manual_align_prepare(wiggle_left, wiggle_right,
-                                            wig->capture_w, wig->capture_h);
                 wig->manual_align = true;
                 wig->align_dragging = false;
                 wig->align_changed = false;
@@ -672,6 +564,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
         wiggle_set_delay_ms(wig, wig->delay_ms + ((kDown & KEY_L) ? -10 : 10));
     }
 
+save_or_cancel:
     if (kDown & KEY_B) {
         wig->preview = false;
     } else if ((do_save || (kDown & KEY_A)) && !save->busy) {
@@ -691,7 +584,6 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->save_scale       = save_scale;
             save->wiggle_n_frames  = wig->n_frames;
             save->wiggle_delay_ms  = wig->delay_ms;
-            save->wiggle_has_align = wig->has_align;
             save->wiggle_offset_dx = wig->offset_dx;
             save->wiggle_offset_dy = wig->offset_dy;
             save->wiggle_cap_w     = wig->capture_w;
@@ -700,7 +592,7 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             save->wiggle_recipe = recipe ? *recipe : (EffectRecipe){0};
             save->anaglyph_recipe = recipe ? *recipe : (EffectRecipe){0};
             memcpy(save->anaglyph_colors, anaglyph_colors, sizeof(save->anaglyph_colors));
-            if (wig->has_align) save->wiggle_align_result = wig->align_res;
+            anaglyph_sanitize_colors(save->anaglyph_colors);
             save->busy = true;
             *save_flash = 20;
             play_shutter_click();
@@ -804,7 +696,7 @@ void wiggle_preview_tick(WiggleState *wig,
             wig->preview_frame_count = build_wiggle_preview_frames(preview_frames,
                                             wiggle_left, wiggle_right,
                                             wig->capture_w, wig->capture_h,
-                                            wig->n_frames, NULL,
+                                            wig->n_frames,
                                             wig->offset_dx, wig->offset_dy,
                                             &wig->crop_w, &wig->crop_h);
         }

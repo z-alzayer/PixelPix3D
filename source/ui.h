@@ -50,11 +50,11 @@
 #define NAV_H         40
 #define NAV_SEG_W     80   // 4 segments x 80px = 320px
 #define NAV_INDICATOR_H  3  // coloured underline on active tab
+#define NAV_SEG_GALLERY  2
 
 // Tab indices
 #define TAB_SHOOT  0
 #define TAB_STYLE  1
-#define TAB_FX     2
 #define TAB_MORE   3
 #define TAB_PALETTE_ED  4   // entered from MORE
 #define TAB_CALIBRATE   5   // entered from MORE
@@ -284,24 +284,6 @@
 #define ANA_SWATCH_Y_OFF  20
 
 // ---------------------------------------------------------------------------
-// FX tab geometry (y=0..200) — largely reusing existing layout, restyled
-// ---------------------------------------------------------------------------
-
-#define FXTAB_LABEL_Y      8
-#define FXTAB_BTN_Y1      28
-#define FXTAB_BTN_Y2      60
-#define FXTAB_BTN_H       28
-#define FXTAB_R1_W        75
-#define FXTAB_R1_GAP       4
-#define FXTAB_R1_X0        4
-#define FXTAB_R2_W       100
-#define FXTAB_R2_GAP       4
-#define FXTAB_R2_X0        4
-#define FXTAB_SLIDER_Y   120
-#define FXTAB_DESC_Y     158
-// No Save as Default here — moved to MORE
-
-// ---------------------------------------------------------------------------
 // MORE tab geometry (settings overlay, y=0..200)
 // ---------------------------------------------------------------------------
 
@@ -504,7 +486,6 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-int   px_stop_x(int val);
 float slider_val_to_x(float val, float mn, float mx);
 float touch_x_to_val(int px, float mn, float mx);
 
@@ -513,7 +494,6 @@ float touch_x_to_val(int px, float mn, float mx);
 // ---------------------------------------------------------------------------
 
 void draw_slider(float cx, float cy, float mn, float mx, float val);
-void draw_snap_slider(float cy, int px_val);
 void draw_range_slider(float cy, float abs_min, float abs_max,
                        float val_min, float val_max, float val_def);
 void draw_ui(C3D_RenderTarget *bot,

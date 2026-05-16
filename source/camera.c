@@ -96,32 +96,6 @@ void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
 }
 
 // ---------------------------------------------------------------------------
-// Camera resolution switch (SIZE_VGA ↔ SIZE_CTR_TOP_LCD)
-// ---------------------------------------------------------------------------
-
-void camera_set_resolution(int width, int height,
-                           u32 camSelect, u32 *bufSize,
-                           Handle camReceiveEvent[4], bool *captureInterrupted,
-                           bool selfie) {
-    CAMU_StopCapture(PORT_BOTH);
-    for (int i = 0; i < 4; i++) {
-        if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
-    }
-
-    CAMU_Size size = (width == VGA_WIDTH) ? SIZE_VGA : SIZE_CTR_TOP_LCD;
-    CAMU_SetSize(camSelect, size, CONTEXT_A);
-    CAMU_GetMaxBytes(bufSize, width, height);
-    CAMU_SetTransferBytes(PORT_BOTH, *bufSize, width, height);
-
-    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
-    CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
-    CAMU_ClearBuffer(PORT_BOTH);
-    if (!selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
-    CAMU_StartCapture(PORT_BOTH);
-    *captureInterrupted = false;
-}
-
-// ---------------------------------------------------------------------------
 // Camera toggle (swap front ↔ rear)
 // ---------------------------------------------------------------------------
 

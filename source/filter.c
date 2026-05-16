@@ -605,7 +605,3 @@ void apply_fx_tuned(uint8_t *buf, int w, int h, FilterParams p, int frame_count,
         return;
     }
 }
-
-void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
-    apply_fx_tuned(buf, w, h, p, frame_count, 0, 0, 0);
-}

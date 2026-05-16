@@ -57,8 +57,6 @@ typedef struct WiggleState {
     int           delay_ms;
     int           preview_frame;    // current cycling index
     u64           preview_last_tick;
-    WiggleAlign   align_res;
-    bool          has_align;
     int           offset_dx;
     int           offset_dy;
     bool          rebuild;          // offsets changed, need re-blend

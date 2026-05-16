@@ -9,6 +9,25 @@ static uint16_t s_right_crop[CAMERA_WIDTH * CAMERA_HEIGHT];
 static uint8_t s_left_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 static uint8_t s_right_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
 
+void anaglyph_default_colors(uint8_t colors[2][3]) {
+    colors[0][0] = 255;
+    colors[0][1] = 0;
+    colors[0][2] = 0;
+    colors[1][0] = 0;
+    colors[1][1] = 255;
+    colors[1][2] = 255;
+}
+
+void anaglyph_sanitize_colors(uint8_t colors[2][3]) {
+    int total = 0;
+    for (int eye = 0; eye < 2; eye++) {
+        for (int ch = 0; ch < 3; ch++)
+            total += colors[eye][ch];
+    }
+    if (total == 0)
+        anaglyph_default_colors(colors);
+}
+
 static uint8_t luma_rgb(const uint8_t *p) {
     return (uint8_t)((77 * p[0] + 150 * p[1] + 29 * p[2]) >> 8);
 }
@@ -95,10 +114,13 @@ void build_anaglyph_preview_frame(uint16_t *dst_rgb565,
                                   const EffectRecipe *recipe,
                                   const uint8_t colors[2][3]) {
     static uint8_t preview_rgb[CAMERA_WIDTH * CAMERA_HEIGHT * 3];
+    uint8_t safe_colors[2][3];
+    memcpy(safe_colors, colors, sizeof(safe_colors));
+    anaglyph_sanitize_colors(safe_colors);
     prepare_eye_buffers(left_rgb565, w, h, right_rgb565, recipe,
                         s_left_rgb, s_right_rgb);
     compose_anaglyph_rgb888(preview_rgb, s_left_rgb, s_right_rgb,
-                            offset_dx, offset_dy, colors);
+                            offset_dx, offset_dy, safe_colors);
     rgb888_to_rgb565(dst_rgb565, preview_rgb, CAMERA_WIDTH * CAMERA_HEIGHT);
 }
 
@@ -147,6 +169,10 @@ int save_anaglyph_png(const char *path,
                       int rotate_quadrants,
                       const EffectRecipe *recipe,
                       const uint8_t colors[2][3]) {
+    uint8_t safe_colors[2][3];
+    memcpy(safe_colors, colors, sizeof(safe_colors));
+    anaglyph_sanitize_colors(safe_colors);
+
     int npix = w * h;
     uint8_t *left_rgb = malloc((size_t)npix * 3);
     uint8_t *right_rgb = malloc((size_t)npix * 3);
@@ -160,7 +186,7 @@ int save_anaglyph_png(const char *path,
         pipeline_apply(right_rgb, w, h, recipe, 0);
     }
     compose_anaglyph_rgb888_sized(left_rgb, left_rgb, right_rgb,
-                                  w, h, offset_dx, offset_dy, colors);
+                                  w, h, offset_dx, offset_dy, safe_colors);
 
     const uint8_t *frame = left_rgb;
     int out_w = w;

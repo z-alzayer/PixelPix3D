@@ -47,15 +47,6 @@ void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
                       const uint16_t *src, int src_w, int src_h);
 
 // ---------------------------------------------------------------------------
-// Camera resolution switch (SIZE_VGA ↔ SIZE_CTR_TOP_LCD)
-// ---------------------------------------------------------------------------
-
-void camera_set_resolution(int width, int height,
-                           u32 camSelect, u32 *bufSize,
-                           Handle camReceiveEvent[4], bool *captureInterrupted,
-                           bool selfie);
-
-// ---------------------------------------------------------------------------
 // Camera toggle (swap front ↔ rear)
 // ---------------------------------------------------------------------------
 

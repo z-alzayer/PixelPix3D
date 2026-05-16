@@ -5,10 +5,6 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-int px_stop_x(int val) {
-    return TRACK_X + (val - 1) * TRACK_W / (PX_STOPS - 1);
-}
-
 float slider_val_to_x(float val, float mn, float mx) {
     float t = (val - mn) / (mx - mn);
     if (t < 0.0f) t = 0.0f;
@@ -78,16 +74,6 @@ void draw_slider(float cx, float cy, float mn, float mx, float val) {
     draw_rounded_rect(hx - HANDLE_W / 2.0f, cy - HANDLE_H / 2.0f,
                       HANDLE_W, HANDLE_H, 3.0f, CLR_HANDLE);
     (void)cx;
-}
-
-void draw_snap_slider(float cy, int px_val) {
-    C2D_DrawRectSolid(TRACK_X, cy - TRACK_H / 2.0f, 0.5f, TRACK_W, TRACK_H, CLR_TRACK);
-    float hx = (float)px_stop_x(px_val);
-    float fill_w = hx - TRACK_X;
-    if (fill_w > 0)
-        C2D_DrawRectSolid(TRACK_X, cy - TRACK_H / 2.0f, 0.5f, fill_w, TRACK_H, CLR_FILL);
-    draw_rounded_rect(hx - HANDLE_W / 2.0f, cy - HANDLE_H / 2.0f,
-                      HANDLE_W, HANDLE_H, 3.0f, CLR_HANDLE);
 }
 
 void draw_range_slider(float cy, float abs_min, float abs_max,

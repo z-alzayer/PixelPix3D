@@ -106,7 +106,6 @@ static void save_thread_func(void *arg) {
                              st->snapshot_buf2,
                              st->wiggle_n_frames,
                              st->wiggle_delay_ms,
-                             st->wiggle_has_align ? &st->wiggle_align_result : NULL,
                              st->wiggle_offset_dx,
                              st->wiggle_offset_dy,
                              st->rotate_quadrants,
@@ -185,12 +184,7 @@ Thread save_thread_start(uint8_t *snapshot_buf, uint8_t *snapshot_buf2) {
     s_save.still_recipe = (EffectRecipe){0};
     s_save.wiggle_recipe = (EffectRecipe){0};
     s_save.anaglyph_recipe = (EffectRecipe){0};
-    s_save.anaglyph_colors[0][0] = 255;
-    s_save.anaglyph_colors[0][1] = 0;
-    s_save.anaglyph_colors[0][2] = 0;
-    s_save.anaglyph_colors[1][0] = 0;
-    s_save.anaglyph_colors[1][1] = 255;
-    s_save.anaglyph_colors[1][2] = 255;
+    anaglyph_default_colors(s_save.anaglyph_colors);
     LightEvent_Init(&s_save.request_event, RESET_ONESHOT);
     LightEvent_Init(&s_save.done_event,    RESET_ONESHOT);
     s_save.busy = false;
@@ -219,7 +213,6 @@ static void begin_wiggle_capture(WiggleState *wig,
     int screen_size = cam_w * cam_h * 2;
     memcpy(wiggle_left,  buf,               screen_size);
     memcpy(wiggle_right, buf + screen_size, screen_size);
-    wig->has_align  = false;
     wig->offset_dx  = wig->last_wiggle_offset_dx;
     wig->offset_dy  = wig->last_wiggle_offset_dy;
     wig->capture_w  = cam_w;
@@ -228,11 +221,10 @@ static void begin_wiggle_capture(WiggleState *wig,
     wig->manual_align = false;
     wig->align_dragging = false;
     wig->align_changed = false;
-    wiggle_manual_align_prepare(wiggle_left, wiggle_right, cam_w, cam_h);
     wig->preview_frame_count = build_wiggle_preview_frames(wiggle_preview_frames,
                                 wiggle_left, wiggle_right,
                                 cam_w, cam_h,
-                                wig->n_frames, NULL,
+                                wig->n_frames,
                                 wig->offset_dx, wig->offset_dy,
                                 &wig->crop_w, &wig->crop_h);
     wig->preview           = true;
@@ -249,7 +241,6 @@ static void begin_anaglyph_capture(WiggleState *wig,
     int screen_size = cam_w * cam_h * 2;
     memcpy(wiggle_left,  buf,               screen_size);
     memcpy(wiggle_right, buf + screen_size, screen_size);
-    wig->has_align  = false;
     wig->offset_dx  = wig->last_anaglyph_offset_dx;
     wig->offset_dy  = wig->last_anaglyph_offset_dy;
     wig->capture_w  = cam_w;
@@ -258,7 +249,6 @@ static void begin_anaglyph_capture(WiggleState *wig,
     wig->manual_align = false;
     wig->align_dragging = false;
     wig->align_changed = false;
-    wiggle_manual_align_prepare(wiggle_left, wiggle_right, cam_w, cam_h);
     wig->n_frames = 1;
     wig->preview_frame_count = 1;
     wig->crop_w = CAMERA_WIDTH;

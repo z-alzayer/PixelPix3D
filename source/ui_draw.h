@@ -62,9 +62,6 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     bool bend_enabled, int bend_preset, int bend_strength,
                     const PipelinePreset *presets, int preset_selected,
                     bool settings_flash);
-void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                 const PipelinePreset *presets, int preset_selected,
-                 bool settings_flash);
 void draw_more_tab(C2D_TextBuf staticBuf,
                    const FilterParams *p, int save_scale,
                    int shutter_button, bool settings_flash);

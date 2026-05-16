@@ -21,6 +21,7 @@
 #include "editor.h"
 #include "render.h"
 #include "pipeline.h"
+#include "anaglyph.h"
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
@@ -201,7 +202,6 @@ int main(void) {
         .ranges           = FILTER_RANGES_DEFAULTS,
         .palette_sel_pal  = 0,
         .palette_sel_color = 0,
-        .anaglyph_colors  = { {255, 0, 0}, {0, 255, 255} },
         .anaglyph_sel_color = 0,
         .cam_w            = VGA_WIDTH,
         .cam_h            = VGA_HEIGHT,
@@ -246,7 +246,6 @@ int main(void) {
         .delay_ms         = WIGGLE_DEFAULT_DELAY_MS,
         .preview_frame    = 0,
         .preview_last_tick = 0,
-        .has_align        = false,
         .offset_dx        = 0,
         .offset_dy        = 0,
         .rebuild          = false,
@@ -310,7 +309,9 @@ int main(void) {
     for (int i = 0; i < PALETTE_COUNT; i++) app.user_palettes[i] = palettes[i];
     settings_load(&app.params, &app.save_scale, &app.shutter_button);
     settings_load_palettes(app.user_palettes);
+    anaglyph_default_colors(app.anaglyph_colors);
     settings_load_anaglyph_colors(app.anaglyph_colors);
+    anaglyph_sanitize_colors(app.anaglyph_colors);
     settings_load_ranges(&app.ranges);
     settings_load_pipeline_presets(shoot.presets);
     settings_load_effect_tuning(&g_effect_tuning);
@@ -405,11 +406,6 @@ int main(void) {
                 int remap_max = shoot.remap_style == REMAP_STYLE_TOON ? 15 : 10;
                 if (kDown & KEY_DUP)    { shoot.remap_strength++; if (shoot.remap_strength > remap_max) shoot.remap_strength = remap_max; wig.rebuild = true; }
                 if (kDown & KEY_DDOWN)  { shoot.remap_strength--; if (shoot.remap_strength < remap_min) shoot.remap_strength = remap_min; wig.rebuild = true; }
-            } else if (app.active_tab == TAB_FX) {
-                if (kDown & KEY_DUP)    { app.params.fx_mode--; if (app.params.fx_mode < 0)  app.params.fx_mode = 6; }
-                if (kDown & KEY_DDOWN)  { app.params.fx_mode++; if (app.params.fx_mode > 6)  app.params.fx_mode = 0; }
-                if (kDown & KEY_DLEFT)  { app.params.fx_intensity--; if (app.params.fx_intensity < 0)  app.params.fx_intensity = 0; }
-                if (kDown & KEY_DRIGHT) { app.params.fx_intensity++; if (app.params.fx_intensity > 10) app.params.fx_intensity = 10; }
             } else if (app.active_tab == TAB_PALETTE_ED) {
                 if (kDown & KEY_DUP)    { if (--app.palette_sel_pal   < 0)                                              app.palette_sel_pal   = PALETTE_COUNT - 1; app.palette_sel_color = 0; }
                 if (kDown & KEY_DDOWN)  { if (++app.palette_sel_pal   >= PALETTE_COUNT)                                 app.palette_sel_pal   = 0;                 app.palette_sel_color = 0; }
@@ -471,11 +467,16 @@ int main(void) {
             }
 
             if (do_defaults_save) {
-                app.default_params = app.params;
-                settings_save(&app.default_params, app.save_scale, app.shutter_button);
-                settings_save_palettes(app.user_palettes);
-                settings_save_anaglyph_colors(app.anaglyph_colors);
-                settings_save_ranges(&app.ranges);
+                if (app.active_tab == TAB_ANAGLYPH_ED) {
+                    anaglyph_sanitize_colors(app.anaglyph_colors);
+                    settings_save_anaglyph_colors(app.anaglyph_colors);
+                } else {
+                    app.default_params = app.params;
+                    settings_save(&app.default_params, app.save_scale, app.shutter_button);
+                    settings_save_palettes(app.user_palettes);
+                    settings_save_anaglyph_colors(app.anaglyph_colors);
+                    settings_save_ranges(&app.ranges);
+                }
                 app.settings_flash = 20;
             }
 
@@ -502,7 +503,12 @@ int main(void) {
         // Wiggle preview controls live on Shoot; other tabs can tweak effects
         // without the confirm UI consuming their touches.
         if (wig.preview && app.active_tab == TAB_SHOOT) {
+            bool wiggle_controls_visible =
+                shoot.shoot_mode == SHOOT_MODE_WIGGLE &&
+                shoot.shoot_mode_open &&
+                !shoot.timer_open;
             wiggle_preview_update(&wig, &s_save, kDown, kHeld, do_save,
+                                  wiggle_controls_visible,
                                   wiggle_left, wiggle_right, &app.save_flash,
                                   app.save_scale, shoot.stereo_output,
                                   &live_recipe, app.anaglyph_colors);

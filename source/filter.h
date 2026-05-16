@@ -70,7 +70,6 @@ typedef struct {
 }
 
 void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p);
-void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count);
 void apply_fx_tuned(uint8_t *buf, int w, int h, FilterParams p, int frame_count,
                     int shape, int depth, int scale);
 void floyd_steinberg_dither(uint8_t *pixels, int width, int height, const FilterParams *p);

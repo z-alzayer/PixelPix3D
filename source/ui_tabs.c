@@ -447,7 +447,7 @@ void draw_bottom_nav(C2D_TextBuf buf, int active_tab) {
 
     for (int i = 0; i < 4; i++) {
         float bx = (float)(i * NAV_SEG_W);
-        bool sel = (i != TAB_FX && active_tab == i) ||
+        bool sel = (i != NAV_SEG_GALLERY && active_tab == i) ||
                    (i == TAB_SHOOT && active_tab == TAB_ANAGLYPH_ED) ||
                    (i == TAB_MORE && active_tab >= TAB_MORE &&
                     active_tab != TAB_ANAGLYPH_ED);
@@ -1913,59 +1913,6 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     } else {
         draw_fx_panel_compact(staticBuf, &t, p, (float)LOOKS_PANEL_Y);
     }
-}
-
-// ---------------------------------------------------------------------------
-// FX tab
-// ---------------------------------------------------------------------------
-
-void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                 const PipelinePreset *presets, int preset_selected,
-                 bool settings_flash) {
-    C2D_Text t;
-
-    C2D_TextParse(&t, staticBuf, "Presets");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)FXTAB_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
-    C2D_TextParse(&t, staticBuf, "Tap a slot to load it.");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, 28.0f, 0.5f, 0.36f, 0.36f, CLR_DIM);
-    C2D_TextParse(&t, staticBuf, "Store Current writes over the selected slot.");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, 44.0f, 0.5f, 0.32f, 0.32f, CLR_DIM);
-
-    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
-        float by = 60.0f + i * 26.0f;
-        bool sel = (preset_selected == i);
-        draw_pill(8.0f, by, 304.0f, 24.0f, sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, presets[i].name);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw, &th);
-        C2D_DrawText(&t, C2D_WithColor, 16.0f, by + (24.0f - th) * 0.5f - 1.0f,
-                     0.5f, 0.36f, 0.36f, sel ? CLR_WHITE : CLR_TEXT);
-
-        const char *status = preset_is_empty(&presets[i]) ? "Empty" : "Stored";
-        C2D_TextParse(&t, staticBuf, status);
-        C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
-        C2D_DrawText(&t, C2D_WithColor, 304.0f - tw, by + (24.0f - th) * 0.5f - 1.0f,
-                     0.5f, 0.32f, 0.32f, sel ? CLR_WHITE : CLR_DIM);
-    }
-
-    C2D_DrawRectSolid(0, 164.0f, 0.5f, BOT_W, 1, CLR_DIVIDER);
-    draw_pill(24.0f, 170.0f, 132.0f, 24.0f, CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Reset Custom");
-    float tw = 0, th = 0;
-    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor, 24.0f + (132.0f - tw) * 0.5f,
-                 170.0f + (24.0f - th) * 0.5f - 1.0f,
-                 0.5f, 0.38f, 0.38f, CLR_TEXT);
-
-    draw_pill(164.0f, 170.0f, 132.0f, 24.0f, CLR_CONFIRM);
-    C2D_TextParse(&t, staticBuf, "Store Current");
-    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor, 164.0f + (132.0f - tw) * 0.5f,
-                 170.0f + (24.0f - th) * 0.5f - 1.0f,
-                 0.5f, 0.40f, 0.40f, CLR_WHITE);
-
-    (void)settings_flash;
-    (void)dynBuf;
 }
 
 // ---------------------------------------------------------------------------
