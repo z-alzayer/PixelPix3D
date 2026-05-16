@@ -168,7 +168,10 @@ static char ascii_char_for_luma(int lum) {
 #define REMAP_GRID_MAX_CELLS (REMAP_GRID_MAX_COLS * REMAP_GRID_MAX_ROWS)
 #define REMAP_TOON_MAX_PIXELS (640 * 480)
 #define REMAP_TOON_MAX_CLUSTERS 15
-#define REMAP_TOON_EDGE_CELL_SIZE 6
+#define REMAP_TOON_CLUSTER_LUT_BITS 4
+#define REMAP_TOON_CLUSTER_LUT_DIM (1 << REMAP_TOON_CLUSTER_LUT_BITS)
+#define REMAP_TOON_CLUSTER_LUT_SIZE \
+    (REMAP_TOON_CLUSTER_LUT_DIM * REMAP_TOON_CLUSTER_LUT_DIM * REMAP_TOON_CLUSTER_LUT_DIM)
 
 static uint8_t s_remap_luma[REMAP_GRID_MAX_CELLS];
 static uint8_t s_remap_norm[REMAP_GRID_MAX_CELLS];
@@ -178,9 +181,9 @@ static uint8_t s_remap_g[REMAP_GRID_MAX_CELLS];
 static uint8_t s_remap_b[REMAP_GRID_MAX_CELLS];
 static uint8_t s_toon_gray[REMAP_TOON_MAX_PIXELS];
 static uint8_t s_toon_blur[REMAP_TOON_MAX_PIXELS];
-static uint8_t s_toon_nms[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_mag[REMAP_TOON_MAX_PIXELS];
 static uint8_t s_toon_edge[REMAP_TOON_MAX_PIXELS];
-static uint8_t s_toon_edge_tmp[REMAP_TOON_MAX_PIXELS];
+static uint8_t s_toon_cluster_lut[REMAP_TOON_CLUSTER_LUT_SIZE];
 static int s_toon_center_r[REMAP_TOON_MAX_CLUSTERS];
 static int s_toon_center_g[REMAP_TOON_MAX_CLUSTERS];
 static int s_toon_center_b[REMAP_TOON_MAX_CLUSTERS];
@@ -218,13 +221,6 @@ static int remap_toon_cluster_count(int strength) {
     return strength;
 }
 
-static int remap_toon_stroke_radius(int cell_size) {
-    if (cell_size >= 16) return 3;
-    if (cell_size >= 12) return 2;
-    if (cell_size >= 8)  return 1;
-    return 0;
-}
-
 static int remap_toon_edge_threshold(int threshold_control) {
     int threshold = 4 + (threshold_control - 1) * 4;
     if (threshold < 4) threshold = 4;
@@ -252,9 +248,29 @@ static int remap_toon_nearest_center(int r, int g, int b, int clusters) {
     return best;
 }
 
+static int remap_toon_lut_index(int r, int g, int b) {
+    return ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4);
+}
+
+static void remap_toon_build_cluster_lut(int clusters) {
+    int idx = 0;
+    for (int r4 = 0; r4 < REMAP_TOON_CLUSTER_LUT_DIM; r4++) {
+        int r = (r4 << 4) | 8;
+        for (int g4 = 0; g4 < REMAP_TOON_CLUSTER_LUT_DIM; g4++) {
+            int g = (g4 << 4) | 8;
+            for (int b4 = 0; b4 < REMAP_TOON_CLUSTER_LUT_DIM; b4++) {
+                int b = (b4 << 4) | 8;
+                s_toon_cluster_lut[idx++] =
+                    (uint8_t)remap_toon_nearest_center(r, g, b, clusters);
+            }
+        }
+    }
+}
+
 static int remap_toon_sample_step(int pixels) {
-    if (pixels > 180000) return 3;
-    if (pixels > 50000) return 2;
+    if (pixels > 180000) return 4;
+    if (pixels > 50000) return 3;
+    if (pixels > 20000) return 2;
     return 1;
 }
 
@@ -289,7 +305,7 @@ static void remap_toon_kmeans(const uint8_t *rgb, int w, int h, int clusters) {
     remap_toon_init_centers(rgb, w, h, clusters);
     int step = remap_toon_sample_step(w * h);
 
-    for (int iter = 0; iter < 8; iter++) {
+    for (int iter = 0; iter < 5; iter++) {
         long sum_r[REMAP_TOON_MAX_CLUSTERS] = {0};
         long sum_g[REMAP_TOON_MAX_CLUSTERS] = {0};
         long sum_b[REMAP_TOON_MAX_CLUSTERS] = {0};
@@ -327,12 +343,11 @@ static void remap_toon_kmeans(const uint8_t *rgb, int w, int h, int clusters) {
     }
 }
 
-static void remap_toon_build_canny_edges(const uint8_t *rgb, int w, int h,
-                                         int threshold_control) {
+static void remap_toon_build_fast_edges(const uint8_t *rgb, int w, int h,
+                                        int threshold_control) {
     int pixels = w * h;
     memset(s_toon_edge, 0, pixels);
-    memset(s_toon_edge_tmp, 0, pixels);
-    memset(s_toon_nms, 0, pixels);
+    memset(s_toon_mag, 0, pixels);
     if (w < 3 || h < 3) return;
 
     for (int i = 0; i < pixels; i++) {
@@ -343,23 +358,16 @@ static void remap_toon_build_canny_edges(const uint8_t *rgb, int w, int h,
         s_toon_gray[i] = (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
     }
 
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            int sum = 0;
-            int count = 0;
-            for (int oy = -1; oy <= 1; oy++) {
-                int sy = y + oy;
-                if (sy < 0) sy = 0;
-                else if (sy >= h) sy = h - 1;
-                for (int ox = -1; ox <= 1; ox++) {
-                    int sx = x + ox;
-                    if (sx < 0) sx = 0;
-                    else if (sx >= w) sx = w - 1;
-                    sum += s_toon_gray[sy * w + sx];
-                    count++;
-                }
-            }
-            s_toon_blur[y * w + x] = (uint8_t)(sum / count);
+    memcpy(s_toon_blur, s_toon_gray, pixels);
+    int high = remap_toon_edge_threshold(threshold_control);
+    for (int y = 1; y < h - 1; y++) {
+        int row = y * w;
+        for (int x = 1; x < w - 1; x++) {
+            int i = row + x;
+            int sum = s_toon_gray[i - w - 1] + s_toon_gray[i - w] + s_toon_gray[i - w + 1] +
+                      s_toon_gray[i - 1]     + s_toon_gray[i]     + s_toon_gray[i + 1] +
+                      s_toon_gray[i + w - 1] + s_toon_gray[i + w] + s_toon_gray[i + w + 1];
+            s_toon_blur[i] = (uint8_t)(sum / 9);
         }
     }
 
@@ -378,86 +386,37 @@ static void remap_toon_build_canny_edges(const uint8_t *rgb, int w, int h,
             int gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
             int mag = (remap_abs_i(gx) + remap_abs_i(gy)) / 4;
             if (mag > 255) mag = 255;
-            s_toon_edge_tmp[i] = (uint8_t)mag;
+            s_toon_mag[i] = (uint8_t)mag;
+
+            int ax = remap_abs_i(gx);
+            int ay = remap_abs_i(gy);
+            if (ax > ay * 2) s_toon_gray[i] = 0;
+            else if (ay > ax * 2) s_toon_gray[i] = 1;
+            else s_toon_gray[i] = ((gx < 0) == (gy < 0)) ? 2 : 3;
         }
     }
 
     for (int y = 1; y < h - 1; y++) {
         for (int x = 1; x < w - 1; x++) {
             int i = y * w + x;
-            int tl = s_toon_blur[i - w - 1];
-            int tc = s_toon_blur[i - w];
-            int tr = s_toon_blur[i - w + 1];
-            int ml = s_toon_blur[i - 1];
-            int mr = s_toon_blur[i + 1];
-            int bl = s_toon_blur[i + w - 1];
-            int bc = s_toon_blur[i + w];
-            int br = s_toon_blur[i + w + 1];
-            int gx = -tl - 2 * ml - bl + tr + 2 * mr + br;
-            int gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
-            int ax = remap_abs_i(gx);
-            int ay = remap_abs_i(gy);
-            int mag = s_toon_edge_tmp[i];
+            int mag = s_toon_mag[i];
             int n1, n2;
-            if (ax > ay * 2) {
-                n1 = s_toon_edge_tmp[i - 1];
-                n2 = s_toon_edge_tmp[i + 1];
-            } else if (ay > ax * 2) {
-                n1 = s_toon_edge_tmp[i - w];
-                n2 = s_toon_edge_tmp[i + w];
-            } else if ((gx < 0) == (gy < 0)) {
-                n1 = s_toon_edge_tmp[i - w - 1];
-                n2 = s_toon_edge_tmp[i + w + 1];
+            if (mag < high) continue;
+            if (s_toon_gray[i] == 0) {
+                n1 = s_toon_mag[i - 1];
+                n2 = s_toon_mag[i + 1];
+            } else if (s_toon_gray[i] == 1) {
+                n1 = s_toon_mag[i - w];
+                n2 = s_toon_mag[i + w];
+            } else if (s_toon_gray[i] == 2) {
+                n1 = s_toon_mag[i - w - 1];
+                n2 = s_toon_mag[i + w + 1];
             } else {
-                n1 = s_toon_edge_tmp[i - w + 1];
-                n2 = s_toon_edge_tmp[i + w - 1];
+                n1 = s_toon_mag[i - w + 1];
+                n2 = s_toon_mag[i + w - 1];
             }
-            s_toon_nms[i] = (mag >= n1 && mag >= n2) ? (uint8_t)mag : 0;
-        }
-    }
-
-    int high = remap_toon_edge_threshold(threshold_control);
-    int low = high / 2;
-    for (int i = 0; i < pixels; i++) {
-        s_toon_edge[i] = s_toon_nms[i] >= high ? 255
-                       : s_toon_nms[i] >= low  ? 128 : 0;
-    }
-
-    for (int pass = 0; pass < 2; pass++) {
-        for (int y = 1; y < h - 1; y++) {
-            for (int x = 1; x < w - 1; x++) {
-                int i = y * w + x;
-                if (s_toon_edge[i] != 128) continue;
-                if (s_toon_edge[i - 1] == 255 || s_toon_edge[i + 1] == 255 ||
-                    s_toon_edge[i - w] == 255 || s_toon_edge[i + w] == 255 ||
-                    s_toon_edge[i - w - 1] == 255 || s_toon_edge[i - w + 1] == 255 ||
-                    s_toon_edge[i + w - 1] == 255 || s_toon_edge[i + w + 1] == 255)
-                    s_toon_edge[i] = 255;
-            }
-        }
-    }
-    for (int i = 0; i < pixels; i++)
-        if (s_toon_edge[i] != 255) s_toon_edge[i] = 0;
-
-    int radius = remap_toon_stroke_radius(REMAP_TOON_EDGE_CELL_SIZE);
-    if (radius <= 0) return;
-    memcpy(s_toon_edge_tmp, s_toon_edge, pixels);
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            int mark = 0;
-            for (int oy = -radius; oy <= radius && !mark; oy++) {
-                int sy = y + oy;
-                if (sy < 0 || sy >= h) continue;
-                for (int ox = -radius; ox <= radius; ox++) {
-                    int sx = x + ox;
-                    if (sx < 0 || sx >= w) continue;
-                    if (s_toon_edge_tmp[sy * w + sx]) {
-                        mark = 1;
-                        break;
-                    }
-                }
-            }
-            s_toon_edge[y * w + x] = mark ? 255 : 0;
+            if (mag < n1 || mag < n2) continue;
+            s_toon_edge[i] = 255;
         }
     }
 }
@@ -468,8 +427,9 @@ static void apply_toon_remap(uint8_t *rgb, int w, int h,
     if (pixels <= 0 || pixels > REMAP_TOON_MAX_PIXELS) return;
 
     clusters = remap_toon_cluster_count(clusters);
-    remap_toon_build_canny_edges(rgb, w, h, cell_size);
+    remap_toon_build_fast_edges(rgb, w, h, cell_size);
     remap_toon_kmeans(rgb, w, h, clusters);
+    remap_toon_build_cluster_lut(clusters);
 
     for (int i = 0; i < pixels; i++) {
         int idx = i * 3;
@@ -479,8 +439,9 @@ static void apply_toon_remap(uint8_t *rgb, int w, int h,
             rgb[idx + 2] = 0;
             continue;
         }
-        int c = remap_toon_nearest_center(rgb[idx + 0], rgb[idx + 1], rgb[idx + 2],
-                                          clusters);
+        int c = s_toon_cluster_lut[remap_toon_lut_index(rgb[idx + 0],
+                                                        rgb[idx + 1],
+                                                        rgb[idx + 2])];
         rgb[idx + 0] = (uint8_t)s_toon_center_r[c];
         rgb[idx + 1] = (uint8_t)s_toon_center_g[c];
         rgb[idx + 2] = (uint8_t)s_toon_center_b[c];
