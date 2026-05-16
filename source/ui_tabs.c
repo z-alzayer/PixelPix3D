@@ -42,6 +42,116 @@ static float wiggle_delay_to_slider_t(int delay_ms) {
     return 1.0f;
 }
 
+static u32 rgb565_to_c2d(uint16_t p, uint8_t alpha) {
+    uint8_t r = (uint8_t)(((p >> 11) & 0x1f) << 3);
+    uint8_t g = (uint8_t)(((p >> 5) & 0x3f) << 2);
+    uint8_t b = (uint8_t)((p & 0x1f) << 3);
+    return C2D_Color32(r, g, b, alpha);
+}
+
+static void draw_align_image(const uint16_t *src, int src_w, int src_h,
+                             float box_x, float box_y,
+                             float img_x, float img_y,
+                             uint8_t alpha) {
+    if (!src || src_w <= 0 || src_h <= 0) return;
+    const float scale = 2.0f;
+    const int sample = 2;
+    const float block = scale * sample;
+    const float box_w = WIGGLE_ALIGN_THUMB_W * scale;
+    const float box_h = WIGGLE_ALIGN_THUMB_H * scale;
+
+    int crop_w, crop_h, crop_x, crop_y;
+    if ((long long)src_w * WIGGLE_ALIGN_THUMB_H >
+        (long long)src_h * WIGGLE_ALIGN_THUMB_W) {
+        crop_h = src_h;
+        crop_w = (src_h * WIGGLE_ALIGN_THUMB_W) / WIGGLE_ALIGN_THUMB_H;
+        if (crop_w < 1) crop_w = 1;
+        crop_x = (src_w - crop_w) / 2;
+        crop_y = 0;
+    } else {
+        crop_w = src_w;
+        crop_h = (src_w * WIGGLE_ALIGN_THUMB_H) / WIGGLE_ALIGN_THUMB_W;
+        if (crop_h < 1) crop_h = 1;
+        crop_x = 0;
+        crop_y = (src_h - crop_h) / 2;
+    }
+
+    for (int y = 0; y < WIGGLE_ALIGN_THUMB_H; y += sample) {
+        float dy = img_y + y * scale;
+        if (dy + block <= box_y || dy >= box_y + box_h) continue;
+        int sy = crop_y + (y * crop_h) / WIGGLE_ALIGN_THUMB_H;
+        for (int x = 0; x < WIGGLE_ALIGN_THUMB_W; x += sample) {
+            float dx = img_x + x * scale;
+            if (dx + block <= box_x || dx >= box_x + box_w) continue;
+            int sx = crop_x + (x * crop_w) / WIGGLE_ALIGN_THUMB_W;
+            float cx = dx < box_x ? box_x : dx;
+            float cy = dy < box_y ? box_y : dy;
+            float cr = dx + block > box_x + box_w ? box_x + box_w : dx + block;
+            float cb = dy + block > box_y + box_h ? box_y + box_h : dy + block;
+            if (cr <= cx || cb <= cy) continue;
+            C2D_DrawRectSolid(cx, cy, 0.70f, cr - cx + 0.2f, cb - cy + 0.2f,
+                              rgb565_to_c2d(src[sy * src_w + sx], alpha));
+        }
+    }
+}
+
+static void draw_wiggle_align_panel(C2D_TextBuf staticBuf,
+                                    int offset_dx, int offset_dy,
+                                    int capture_w, int capture_h,
+                                    const u8 *wiggle_left,
+                                    const u8 *wiggle_right,
+                                    bool dragging) {
+    C2D_Text t;
+    const float scale = 2.0f;
+    const float box_w = WIGGLE_ALIGN_THUMB_W * scale;
+    const float box_h = WIGGLE_ALIGN_THUMB_H * scale;
+    const float box_x = (BOT_W - box_w) * 0.5f;
+    const float box_y = 58.0f;
+
+    C2D_DrawRectSolid(0, (float)SHOOT_PANEL_Y, 0.47f,
+                      BOT_W, (float)SHOOT_PANEL_H, CLR_BG);
+
+    C2D_TextParse(&t, staticBuf, "Manual Align");
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor, 8.0f, 44.0f,
+                 0.5f, 0.44f, 0.44f, CLR_ACCENT);
+
+    draw_rounded_rect(box_x - 2.0f, box_y - 2.0f, box_w + 4.0f, box_h + 4.0f,
+                      3.0f, CLR_DIVIDER);
+    C2D_DrawRectSolid(box_x, box_y, 0.46f, box_w, box_h, CLR_WHITE);
+
+    int sw = capture_w > 0 ? capture_w : CAMERA_WIDTH;
+    int sh = capture_h > 0 ? capture_h : CAMERA_HEIGHT;
+    const uint16_t *left = (const uint16_t *)wiggle_left;
+    const uint16_t *right = (const uint16_t *)wiggle_right;
+    draw_align_image(left, sw, sh, box_x, box_y, box_x, box_y, 255);
+    float sx = box_x + ((float)offset_dx * box_w) / (float)sw;
+    float sy = box_y + ((float)offset_dy * box_h) / (float)sh;
+    draw_align_image(right, sw, sh, box_x, box_y, sx, sy, 170);
+
+    u32 grid_col = C2D_Color32(55, 65, 80, 150);
+    for (int x = 0; x <= WIGGLE_ALIGN_THUMB_W; x += 16) {
+        float gx = box_x + x * scale;
+        C2D_DrawRectSolid(gx, box_y, 0.80f, 2.0f, box_h, grid_col);
+    }
+    for (int y = 0; y <= WIGGLE_ALIGN_THUMB_H; y += 12) {
+        float gy = box_y + y * scale;
+        C2D_DrawRectSolid(box_x, gy, 0.80f, box_w, 2.0f, grid_col);
+    }
+    C2D_DrawRectSolid(box_x + box_w * 0.5f - 1.0f, box_y, 0.81f, 3.0f, box_h,
+                      C2D_Color32(0, 100, 200, 180));
+    C2D_DrawRectSolid(box_x, box_y + box_h * 0.5f - 1.0f, 0.81f, box_w, 3.0f,
+                      C2D_Color32(0, 100, 200, 180));
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "X %d   Y %d", offset_dx, offset_dy);
+    C2D_TextParse(&t, staticBuf, buf);
+    C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor, BOT_W - tw - 8.0f, 46.0f,
+                 0.5f, 0.34f, 0.34f, dragging ? CLR_ACCENT : CLR_DIM);
+}
+
 static bool preset_is_empty(const PipelinePreset *preset) {
     return !preset->gb_enabled &&
            !preset->base_enabled &&
@@ -314,6 +424,10 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int wiggle_frames, int wiggle_delay_ms,
                     bool wiggle_preview,
                     int wiggle_offset_dx, int wiggle_offset_dy,
+                    int wiggle_capture_w, int wiggle_capture_h,
+                    const u8 *wiggle_left, const u8 *wiggle_right,
+                    bool wiggle_manual_align,
+                    bool wiggle_align_dragging,
                     const uint8_t anaglyph_colors[2][3],
                     bool lomo_enabled, int lomo_preset, int lomo_strength,
                     bool bend_enabled, int bend_preset, int bend_strength,
@@ -492,6 +606,14 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
         } else {
             // ---- Capture mode contextual panel ----
+
+            if (shoot_mode == SHOOT_MODE_WIGGLE && wiggle_manual_align) {
+                draw_wiggle_align_panel(staticBuf, wiggle_offset_dx, wiggle_offset_dy,
+                                        wiggle_capture_w, wiggle_capture_h,
+                                        wiggle_left, wiggle_right,
+                                        wiggle_align_dragging);
+                goto draw_save_button;
+            }
 
             // Back button (top-left)
             draw_pill(4.0f, (float)SHOOT_BACK_Y + 2, (float)SHOOT_BACK_W, (float)SHOOT_BACK_H - 4, CLR_BTN);
@@ -752,8 +874,19 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                         #undef OPILL_GAP
                     }
 
+                    if (wiggle_preview) {
+                        draw_pill(DZONE_X + 18.0f, cy + 43.0f, 124.0f, 22.0f, CLR_BTN);
+                        C2D_Text ta; float aw = 0, ah = 0;
+                        C2D_TextParse(&ta, staticBuf, "Manual Align");
+                        C2D_TextGetDimensions(&ta, 0.34f, 0.34f, &aw, &ah);
+                        C2D_DrawText(&ta, C2D_WithColor,
+                                     DZONE_X + 18.0f + (124.0f - aw) * 0.5f,
+                                     cy + 43.0f + (22.0f - ah) * 0.5f,
+                                     0.5f, 0.34f, 0.34f, CLR_TEXT);
+                    }
+
                     // Delay: non-linear slider plus 10ms step buttons.
-                    if (stereo_output == STEREO_OUTPUT_WIGGLE) {
+                    if (stereo_output == STEREO_OUTPUT_WIGGLE && !wiggle_preview) {
                         char title[18];
                         snprintf(title, sizeof(title), "Delay %dms", wiggle_delay_ms);
                         C2D_Text td; float tw = 0, th = 0;
@@ -904,7 +1037,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 draw_save_button:
         u32 save_bg, save_txt;
         const char *save_label;
-        if (save_flash >= 20) {
+        if (wiggle_manual_align) {
+            save_bg  = CLR_CONFIRM;
+            save_txt = CLR_WHITE;
+            save_label = "Done";
+        } else if (save_flash >= 20) {
             save_bg  = CLR_ACCENT;
             save_txt = CLR_WHITE;
             save_label = "Saving...";
@@ -925,7 +1062,7 @@ draw_save_button:
 
         draw_pill((float)SHOOT_CLEAR_X, (float)SHOOT_CLEAR_Y,
                   (float)SHOOT_CLEAR_W, (float)SHOOT_CLEAR_H, CLR_BTN);
-        C2D_TextParse(&t, staticBuf, "Clear Look");
+        C2D_TextParse(&t, staticBuf, wiggle_manual_align ? "Cancel" : "Clear Look");
         C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
         C2D_DrawText(&t, C2D_WithColor,
                      SHOOT_CLEAR_X + (SHOOT_CLEAR_W - tw) / 2.0f,

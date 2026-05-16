@@ -70,6 +70,13 @@ typedef struct WiggleState {
     int           capture_w;      // resolution of captured pair (400 or 640)
     int           capture_h;      // (240 or 480)
     int           capture_rotate_quadrants; // locked orientation from shutter press
+    bool          manual_align;   // touch-screen drag alignment mode
+    bool          align_dragging;
+    bool          align_changed;
+    int           align_touch_start_x;
+    int           align_touch_start_y;
+    int           align_start_dx;
+    int           align_start_dy;
 } WiggleState;
 
 // ---------------------------------------------------------------------------

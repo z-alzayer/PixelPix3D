@@ -20,6 +20,36 @@ static void reset_wiggle_preview_phase(WiggleState *wig) {
     wig->preview_last_tick = svcGetSystemTick();
 }
 
+static uint16_t s_align_thumb_l[WIGGLE_ALIGN_THUMB_W * WIGGLE_ALIGN_THUMB_H];
+static uint16_t s_align_thumb_r[WIGGLE_ALIGN_THUMB_W * WIGGLE_ALIGN_THUMB_H];
+static bool s_align_thumbs_ready = false;
+
+void wiggle_manual_align_prepare(const uint8_t *left_rgb565,
+                                 const uint8_t *right_rgb565,
+                                 int w, int h) {
+    if (!left_rgb565 || !right_rgb565 || w <= 0 || h <= 0) {
+        s_align_thumbs_ready = false;
+        return;
+    }
+    crop_fill_rgb565(s_align_thumb_l, WIGGLE_ALIGN_THUMB_W, WIGGLE_ALIGN_THUMB_H,
+                     (const uint16_t *)left_rgb565, w, h);
+    crop_fill_rgb565(s_align_thumb_r, WIGGLE_ALIGN_THUMB_W, WIGGLE_ALIGN_THUMB_H,
+                     (const uint16_t *)right_rgb565, w, h);
+    s_align_thumbs_ready = true;
+}
+
+void wiggle_manual_align_invalidate(void) {
+    s_align_thumbs_ready = false;
+}
+
+bool wiggle_manual_align_ready(void) {
+    return s_align_thumbs_ready;
+}
+
+const uint16_t *wiggle_manual_align_thumb(bool right) {
+    return right ? s_align_thumb_r : s_align_thumb_l;
+}
+
 static void remember_stereo_offsets(WiggleState *wig, int stereo_output) {
     if (stereo_output == STEREO_OUTPUT_ANAGLYPH) {
         wig->last_anaglyph_offset_dx = wig->offset_dx;
@@ -385,6 +415,100 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                            int stereo_output,
                            const EffectRecipe *recipe,
                            const uint8_t anaglyph_colors[2][3]) {
+    touchPosition wtouch;
+    hidTouchRead(&wtouch);
+    bool wtapped = (kDown & KEY_TOUCH) != 0;
+    bool wtouched = (kHeld & KEY_TOUCH) != 0;
+
+    #define ALIGN_BOX_X 80
+    #define ALIGN_BOX_Y 58
+    #define ALIGN_BOX_W (WIGGLE_ALIGN_THUMB_W * 2)
+    #define ALIGN_BOX_H (WIGGLE_ALIGN_THUMB_H * 2)
+    #define ALIGN_BTN_X 178
+    #define ALIGN_BTN_Y (SHOOT_CONTENT_Y + 43)
+    #define ALIGN_BTN_W 124
+    #define ALIGN_BTN_H 22
+
+    if (wig->manual_align) {
+        if (!wiggle_manual_align_ready())
+            wiggle_manual_align_prepare(wiggle_left, wiggle_right,
+                                        wig->capture_w, wig->capture_h);
+
+        bool changed = false;
+        if (kDown & KEY_DLEFT)  { wig->offset_dx--; changed = true; }
+        if (kDown & KEY_DRIGHT) { wig->offset_dx++; changed = true; }
+        if (kDown & KEY_DUP)    { wig->offset_dy++; changed = true; }
+        if (kDown & KEY_DDOWN)  { wig->offset_dy--; changed = true; }
+        if (wig->offset_dx < -WIGGLE_OFFSET_X_MAX) wig->offset_dx = -WIGGLE_OFFSET_X_MAX;
+        if (wig->offset_dx >  WIGGLE_OFFSET_X_MAX) wig->offset_dx =  WIGGLE_OFFSET_X_MAX;
+        if (wig->offset_dy < -WIGGLE_OFFSET_Y_MAX) wig->offset_dy = -WIGGLE_OFFSET_Y_MAX;
+        if (wig->offset_dy >  WIGGLE_OFFSET_Y_MAX) wig->offset_dy =  WIGGLE_OFFSET_Y_MAX;
+        if (changed) {
+            wig->align_changed = true;
+            wig->rebuild = true;
+            remember_stereo_offsets(wig, stereo_output);
+            reset_wiggle_preview_phase(wig);
+        }
+
+        if (wtapped && wtouch.px >= ALIGN_BOX_X && wtouch.px < ALIGN_BOX_X + ALIGN_BOX_W &&
+            wtouch.py >= ALIGN_BOX_Y && wtouch.py < ALIGN_BOX_Y + ALIGN_BOX_H) {
+            wig->align_dragging = true;
+            wig->align_touch_start_x = wtouch.px;
+            wig->align_touch_start_y = wtouch.py;
+            wig->align_start_dx = wig->offset_dx;
+            wig->align_start_dy = wig->offset_dy;
+        }
+
+        if (wtouched && wig->align_dragging) {
+            int dx = ((wtouch.px - wig->align_touch_start_x) * wig->capture_w) / ALIGN_BOX_W;
+            int dy = ((wtouch.py - wig->align_touch_start_y) * wig->capture_h) / ALIGN_BOX_H;
+            int new_dx = wig->align_start_dx + dx;
+            int new_dy = wig->align_start_dy + dy;
+            if (new_dx < -WIGGLE_OFFSET_X_MAX) new_dx = -WIGGLE_OFFSET_X_MAX;
+            if (new_dx >  WIGGLE_OFFSET_X_MAX) new_dx =  WIGGLE_OFFSET_X_MAX;
+            if (new_dy < -WIGGLE_OFFSET_Y_MAX) new_dy = -WIGGLE_OFFSET_Y_MAX;
+            if (new_dy >  WIGGLE_OFFSET_Y_MAX) new_dy =  WIGGLE_OFFSET_Y_MAX;
+            if (new_dx != wig->offset_dx || new_dy != wig->offset_dy) {
+                wig->offset_dx = new_dx;
+                wig->offset_dy = new_dy;
+                wig->align_changed = true;
+            }
+        } else if (!wtouched && wig->align_dragging) {
+            wig->align_dragging = false;
+            if (wig->align_changed) {
+                wig->rebuild = true;
+                remember_stereo_offsets(wig, stereo_output);
+                reset_wiggle_preview_phase(wig);
+                wig->align_changed = false;
+            }
+        }
+
+        bool cancel = wtapped && wtouch.px >= SHOOT_CLEAR_X &&
+                      wtouch.px < SHOOT_CLEAR_X + SHOOT_CLEAR_W &&
+                      wtouch.py >= SHOOT_CLEAR_Y &&
+                      wtouch.py < SHOOT_CLEAR_Y + SHOOT_CLEAR_H;
+        if (cancel || (kDown & KEY_B)) {
+            wig->manual_align = false;
+            wig->align_dragging = false;
+            wig->align_changed = false;
+            return;
+        }
+
+        bool done = do_save || (kDown & KEY_A);
+        if (done) {
+            wig->manual_align = false;
+            wig->align_dragging = false;
+            if (wig->align_changed) {
+                wig->rebuild = true;
+                remember_stereo_offsets(wig, stereo_output);
+                reset_wiggle_preview_phase(wig);
+                wig->align_changed = false;
+            }
+            return;
+        }
+        return;
+    }
+
     // D-pad: left/right = X offset, up/down = Y offset, with hold-repeat
     u32 dpad = kHeld & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN);
     if (dpad) {
@@ -408,10 +532,6 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     // Touch buttons — re-read touch here so they work even when captureInterrupted
     // Use tapped (kDown) not held, to avoid rapid-fire on resistive screen
     {
-        touchPosition wtouch;
-        hidTouchRead(&wtouch);
-        bool wtapped = (kDown & KEY_TOUCH) != 0;
-        bool wtouched = (kHeld & KEY_TOUCH) != 0;
         if (wtapped || wtouched) {
             int tx = wtouch.px, ty = wtouch.py;
             #define WBTW  28
@@ -461,8 +581,19 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 }
             }
 
+            if (wtapped && stereo_output == STEREO_OUTPUT_WIGGLE &&
+                tx >= ALIGN_BTN_X && tx < ALIGN_BTN_X + ALIGN_BTN_W &&
+                ty >= ALIGN_BTN_Y && ty < ALIGN_BTN_Y + ALIGN_BTN_H) {
+                wiggle_manual_align_prepare(wiggle_left, wiggle_right,
+                                            wig->capture_w, wig->capture_h);
+                wig->manual_align = true;
+                wig->align_dragging = false;
+                wig->align_changed = false;
+                return;
+            }
+
             // Delay controls live on the right half of the wiggle preview UI.
-            if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE) {
+            if (tx >= 160 && stereo_output == STEREO_OUTPUT_WIGGLE && !wig->preview) {
                 float sy = (float)SHOOT_CONTENT_Y + 62.0f;
                 #define DSTEP_BTN_W  22
                 #define DSTEP_BTN_H  18
@@ -486,7 +617,9 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
 
             }
 
-            if (wtapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
+            if (wtapped && tx >= SHOOT_PRIMARY_X &&
+                tx < SHOOT_PRIMARY_X + SHOOT_PRIMARY_W &&
+                ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
                 do_save = true;
 
             #undef WBTW
@@ -499,6 +632,15 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
             #undef WRSTX
         }
     }
+
+    #undef ALIGN_BOX_X
+    #undef ALIGN_BOX_Y
+    #undef ALIGN_BOX_W
+    #undef ALIGN_BOX_H
+    #undef ALIGN_BTN_X
+    #undef ALIGN_BTN_Y
+    #undef ALIGN_BTN_W
+    #undef ALIGN_BTN_H
 
     // L/R bumpers nudge delay in 10ms steps.
     if (stereo_output == STEREO_OUTPUT_WIGGLE && (kDown & KEY_L || kDown & KEY_R)) {

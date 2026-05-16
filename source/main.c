@@ -61,10 +61,13 @@ static void render_bottom_ui(C3D_RenderTarget *bot,
                              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                              const AppState *app, const ShootState *shoot,
                              const WiggleState *wig, const GalleryState *gal,
-                             const EditState *edit, bool comparing) {
+                             const EditState *edit,
+                             const u8 *wiggle_left, const u8 *wiggle_right,
+                             bool comparing) {
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     draw_ui(bot, staticBuf, dynBuf,
             app, shoot, wig, gal, edit,
+            wiggle_left, wiggle_right,
             false, comparing,
             shoot->timer_active ? (shoot->timer_remaining_ms + 999) / 1000 : -1);
     C3D_FrameEnd(0);
@@ -519,7 +522,8 @@ int main(void) {
             gallery_load_selected(&gal);
 
         render_bottom_ui(bot, staticBuf, dynBuf,
-                         &app, &shoot, &wig, &gal, &edit, comparing);
+                         &app, &shoot, &wig, &gal, &edit,
+                         wiggle_left, wiggle_right, comparing);
 
         if (defer_gallery_load)
             gallery_load_selected(&gal);

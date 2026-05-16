@@ -475,6 +475,7 @@ void draw_ui(C3D_RenderTarget *bot,
              const AppState *app, const ShootState *shoot,
              const WiggleState *wig, const GalleryState *gal,
              const EditState *edit,
+             const u8 *wiggle_left, const u8 *wiggle_right,
              bool warn3d, bool comparing, int timer_countdown);
 
 #endif

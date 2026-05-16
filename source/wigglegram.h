@@ -18,6 +18,8 @@ struct SaveThreadState;
 #define WIGGLE_DEFAULT_DELAY_MS 100
 #define WIGGLE_OFFSET_X_MAX VGA_WIDTH
 #define WIGGLE_OFFSET_Y_MAX VGA_HEIGHT
+#define WIGGLE_ALIGN_THUMB_W 80
+#define WIGGLE_ALIGN_THUMB_H 48
 
 // Auto-detected stereo alignment (global translation only).
 typedef struct {
@@ -31,6 +33,13 @@ void wiggle_align(WiggleAlign *align,
                   const uint8_t *left_rgb565,
                   const uint8_t *right_rgb565,
                   int w, int h);
+
+void wiggle_manual_align_prepare(const uint8_t *left_rgb565,
+                                 const uint8_t *right_rgb565,
+                                 int w, int h);
+void wiggle_manual_align_invalidate(void);
+bool wiggle_manual_align_ready(void);
+const uint16_t *wiggle_manual_align_thumb(bool right);
 
 // Build preview frames from a stereo pair cropped to the overlap (AND) region.
 // Output frames are (w - |fdx|) x (h - |fdy|) pixels, stored row-major in dst.

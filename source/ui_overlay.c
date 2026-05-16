@@ -294,6 +294,7 @@ void draw_ui(C3D_RenderTarget *bot,
              const AppState *app, const ShootState *shoot,
              const WiggleState *wig, const GalleryState *gal,
              const EditState *edit,
+             const u8 *wiggle_left, const u8 *wiggle_right,
              bool warn3d, bool comparing, int timer_countdown) {
 
     C2D_TargetClear(bot, CLR_BG);
@@ -359,6 +360,10 @@ void draw_ui(C3D_RenderTarget *bot,
                        wig->n_frames, wig->delay_ms,
                        wig->preview,
                        wig->offset_dx, wig->offset_dy,
+                       wig->capture_w, wig->capture_h,
+                       wiggle_left, wiggle_right,
+                       wig->manual_align,
+                       wig->align_dragging,
                        app->anaglyph_colors,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
