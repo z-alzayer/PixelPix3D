@@ -696,6 +696,7 @@ void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
     out->use_base_look = pipe->base.enabled;
     out->lomo_preset = pipe->base.preset;
     out->lomo_strength = clamp_strength(pipe->base.strength);
+    out->lomo_tune = effect_tuning_lomo(pipe->base.preset);
     out->use_gb = pipe->gb.enabled;
     out->gb_params = pipe->gb.params;
     out->use_remap = pipe->remap.enabled;
@@ -705,9 +706,11 @@ void pipeline_build_recipe(EffectRecipe *out, const EffectPipeline *pipe) {
     out->use_bend = pipe->bend.enabled;
     out->bend_preset = pipe->bend.preset;
     out->bend_strength = clamp_strength(pipe->bend.strength);
+    out->bend_tune = effect_tuning_bend(pipe->bend.preset);
     out->use_post_fx = pipe->post.enabled;
     out->post_fx_mode = pipe->post.fx_mode;
     out->post_fx_intensity = pipe->post.fx_intensity;
+    out->post_fx_tune = effect_tuning_fx(pipe->post.fx_mode);
     if (pipe->base.enabled && pipe->base.strength > 0) {
         out->fallback_post_fx_mode = lomo_presets[pipe->base.preset].fx_mode;
         out->fallback_post_fx_intensity =
@@ -734,11 +737,13 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
 
     if (recipe->use_base_look && recipe->lomo_strength > 0) {
         const LomoPreset *lp = &lomo_presets[recipe->lomo_preset];
+        float exposure = 1.0f + ((float)recipe->lomo_tune.exposure - 5.0f) * 0.035f;
+        float color = 1.0f + ((float)recipe->lomo_tune.color - 5.0f) * 0.05f;
         apply_basic_adjustments(rgb, w, h,
-                                strength_mix(1.0f, lp->brightness, recipe->lomo_strength),
+                                strength_mix(1.0f, lp->brightness * exposure, recipe->lomo_strength),
                                 strength_mix(1.0f, lp->contrast, recipe->lomo_strength),
                                 strength_mix(1.0f, lp->gamma, recipe->lomo_strength),
-                                strength_mix(1.0f, lp->saturation, recipe->lomo_strength));
+                                strength_mix(1.0f, lp->saturation * color, recipe->lomo_strength));
     }
 
     if (!recipe->use_gb && has_basic_adjustments(&recipe->gb_params)) {
@@ -759,19 +764,30 @@ void pipeline_apply(uint8_t *rgb, int w, int h,
     }
 
     if (recipe->use_bend && recipe->bend_strength > 0) {
-        apply_bend(rgb, w, h, recipe->bend_preset, frame_count, recipe->bend_strength);
+        apply_bend_tuned(rgb, w, h, recipe->bend_preset, frame_count, recipe->bend_strength,
+                         recipe->bend_tune.wave, recipe->bend_tune.chaos,
+                         recipe->bend_tune.seed);
     }
 
     if (recipe->use_post_fx) {
         FilterParams post = recipe->gb_params;
         post.fx_mode = recipe->post_fx_mode;
         post.fx_intensity = recipe->post_fx_intensity;
-        apply_fx(rgb, w, h, post, frame_count);
+        apply_fx_tuned(rgb, w, h, post, frame_count,
+                       recipe->post_fx_tune.shape,
+                       recipe->post_fx_tune.depth,
+                       recipe->post_fx_tune.scale);
     } else if (recipe->fallback_post_fx_mode != FX_NONE) {
         FilterParams post = recipe->gb_params;
         post.fx_mode = recipe->fallback_post_fx_mode;
-        post.fx_intensity = recipe->fallback_post_fx_intensity;
-        apply_fx(rgb, w, h, post, frame_count);
+        post.fx_intensity = recipe->fallback_post_fx_intensity +
+                            (recipe->lomo_tune.texture - 5);
+        if (post.fx_intensity < 0) post.fx_intensity = 0;
+        if (post.fx_intensity > 10) post.fx_intensity = 10;
+        FxTune tune = effect_tuning_fx(post.fx_mode);
+        tune.depth = recipe->lomo_tune.texture > 5 ? recipe->lomo_tune.texture - 5 : 0;
+        apply_fx_tuned(rgb, w, h, post, frame_count,
+                       tune.shape, tune.depth, tune.scale);
     }
 }
 

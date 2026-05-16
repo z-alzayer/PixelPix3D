@@ -301,6 +301,7 @@ int main(void) {
     settings_load_anaglyph_colors(app.anaglyph_colors);
     settings_load_ranges(&app.ranges);
     settings_load_pipeline_presets(shoot.presets);
+    settings_load_effect_tuning(&g_effect_tuning);
     app.default_params = app.params;
     app.params = (FilterParams)FILTER_DEFAULTS;
     filter_set_user_palettes(app.user_palettes);

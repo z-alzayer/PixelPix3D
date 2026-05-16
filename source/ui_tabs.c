@@ -117,6 +117,84 @@ static void draw_stage_strength_row(C2D_TextBuf staticBuf, C2D_Text *t,
     C2D_DrawText(t, C2D_WithColor, 284.0f, value_y, 0.5f, 0.38f, 0.38f, CLR_DIM);
 }
 
+static void draw_tune_slider(C2D_TextBuf staticBuf, C2D_Text *t,
+                             const char *label, int val, float y) {
+    const float tx = 92.0f;
+    const float tw = 150.0f;
+    const float th = 3.0f;
+    const float hw = 9.0f;
+    const float hh = 9.0f;
+    float unit = (float)val / 10.0f;
+    if (unit < 0.0f) unit = 0.0f;
+    if (unit > 1.0f) unit = 1.0f;
+    float hx = tx + unit * tw;
+
+    C2D_TextParse(t, staticBuf, label);
+    C2D_DrawText(t, C2D_WithColor, 8.0f, y - 7.0f, 0.5f, 0.32f, 0.32f, CLR_TEXT);
+    C2D_DrawRectSolid(tx, y - th * 0.5f, 0.5f, tw, th, CLR_TRACK);
+    if (hx > tx) {
+        C2D_DrawRectSolid(tx, y - th * 0.5f, 0.5f, hx - tx, th, CLR_FILL);
+    }
+    draw_rounded_rect(hx - hw * 0.5f, y - hh * 0.5f, hw, hh, 3.0f, CLR_HANDLE);
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", val);
+    C2D_TextParse(t, staticBuf, buf);
+    C2D_DrawText(t, C2D_WithColor, 258.0f, y - 7.0f, 0.5f, 0.32f, 0.32f, CLR_DIM);
+}
+
+static const char *bend_tune_label(int bend_preset, int row) {
+    static const char *labels[BEND_PRESET_COUNT][2] = {
+        { "Skew",   "Split"  },
+        { "Bulge",  "Ripple" },
+        { "Phase",  "Stride" },
+        { "Fold",   "Mirror" },
+        { "Twist",  "Tiles"  },
+        { "Prism",  "Orbit"  },
+    };
+    if (bend_preset < 0) bend_preset = 0;
+    if (bend_preset >= BEND_PRESET_COUNT) bend_preset = BEND_PRESET_COUNT - 1;
+    if (row < 0) row = 0;
+    if (row > 1) row = 1;
+    return labels[bend_preset][row];
+}
+
+static void draw_tune_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                            int shoot_mode, int lomo_preset,
+                            int bend_preset, int fx_mode, float cy) {
+    C2D_DrawRectSolid(0, cy, 0.45f, BOT_W, 90.0f, CLR_PANEL);
+    if (shoot_mode == SHOOT_MODE_LOMO) {
+        LomoTune tune = effect_tuning_lomo(lomo_preset);
+        draw_tune_slider(staticBuf, t, "Exposure", tune.exposure, cy + 24.0f);
+        draw_tune_slider(staticBuf, t, "Colour", tune.color, cy + 50.0f);
+        draw_tune_slider(staticBuf, t, "Texture", tune.texture, cy + 76.0f);
+    } else if (shoot_mode == SHOOT_MODE_BEND) {
+        BendTune tune = effect_tuning_bend(bend_preset);
+        draw_tune_slider(staticBuf, t, bend_tune_label(bend_preset, 0), tune.wave, cy + 32.0f);
+        draw_tune_slider(staticBuf, t, bend_tune_label(bend_preset, 1), tune.chaos, cy + 66.0f);
+    } else {
+        FxTune tune = effect_tuning_fx(fx_mode);
+        draw_tune_slider(staticBuf, t, "Shape", tune.shape, cy + 24.0f);
+        draw_tune_slider(staticBuf, t, "Depth", tune.depth, cy + 50.0f);
+        draw_tune_slider(staticBuf, t, "Scale", tune.scale, cy + 76.0f);
+    }
+    draw_pill(254.0f, cy + 2.0f, 54.0f, 16.0f, CLR_BTN);
+    C2D_TextParse(t, staticBuf, "Save");
+    C2D_DrawText(t, C2D_WithColor, 268.0f, cy + 4.0f, 0.5f, 0.28f, 0.28f, CLR_TEXT);
+}
+
+static void draw_tune_icon_button(bool active) {
+    float x = 296.0f;
+    float y = (float)SHOOT_BACK_Y + 4.0f;
+    draw_pill(x, y, 16.0f, 16.0f, active ? CLR_ACCENT : CLR_BTN);
+    u32 col = active ? CLR_WHITE : CLR_TEXT;
+    for (int i = 0; i < 3; i++) {
+        float ly = y + 4.5f + i * 3.5f;
+        C2D_DrawRectSolid(x + 4.5f, ly, 0.6f, 7.0f, 1.0f, col);
+        float kx = x + 5.0f + (float)((i * 3) % 6);
+        C2D_DrawRectSolid(kx, ly - 1.0f, 0.7f, 2.0f, 2.8f, col);
+    }
+}
+
 static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
                                   const FilterParams *p, float cy) {
     float sc = 0.40f;
@@ -220,7 +298,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     int wiggle_offset_dx, int wiggle_offset_dy,
                     const uint8_t anaglyph_colors[2][3],
                     bool lomo_enabled, int lomo_preset, int lomo_strength,
-                    bool bend_enabled, int bend_preset, int bend_strength) {
+                    bool bend_enabled, int bend_preset, int bend_strength,
+                    bool tune_open) {
     C2D_Text t;
 
     // Background for strip area
@@ -408,12 +487,25 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                          (float)SHOOT_BACK_W + 8.0f + ((BOT_W - SHOOT_BACK_W - 12.0f) - tw) * 0.5f,
                          (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
                          0.5f, 0.46f, 0.46f, CLR_ACCENT);
+            if (shoot_mode == SHOOT_MODE_LOMO ||
+                shoot_mode == SHOOT_MODE_BEND ||
+                shoot_mode == SHOOT_MODE_FX) {
+                draw_tune_icon_button(tune_open);
+            }
 
             // Divider
             C2D_DrawRectSolid(0, (float)(SHOOT_BACK_Y + SHOOT_BACK_H + 2), 0.5f, BOT_W, 1, CLR_DIVIDER);
 
             // ----- Per-mode content -----
             float cy = (float)SHOOT_CONTENT_Y;
+
+            if (tune_open && (shoot_mode == SHOOT_MODE_LOMO ||
+                              shoot_mode == SHOOT_MODE_BEND ||
+                              shoot_mode == SHOOT_MODE_FX)) {
+                draw_tune_panel(staticBuf, &t, shoot_mode, lomo_preset,
+                                bend_preset, p->fx_mode, cy);
+                goto draw_save_button;
+            }
 
             if (shoot_mode == SHOOT_MODE_GBCAM || shoot_mode == SHOOT_MODE_TONE) {
                 // 4 vertical sliders: Brt / Con / Sat / Gam
@@ -770,6 +862,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
         }
 
         // --- Save button ---
+draw_save_button:
         u32 save_bg, save_txt;
         const char *save_label;
         if (save_flash >= 20) {

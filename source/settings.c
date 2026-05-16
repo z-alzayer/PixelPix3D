@@ -17,7 +17,7 @@ static void ensure_settings_dir(void) {
 static void ini_set_key(const char *key, const char *value) {
     ensure_settings_dir();
 
-    char lines[128][64];
+    char lines[384][64];
     int n_lines = 0;
     bool found = false;
     int key_len = (int)strlen(key);
@@ -29,7 +29,7 @@ static void ini_set_key(const char *key, const char *value) {
             bool is_match = (strncmp(tmp, key, key_len) == 0 && tmp[key_len] == '=');
             if (is_match && found)
                 continue;  // drop duplicate
-            if (n_lines >= 128)
+            if (n_lines >= 384)
                 continue;  // drop overflow lines
             if (is_match) {
                 snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
@@ -42,7 +42,7 @@ static void ini_set_key(const char *key, const char *value) {
         fclose(f);
     }
 
-    if (!found && n_lines < 128) {
+    if (!found && n_lines < 384) {
         snprintf(lines[n_lines], 64, "%s=%s\n", key, value);
         n_lines++;
     }
@@ -469,6 +469,104 @@ void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT
         else if (strcmp(field, "palette") == 0)       p->gb_params.palette = atoi(val);
         else if (strcmp(field, "dither_mode") == 0)   p->gb_params.dither_mode = atoi(val);
         else if (strcmp(field, "invert") == 0)        p->gb_params.invert = atoi(val) != 0;
+    }
+    fclose(f);
+}
+
+void settings_save_effect_tuning(const EffectTuning *t) {
+    char key[40], val[16];
+    ini_set_key("effect_tuning_version", "2");
+    for (int i = 0; i < LOMO_PRESET_COUNT; i++) {
+        snprintf(key, sizeof(key), "lomo_%d_exposure", i);
+        snprintf(val, sizeof(val), "%d", t->lomo[i].exposure);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "lomo_%d_color", i);
+        snprintf(val, sizeof(val), "%d", t->lomo[i].color);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "lomo_%d_texture", i);
+        snprintf(val, sizeof(val), "%d", t->lomo[i].texture);
+        ini_set_key(key, val);
+    }
+    for (int i = 0; i < BEND_PRESET_COUNT; i++) {
+        snprintf(key, sizeof(key), "bend_%d_wave", i);
+        snprintf(val, sizeof(val), "%d", t->bend[i].wave);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "bend_%d_chaos", i);
+        snprintf(val, sizeof(val), "%d", t->bend[i].chaos);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "bend_%d_seed", i);
+        snprintf(val, sizeof(val), "%d", t->bend[i].seed);
+        ini_set_key(key, val);
+    }
+    for (int i = 0; i <= 6; i++) {
+        snprintf(key, sizeof(key), "fx_%d_shape", i);
+        snprintf(val, sizeof(val), "%d", t->fx[i].shape);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "fx_%d_depth", i);
+        snprintf(val, sizeof(val), "%d", t->fx[i].depth);
+        ini_set_key(key, val);
+        snprintf(key, sizeof(key), "fx_%d_scale", i);
+        snprintf(val, sizeof(val), "%d", t->fx[i].scale);
+        ini_set_key(key, val);
+    }
+}
+
+void settings_load_effect_tuning(EffectTuning *t) {
+    effect_tuning_defaults(t);
+
+    FILE *f = fopen(SETTINGS_PATH, "r");
+    if (!f) {
+        settings_save_effect_tuning(t);
+        return;
+    }
+
+    char line[64];
+    int version = 0;
+    while (fgets(line, sizeof(line), f)) {
+        int n = 0;
+        if (sscanf(line, "effect_tuning_version=%d", &n) == 1) {
+            version = n;
+            break;
+        }
+    }
+    if (version < 2) {
+        fclose(f);
+        return;
+    }
+    rewind(f);
+
+    while (fgets(line, sizeof(line), f)) {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+            line[--len] = '\0';
+        if (line[0] == '#' || line[0] == '\0') continue;
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        const char *key = line;
+        int v = atoi(eq + 1);
+        if (v < 0) v = 0;
+        if (v > 10) v = 10;
+
+        int idx = -1;
+        char field[24];
+        if (sscanf(key, "lomo_%d_%23s", &idx, field) == 2 &&
+            idx >= 0 && idx < LOMO_PRESET_COUNT) {
+            if (strcmp(field, "exposure") == 0) t->lomo[idx].exposure = v;
+            else if (strcmp(field, "color") == 0) t->lomo[idx].color = v;
+            else if (strcmp(field, "texture") == 0) t->lomo[idx].texture = v;
+        } else if (sscanf(key, "bend_%d_%23s", &idx, field) == 2 &&
+                   idx >= 0 && idx < BEND_PRESET_COUNT) {
+            if (strcmp(field, "wave") == 0) t->bend[idx].wave = v;
+            else if (strcmp(field, "chaos") == 0) t->bend[idx].chaos = v;
+            else if (strcmp(field, "seed") == 0) t->bend[idx].seed = v;
+        } else if (sscanf(key, "fx_%d_%23s", &idx, field) == 2 &&
+                   idx >= 0 && idx <= 6) {
+            if (strcmp(field, "shape") == 0) t->fx[idx].shape = v;
+            else if (strcmp(field, "depth") == 0) t->fx[idx].depth = v;
+            else if (strcmp(field, "scale") == 0) t->fx[idx].scale = v;
+        }
     }
     fclose(f);
 }

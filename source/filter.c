@@ -487,20 +487,27 @@ void apply_gameboy_filter(uint8_t *pixels, int width, int height, FilterParams p
 
 // --- FX post-processing layer -----------------------------------------------
 
-void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
+void apply_fx_tuned(uint8_t *buf, int w, int h, FilterParams p, int frame_count,
+                    int shape, int depth, int scale) {
     if (p.fx_mode == FX_NONE) return;
+    if (shape < 0) shape = 0; else if (shape > 10) shape = 10;
+    if (depth < 0) depth = 0; else if (depth > 10) depth = 10;
+    if (scale < 0) scale = 0; else if (scale > 10) scale = 10;
 
     if (p.fx_mode == FX_SCAN_H || p.fx_mode == FX_SCAN_V || p.fx_mode == FX_LCD) {
-        // Darken percentage: 10% at intensity 0, up to 70% at intensity 10
-        int darken_pct = 10 + p.fx_intensity * 6;
+        int line_w = 1 + scale / 5;
+        int gap = 2 + shape / 4;
+        if (line_w >= gap) line_w = gap - 1;
+        int darken_pct = 10 + p.fx_intensity * 6 + depth * 2;
+        if (darken_pct > 90) darken_pct = 90;
         int factor = (256 * (100 - darken_pct)) / 100;
 
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 bool darken;
-                if (p.fx_mode == FX_SCAN_H) darken = (y & 1);
-                else if (p.fx_mode == FX_SCAN_V) darken = (x & 1);
-                else darken = (x & 1) || (y & 1);  // FX_LCD
+                if (p.fx_mode == FX_SCAN_H) darken = (y % gap) < line_w;
+                else if (p.fx_mode == FX_SCAN_V) darken = (x % gap) < line_w;
+                else darken = ((x % gap) < line_w) || ((y % gap) < line_w);
 
                 if (darken) {
                     int i = (y * w + x) * 3;
@@ -525,12 +532,15 @@ void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
         int max_sq = cx * cx + cy * cy;  // 200^2 + 120^2 = 54400
         // Precompute lut_scale to avoid per-pixel divide:
         // dim = d_sq * lut_scale >> 8  where lut_scale = intensity*25*256/max_sq
-        int lut_scale = (p.fx_intensity * 25 * 256) / max_sq;
+        int power = p.fx_intensity * 25 + depth * 8;
+        int lut_scale = (power * 256) / max_sq;
+        int soft_box = shape > 6;
 
         for (int y = 0; y < h; y++) {
             int dy_sq = vig_lut_y[y];
             for (int x = 0; x < w; x++) {
-                int d_sq = dy_sq + vig_lut_x[x];
+                int d_sq = soft_box ? ((dy_sq > vig_lut_x[x]) ? dy_sq : vig_lut_x[x])
+                                    : dy_sq + vig_lut_x[x];
                 int dim = (d_sq * lut_scale) >> 8;
                 if (dim > 255) dim = 255;
                 int factor = 256 - dim;
@@ -544,7 +554,7 @@ void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
     }
 
     if (p.fx_mode == FX_CHROMA) {
-        int offset = p.fx_intensity;
+        int offset = p.fx_intensity + scale / 2;
         if (offset < 1) offset = 1;
 
         for (int y = 0; y < h; y++) {
@@ -553,8 +563,9 @@ void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
             for (int x = 0; x < w * 3; x++) chroma_row[x] = row[x];
             // Write output: R shifted left (src from x-offset), B shifted right (src from x+offset)
             for (int x = 0; x < w; x++) {
-                int src_r = x - offset;
-                int src_b = x + offset;
+                int wobble = (shape > 5) ? ((y + frame_count) & 3) - 1 : 0;
+                int src_r = x - offset - wobble;
+                int src_b = x + offset + wobble;
                 row[x*3+0] = (src_r >= 0 && src_r < w) ? chroma_row[src_r*3+0] : 0;
                 row[x*3+1] = chroma_row[x*3+1];  // G unchanged
                 row[x*3+2] = (src_b >= 0 && src_b < w) ? chroma_row[src_b*3+2] : 0;
@@ -564,14 +575,20 @@ void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
     }
 
     if (p.fx_mode == FX_GRAIN) {
-        int grain_mag = p.fx_intensity * 4;  // 0..40
+        int grain_mag = p.fx_intensity * 4 + depth * 3;
+        int chunky = 1 + scale / 4;
         uint32_t rng = (uint32_t)(frame_count * 1664525u + 1013904223u);
 
-        for (int i = 0; i < w * h; i++) {
+        for (int y = 0; y < h; y += chunky) {
+            for (int x = 0; x < w; x += chunky) {
             rng = rng * 1664525u + 1013904223u;
             int noise = (int)(rng >> 24) - 128;  // -128..127
+            if (shape > 5) noise = (noise >= 0) ? 127 : -128;
             noise = (noise * grain_mag) >> 7;     // scale to [-grain_mag, +grain_mag]
 
+            for (int yy = 0; yy < chunky && y + yy < h; yy++) {
+                for (int xx = 0; xx < chunky && x + xx < w; xx++) {
+            int i = (y + yy) * w + (x + xx);
             int r = (int)buf[i*3+0] + noise;
             int g = (int)buf[i*3+1] + noise;
             int b = (int)buf[i*3+2] + noise;
@@ -581,7 +598,14 @@ void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
             buf[i*3+0] = (uint8_t)r;
             buf[i*3+1] = (uint8_t)g;
             buf[i*3+2] = (uint8_t)b;
+                }
+            }
+            }
         }
         return;
     }
+}
+
+void apply_fx(uint8_t *buf, int w, int h, FilterParams p, int frame_count) {
+    apply_fx_tuned(buf, w, h, p, frame_count, 0, 0, 0);
 }

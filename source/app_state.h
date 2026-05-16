@@ -33,6 +33,7 @@ typedef struct {
     int  bend_preset;
     int  bend_strength;
     bool bend_enabled;
+    bool tune_open;
     EffectPipeline pipeline;
     PipelinePreset presets[PIPELINE_PRESET_COUNT];
 

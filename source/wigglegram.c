@@ -582,14 +582,17 @@ static bool same_effect_recipe(const EffectRecipe *a, const EffectRecipe *b) {
     return a->use_base_look == b->use_base_look &&
            a->lomo_preset == b->lomo_preset &&
            a->lomo_strength == b->lomo_strength &&
+           memcmp(&a->lomo_tune, &b->lomo_tune, sizeof(a->lomo_tune)) == 0 &&
            a->use_gb == b->use_gb &&
            same_filter_params(&a->gb_params, &b->gb_params) &&
            a->use_bend == b->use_bend &&
            a->bend_preset == b->bend_preset &&
            a->bend_strength == b->bend_strength &&
+           memcmp(&a->bend_tune, &b->bend_tune, sizeof(a->bend_tune)) == 0 &&
            a->use_post_fx == b->use_post_fx &&
            a->post_fx_mode == b->post_fx_mode &&
            a->post_fx_intensity == b->post_fx_intensity &&
+           memcmp(&a->post_fx_tune, &b->post_fx_tune, sizeof(a->post_fx_tune)) == 0 &&
            a->fallback_post_fx_mode == b->fallback_post_fx_mode &&
            a->fallback_post_fx_intensity == b->fallback_post_fx_intensity;
 }

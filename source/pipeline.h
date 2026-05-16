@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "filter.h"
+#include "effect_tuning.h"
 
 typedef enum {
     CAPTURE_MODE_STILL = 0,
@@ -107,11 +108,14 @@ typedef struct {
     bool         use_bend;
     int          bend_preset;
     int          bend_strength;
+    BendTune     bend_tune;
     bool         use_post_fx;
     int          post_fx_mode;
     int          post_fx_intensity;
+    FxTune       post_fx_tune;
     int          fallback_post_fx_mode;
     int          fallback_post_fx_intensity;
+    LomoTune     lomo_tune;
 } EffectRecipe;
 
 void pipeline_state_init(EffectPipeline *pipe, const FilterParams *defaults);

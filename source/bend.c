@@ -97,7 +97,8 @@ static void bend_overflow(uint8_t *rgb, int w, int h, int frame, int strength)
 // per-row, so channels bleed into each other and pixel boundaries misalign.
 // Like reading a framebuffer at the wrong memory offset.
 // ---------------------------------------------------------------------------
-static uint8_t s_byteshift_tmp[400 * 3];  // one row scratch
+static uint8_t s_byteshift_tmp[640 * 3];  // one row scratch
+static uint8_t s_bend_tune_tmp[640 * 3];
 
 static void bend_byteshift(uint8_t *rgb, int w, int h, int frame, int strength)
 {
@@ -257,5 +258,197 @@ void apply_bend(uint8_t *rgb, int w, int h, int preset_id, int frame_count, int 
     case BEND_FEEDBACK:  bend_scramble(rgb, w, h, frame_count, strength);  break;
     case BEND_POSTERIZE: bend_acid(rgb, w, h, frame_count, strength);      break;
     default: break;
+    }
+}
+
+static int wrap_x(int x, int w)
+{
+    while (x < 0) x += w;
+    while (x >= w) x -= w;
+    return x;
+}
+
+static void tune_shift_channels(uint8_t *row, int w,
+                                int r_shift, int g_shift, int b_shift)
+{
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    memcpy(s_bend_tune_tmp, row, row_bytes);
+    for (int x = 0; x < w; x++) {
+        int dx = x * 3;
+        row[dx + 0] = s_bend_tune_tmp[wrap_x(x + r_shift, w) * 3 + 0];
+        row[dx + 1] = s_bend_tune_tmp[wrap_x(x + g_shift, w) * 3 + 1];
+        row[dx + 2] = s_bend_tune_tmp[wrap_x(x + b_shift, w) * 3 + 2];
+    }
+}
+
+static void tune_resample_row(uint8_t *row, int w, int scale256, int shift)
+{
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    int cx = w / 2;
+    memcpy(s_bend_tune_tmp, row, row_bytes);
+    for (int x = 0; x < w; x++) {
+        int sx = cx + ((x - cx) * scale256) / 256 + shift;
+        if (sx < 0) sx = 0;
+        if (sx >= w) sx = w - 1;
+        row[x * 3 + 0] = s_bend_tune_tmp[sx * 3 + 0];
+        row[x * 3 + 1] = s_bend_tune_tmp[sx * 3 + 1];
+        row[x * 3 + 2] = s_bend_tune_tmp[sx * 3 + 2];
+    }
+}
+
+static void tune_corrupt_skew_split(uint8_t *rgb, int w, int h,
+                                    int skew, int split)
+{
+    if (skew <= 0 && split <= 0) return;
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    int cy = h / 2;
+    for (int y = 0; y < h; y++) {
+        int base = ((y - cy) * skew) / 22;
+        int jitter = ((y / 6) & 1) ? split : -split;
+        int chroma = 1 + split * 2;
+        tune_shift_channels(rgb + y * row_bytes,
+                            w, base + jitter + chroma,
+                            base, base + jitter - chroma);
+    }
+}
+
+static void tune_overflow_bulge_ripple(uint8_t *rgb, int w, int h,
+                                       int frame, int bulge, int ripple)
+{
+    if (bulge <= 0 && ripple <= 0) return;
+    int row_bytes = w * 3;
+    int cy = h / 2;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    for (int y = 0; y < h; y++) {
+        int dist = y - cy;
+        if (dist < 0) dist = -dist;
+        int center_weight = cy - dist;
+        if (center_weight < 0) center_weight = 0;
+        int scale = 256 + (bulge * center_weight) / 12;
+        int phase = (y * (ripple + 2) + frame * 3) & 31;
+        if (phase > 15) phase = 31 - phase;
+        int shift = (phase - 8) * ripple / 7;
+        tune_resample_row(rgb + y * row_bytes, w, scale, shift);
+    }
+}
+
+static void tune_byteshift_phase_stride(uint8_t *rgb, int w, int h,
+                                        int frame, int phase, int stride_amt)
+{
+    if (phase <= 0 && stride_amt <= 0) return;
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    int stride = 1 + (stride_amt % 4) * 2;
+    for (int y = 0; y < h; y++) {
+        uint8_t *row = rgb + y * row_bytes;
+        int shift = (((y * y) * (phase + 1)) / 48 +
+                     ((y / 8) * (stride_amt + 1) * 3) +
+                     frame * (stride_amt + 1)) % row_bytes;
+        memcpy(s_bend_tune_tmp, row, row_bytes);
+        for (int i = 0; i < row_bytes; i++) {
+            row[i] = s_bend_tune_tmp[(i * stride + shift) % row_bytes];
+        }
+    }
+}
+
+static void tune_solarize_fold_mirror(uint8_t *rgb, int w, int h,
+                                      int fold, int mirror)
+{
+    if (fold <= 0 && mirror <= 0) return;
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    int cell = 42 - mirror * 3;
+    if (cell < 10) cell = 10;
+    for (int y = 0; y < h; y++) {
+        uint8_t *row = rgb + y * row_bytes;
+        int row_shift = (((y * (fold + 1)) & 31) - 16) * fold / 18;
+        memcpy(s_bend_tune_tmp, row, row_bytes);
+        for (int x = 0; x < w; x++) {
+            int band = x / cell;
+            int local = x - band * cell;
+            int sx = x;
+            if (((band + y / 12) & 1) && mirror > 0) {
+                sx = band * cell + (cell - 1 - local);
+            }
+            sx = wrap_x(sx + row_shift, w);
+            row[x * 3 + 0] = s_bend_tune_tmp[sx * 3 + 0];
+            row[x * 3 + 1] = s_bend_tune_tmp[sx * 3 + 1];
+            row[x * 3 + 2] = s_bend_tune_tmp[sx * 3 + 2];
+        }
+    }
+}
+
+static void tune_scramble_twist_tiles(uint8_t *rgb, int w, int h,
+                                      int twist, int tiles)
+{
+    if (twist <= 0 && tiles <= 0) return;
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    int tile = 50 - tiles * 4;
+    if (tile < 8) tile = 8;
+    for (int y = 0; y < h; y++) {
+        uint8_t *row = rgb + y * row_bytes;
+        memcpy(s_bend_tune_tmp, row, row_bytes);
+        for (int x = 0; x < w; x++) {
+            int band = x / tile;
+            int local = x - band * tile;
+            int sx = band * tile + (((band + y / tile) & 1) ? tile - 1 - local : local);
+            int bend = ((((y + band * 7) * (twist + 1)) & 31) - 16) * twist / 16;
+            sx = wrap_x(sx + bend, w);
+            row[x * 3 + 0] = s_bend_tune_tmp[sx * 3 + 0];
+            row[x * 3 + 1] = s_bend_tune_tmp[sx * 3 + 1];
+            row[x * 3 + 2] = s_bend_tune_tmp[sx * 3 + 2];
+        }
+    }
+}
+
+static void tune_acid_prism_orbit(uint8_t *rgb, int w, int h,
+                                  int frame, int prism, int orbit)
+{
+    if (prism <= 0 && orbit <= 0) return;
+    int row_bytes = w * 3;
+    if (row_bytes > (int)sizeof(s_bend_tune_tmp)) return;
+    for (int y = 0; y < h; y++) {
+        int phase = (y * (orbit + 2) + frame * 4) & 63;
+        if (phase > 31) phase = 63 - phase;
+        int base = (phase - 16) * orbit / 14;
+        int spread = 1 + prism * 2;
+        tune_shift_channels(rgb + y * row_bytes,
+                            w, base + spread, -base / 2, -base - spread);
+    }
+}
+
+void apply_bend_tuned(uint8_t *rgb, int w, int h, int preset_id,
+                      int frame_count, int strength,
+                      int wave, int chaos, int seed)
+{
+    apply_bend(rgb, w, h, preset_id, frame_count, strength);
+    int a = clamp_strength(wave);
+    int b = clamp_strength(chaos);
+    switch (preset_id) {
+    case BEND_CORRUPT:
+        tune_corrupt_skew_split(rgb, w, h, a, b);
+        break;
+    case BEND_MELT:
+        tune_overflow_bulge_ripple(rgb, w, h, frame_count + seed, a, b);
+        break;
+    case BEND_SWAP:
+        tune_byteshift_phase_stride(rgb, w, h, frame_count + seed, a, b);
+        break;
+    case BEND_SOLARIZE:
+        tune_solarize_fold_mirror(rgb, w, h, a, b);
+        break;
+    case BEND_FEEDBACK:
+        tune_scramble_twist_tiles(rgb, w, h, a, b);
+        break;
+    case BEND_POSTERIZE:
+        tune_acid_prism_orbit(rgb, w, h, frame_count + seed, a, b);
+        break;
+    default:
+        tune_corrupt_skew_split(rgb, w, h, a, b);
+        break;
     }
 }

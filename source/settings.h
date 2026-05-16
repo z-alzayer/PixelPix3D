@@ -3,6 +3,7 @@
 
 #include "filter.h"
 #include "pipeline.h"
+#include "effect_tuning.h"
 #include <stdint.h>
 
 #define SETTINGS_PATH "sdmc:/3ds/pixelpix3d/settings.ini"
@@ -42,5 +43,7 @@ void settings_save_file_counter(int n);
 
 void settings_load_pipeline_presets(PipelinePreset presets[PIPELINE_PRESET_COUNT]);
 void settings_save_pipeline_presets(const PipelinePreset presets[PIPELINE_PRESET_COUNT]);
+void settings_load_effect_tuning(EffectTuning *t);
+void settings_save_effect_tuning(const EffectTuning *t);
 
 #endif

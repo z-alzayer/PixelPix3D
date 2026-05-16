@@ -361,7 +361,8 @@ void draw_ui(C3D_RenderTarget *bot,
                        wig->offset_dx, wig->offset_dy,
                        app->anaglyph_colors,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
-                       shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength);
+                       shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
+                       shoot->tune_open);
     } else if (app->active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf,
                        shoot->remap_enabled, shoot->remap_style,

@@ -34,5 +34,8 @@ static const BendPreset bend_presets[BEND_PRESET_COUNT] = {
 // Apply the selected circuit-bend preset to an RGB888 buffer in-place.
 // strength is 0..10, where 10 is the original full preset.
 void apply_bend(uint8_t *rgb, int w, int h, int preset_id, int frame_count, int strength);
+void apply_bend_tuned(uint8_t *rgb, int w, int h, int preset_id,
+                      int frame_count, int strength,
+                      int wave, int chaos, int seed);
 
 #endif

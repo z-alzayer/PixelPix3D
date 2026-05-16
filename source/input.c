@@ -140,6 +140,66 @@ static void reset_all_presets(ShootState *shoot, WiggleState *wig,
     apply_preset_to_legacy(shoot, wig, app, 0);
 }
 
+static int tune_slider_value(int tx) {
+    const float tune_track_x = 92.0f;
+    const float tune_track_w = 150.0f;
+    float t_val = (float)tx - tune_track_x;
+    t_val /= tune_track_w;
+    if (t_val < 0.0f) t_val = 0.0f;
+    if (t_val > 1.0f) t_val = 1.0f;
+    int v = (int)(t_val * 10.0f + 0.5f);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    return v;
+}
+
+static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
+                                    ShootState *shoot, AppState *app,
+                                    WiggleState *wig) {
+    float cy = (float)SHOOT_CONTENT_Y;
+    if (tapped && hit(tx, ty, 254, (int)cy + 2, 54, 16)) {
+        settings_save_effect_tuning(&g_effect_tuning);
+        app->settings_flash = 20;
+        return true;
+    }
+    if (!touched || tx < 84 || tx > 250)
+        return false;
+
+    int row = -1;
+    if (shoot->shoot_mode == SHOOT_MODE_BEND) {
+        if (ty >= (int)(cy + 32.0f - 14.0f) && ty < (int)(cy + 32.0f + 14.0f)) row = 0;
+        else if (ty >= (int)(cy + 66.0f - 14.0f) && ty < (int)(cy + 66.0f + 14.0f)) row = 1;
+    } else {
+        if (ty >= (int)(cy + 24.0f - 12.0f) && ty < (int)(cy + 24.0f + 12.0f)) row = 0;
+        else if (ty >= (int)(cy + 50.0f - 12.0f) && ty < (int)(cy + 50.0f + 12.0f)) row = 1;
+        else if (ty >= (int)(cy + 76.0f - 12.0f) && ty < (int)(cy + 76.0f + 12.0f)) row = 2;
+    }
+    if (row < 0) return false;
+
+    int v = tune_slider_value(tx);
+    if (shoot->shoot_mode == SHOOT_MODE_LOMO) {
+        LomoTune *t = &g_effect_tuning.lomo[shoot->lomo_preset];
+        if (row == 0) t->exposure = v;
+        else if (row == 1) t->color = v;
+        else t->texture = v;
+    } else if (shoot->shoot_mode == SHOOT_MODE_BEND) {
+        BendTune *t = &g_effect_tuning.bend[shoot->bend_preset];
+        if (row == 0) t->wave = v;
+        else if (row == 1) t->chaos = v;
+        else return false;
+    } else if (shoot->shoot_mode == SHOOT_MODE_FX) {
+        int mode = app->params.fx_mode;
+        if (mode < 0) mode = 0;
+        if (mode > 6) mode = 6;
+        FxTune *t = &g_effect_tuning.fx[mode];
+        if (row == 0) t->shape = v;
+        else if (row == 1) t->depth = v;
+        else t->scale = v;
+    }
+    wig->rebuild = true;
+    return true;
+}
+
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   AppState *app, ShootState *shoot, WiggleState *wig,
                   GalleryState *gal, EditState *edit,
@@ -433,6 +493,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 if (shoot->shoot_mode == SHOOT_MODE_WIGGLE)
                                     shoot->shoot_mode = SHOOT_MODE_GBCAM;
                                 shoot->shoot_mode_open = false;
+                                shoot->tune_open = false;
                                 return true;
                             } else if (col == 1) {
                                 shoot->capture_mode = CAPTURE_MODE_STEREO;
@@ -450,8 +511,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 shoot->shoot_mode = SHOOT_MODE_FX;
                             } else if (col == 7) {
                                 shoot->timer_open = true;
+                                shoot->tune_open = false;
                                 return true;
                             }
+                            shoot->tune_open = false;
                             shoot->shoot_mode_open = true;
                             return true;
                         }
@@ -481,8 +544,28 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
                 // Back button
                 if (tapped && hit(tx, ty, 4, SHOOT_BACK_Y + 2, SHOOT_BACK_W, SHOOT_BACK_H - 4)) {
-                    shoot->shoot_mode_open = false;
+                    if (shoot->tune_open) {
+                        shoot->tune_open = false;
+                    } else {
+                        shoot->shoot_mode_open = false;
+                    }
                     return true;
+                }
+
+                if ((shoot->shoot_mode == SHOOT_MODE_LOMO ||
+                     shoot->shoot_mode == SHOOT_MODE_BEND ||
+                     shoot->shoot_mode == SHOOT_MODE_FX) &&
+                    tapped && hit(tx, ty, 288, SHOOT_BACK_Y + 3, 24, 20)) {
+                    shoot->tune_open = !shoot->tune_open;
+                    return true;
+                }
+
+                if (shoot->tune_open &&
+                    (shoot->shoot_mode == SHOOT_MODE_LOMO ||
+                     shoot->shoot_mode == SHOOT_MODE_BEND ||
+                     shoot->shoot_mode == SHOOT_MODE_FX)) {
+                    return handle_tune_panel_touch(tx, ty, tapped, touched,
+                                                   shoot, app, wig);
                 }
 
                 if (shoot->shoot_mode == SHOOT_MODE_GBCAM) {
