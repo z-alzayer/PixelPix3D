@@ -590,6 +590,8 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 float bx = SHOOT_MODE_BTN_GAP + col * (SHOOT_MODE_BTN_W + SHOOT_MODE_BTN_GAP);
                 float by = (float)SHOOT_MODE_ROW1_Y +
                            row * (SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP);
+                float visual_y = by + 8.0f;
+                float visual_h = SHOOT_MODE_ROW_H - 16.0f;
                 bool sel = false;
                 if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
                 else if (i == 1) sel = (capture_mode == CAPTURE_MODE_STEREO);
@@ -600,13 +602,13 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                                          fabsf(p->gamma - ranges->gamma_def) > 0.001f));
                 else if (i == 3) sel = (shoot_timer_secs > 0);
 
-                draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
+                draw_pill(bx, visual_y, SHOOT_MODE_BTN_W, visual_h,
                           (i == 3 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
 
                 C2D_TextParse(&t, staticBuf, mode_labels[i]);
                 float tw2 = 0, th2 = 0;
                 C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw2, &th2);
-                float label_y = by + (SHOOT_MODE_ROW_H - 42.0f) * 0.5f;
+                float label_y = visual_y + (visual_h - 42.0f) * 0.5f;
                 float sub_y = label_y + 24.0f;
                 C2D_DrawText(&t, C2D_WithColor,
                              bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
@@ -622,11 +624,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 else snprintf(sub, sizeof(sub), "off");
 
                 C2D_TextParse(&t, staticBuf, sub);
-                C2D_TextGetDimensions(&t, 0.28f, 0.28f, &tw2, &th2);
+                C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw2, &th2);
                 C2D_DrawText(&t, C2D_WithColor,
                              bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
                              sub_y,
-                             0.5f, 0.28f, 0.28f,
+                             0.5f, 0.34f, 0.34f,
                              sel ? C2D_Color32(230, 240, 255, 255) : CLR_DIM);
             }
         } else if (timer_open) {
@@ -721,7 +723,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                              82.0f,
                              (float)SHOOT_BACK_Y + ((float)SHOOT_BACK_H - th) * 0.5f - 1.0f,
                              0.5f, 0.46f, 0.46f, CLR_ACCENT);
-                static const char *out_labels[2] = {"Wiggle", "Ana"};
+                static const char *out_labels[2] = {"Wiggle", "Anaglyph"};
                 const int out_vals[2] = {STEREO_OUTPUT_WIGGLE, STEREO_OUTPUT_ANAGLYPH};
                 for (int i = 0; i < 2; i++) {
                     float bx = (float)SHOOT_STEREO_OUT_X +
@@ -733,11 +735,11 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                               sel ? CLR_ACCENT : CLR_BTN);
                     C2D_Text tp; float pw = 0, ph = 0;
                     C2D_TextParse(&tp, staticBuf, out_labels[i]);
-                    C2D_TextGetDimensions(&tp, 0.29f, 0.29f, &pw, &ph);
+                    C2D_TextGetDimensions(&tp, 0.28f, 0.28f, &pw, &ph);
                     C2D_DrawText(&tp, C2D_WithColor,
                                  bx + (SHOOT_STEREO_OUT_W - pw) * 0.5f,
                                  SHOOT_STEREO_OUT_Y + (SHOOT_STEREO_OUT_H - ph) * 0.5f,
-                                 0.5f, 0.29f, 0.29f,
+                                 0.5f, 0.28f, 0.28f,
                                  sel ? CLR_WHITE : CLR_TEXT);
                 }
             } else {
@@ -897,11 +899,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
 
                 // -- Row 3: total animation frames --
                 if (stereo_output == STEREO_OUTPUT_WIGGLE) {
-                    float label_y = cy + 54.0f;
                     float ry = cy + 66.0f;
-                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Total frame count");
-                      C2D_TextGetDimensions(&t,0.22f,0.22f,&tw,&th);
-                      C2D_DrawText(&t,C2D_WithColor,4.0f,label_y,0.5f,0.22f,0.22f,CLR_DIM); }
                     draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
                     { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"-");
                       C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
@@ -915,6 +913,12 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                     { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"+");
                       C2D_TextGetDimensions(&t,0.44f,0.44f,&tw,&th);
                       C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+(WIG_BTN_W-tw)*0.5f,ry+(WIG_BTN_H-th)*0.5f,0.5f,0.44f,0.44f,CLR_TEXT); }
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Total");
+                      C2D_TextGetDimensions(&t,0.30f,0.30f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+WIG_BTN_W+2.0f,cy+57.0f,0.5f,0.30f,0.30f,CLR_DIM); }
+                    { C2D_Text t; float tw=0,th=0; C2D_TextParse(&t,staticBuf,"Frames");
+                      C2D_TextGetDimensions(&t,0.30f,0.30f,&tw,&th);
+                      C2D_DrawText(&t,C2D_WithColor,WIG_PLUS_X+WIG_BTN_W+2.0f,cy+72.0f,0.5f,0.30f,0.30f,CLR_DIM); }
                 }
                 } // end wiggle_preview else
 
@@ -1784,11 +1788,16 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                          by + 18.0f,
                          0.5f, 0.42f, 0.42f, active ? CLR_WHITE : CLR_TEXT);
             C2D_TextParse(&t, staticBuf, sub);
-            C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+            float sub_sc = 0.36f;
+            C2D_TextGetDimensions(&t, sub_sc, sub_sc, &tw, &th);
+            if (tw > LOOKS_HOME_BTN_W - 8.0f) {
+                sub_sc = 0.32f;
+                C2D_TextGetDimensions(&t, sub_sc, sub_sc, &tw, &th);
+            }
             C2D_DrawText(&t, C2D_WithColor,
                          bx + ((float)LOOKS_HOME_BTN_W - tw) * 0.5f,
-                         by + 42.0f,
-                         0.5f, 0.30f, 0.30f,
+                         by + 41.0f,
+                         0.5f, sub_sc, sub_sc,
                          active ? C2D_Color32(230, 240, 255, 255) : CLR_DIM);
         }
         return;
