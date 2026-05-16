@@ -958,14 +958,28 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
         } else if (shoot->looks_stage == LOOKS_STAGE_GB) {
-            if (tapped && hit(tx, ty, 8, LOOKS_PANEL_Y, 70, 18)) {
-                set_gb_stage_enabled(shoot, wig, !current_gb_stage_enabled(shoot, wig));
-                return true;
+            if (tapped) {
+                for (int i = 0; i < PALETTE_COUNT; i++) {
+                    int row = i / LOOKS_GB_STYLE_COLS;
+                    int col = i % LOOKS_GB_STYLE_COLS;
+                    int bx = LOOKS_GB_STYLE_GAP + col * (LOOKS_GB_STYLE_W + LOOKS_GB_STYLE_GAP);
+                    int by = LOOKS_GB_STYLE_Y + row * (LOOKS_GB_STYLE_H + LOOKS_GB_STYLE_GAP);
+                    if (hit(tx, ty, bx, by, LOOKS_GB_STYLE_W, LOOKS_GB_STYLE_H)) {
+                        bool gb_enabled = current_gb_stage_enabled(shoot, wig);
+                        if (gb_enabled && p->palette == i) {
+                            set_gb_stage_enabled(shoot, wig, false);
+                        } else {
+                            p->palette = i;
+                            set_gb_stage_enabled(shoot, wig, true);
+                        }
+                        return true;
+                    }
+                }
             }
             #define LVCOL_W   80
             #define LVHANDLE_H  8
-            float vtrack_top = (float)LOOKS_PANEL_Y + 40.0f;
-            float vtrack_bot = 194.0f;
+            float vtrack_top = (float)LOOKS_GB_VTOP;
+            float vtrack_bot = (float)LOOKS_GB_VBOT;
             float vtrack_h   = vtrack_bot - vtrack_top;
             if (touched && ty >= (int)(vtrack_top - LVHANDLE_H) &&
                 ty <= (int)(vtrack_bot + LVHANDLE_H)) {

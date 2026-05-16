@@ -51,6 +51,7 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                            float sticker_pending_scale, float sticker_pending_angle,
                            bool sticker_placing);
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                    const PaletteDef *user_palettes,
                     const FilterParams *p, const FilterRanges *ranges,
                     int looks_stage, bool looks_stage_open,
                     bool presets_open, bool tune_open,

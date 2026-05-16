@@ -371,7 +371,7 @@ void draw_ui(C3D_RenderTarget *bot,
     } else if (app->active_tab == TAB_STYLE) {
         bool gb_stage_enabled = (shoot->capture_mode == CAPTURE_MODE_STEREO)
                              ? wig->filter_active : shoot->gb_enabled;
-        draw_style_tab(staticBuf, dynBuf,
+        draw_style_tab(staticBuf, dynBuf, app->user_palettes,
                        &app->params, &app->ranges,
                        shoot->looks_stage, shoot->looks_stage_open,
                        shoot->presets_open, shoot->tune_open,

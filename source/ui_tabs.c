@@ -1473,6 +1473,7 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 // ---------------------------------------------------------------------------
 
 static void draw_looks_tone_sliders(C2D_TextBuf staticBuf, C2D_Text *t,
+                                    const PaletteDef *user_palettes,
                                     const FilterParams *p,
                                     const FilterRanges *ranges,
                                     bool gb_enabled) {
@@ -1482,23 +1483,51 @@ static void draw_looks_tone_sliders(C2D_TextBuf staticBuf, C2D_Text *t,
     float defs[4]  = { ranges->bright_def,  ranges->contrast_def, ranges->sat_def,  ranges->gamma_def };
     static const char *vlbls[4] = { "Brt", "Con", "Sat", "Gam" };
 
-    draw_pill(8.0f, (float)LOOKS_PANEL_Y, 70.0f, 18.0f,
-              gb_enabled ? CLR_ACCENT : CLR_BTN);
-    C2D_TextParse(t, staticBuf, gb_enabled ? "GB On" : "GB Off");
     float tw = 0, th = 0;
-    C2D_TextGetDimensions(t, 0.32f, 0.32f, &tw, &th);
-    C2D_DrawText(t, C2D_WithColor,
-                 8.0f + (70.0f - tw) * 0.5f,
-                 (float)LOOKS_PANEL_Y + (18.0f - th) * 0.5f - 1.0f,
-                 0.5f, 0.32f, 0.32f, gb_enabled ? CLR_WHITE : CLR_TEXT);
+
+    for (int i = 0; i < PALETTE_COUNT; i++) {
+        int row = i / LOOKS_GB_STYLE_COLS;
+        int col = i % LOOKS_GB_STYLE_COLS;
+        float bx = LOOKS_GB_STYLE_GAP + col * (LOOKS_GB_STYLE_W + LOOKS_GB_STYLE_GAP);
+        float by = LOOKS_GB_STYLE_Y + row * (LOOKS_GB_STYLE_H + LOOKS_GB_STYLE_GAP);
+        bool sel = gb_enabled && p->palette == i;
+        draw_pill(bx, by, LOOKS_GB_STYLE_W, LOOKS_GB_STYLE_H,
+                  sel ? CLR_ACCENT : CLR_BTN);
+
+        if (user_palettes && user_palettes[i].size > 0) {
+            u32 swatch_col = C2D_Color32(user_palettes[i].colors[0][0],
+                                         user_palettes[i].colors[0][1],
+                                         user_palettes[i].colors[0][2], 255);
+            draw_rounded_rect_on_panel(bx + 4.0f, by + 5.0f, 10.0f, 10.0f,
+                                       2.0f, swatch_col);
+        }
+
+        C2D_TextParse(t, staticBuf, user_palettes ? user_palettes[i].name : palettes[i].name);
+        float sc = 0.25f;
+        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+        if (tw > LOOKS_GB_STYLE_W - 22.0f) {
+            sc = 0.21f;
+            C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+        }
+        C2D_DrawText(t, C2D_WithColor,
+                     bx + 18.0f + ((LOOKS_GB_STYLE_W - 22.0f) - tw) * 0.5f,
+                     by + (LOOKS_GB_STYLE_H - th) * 0.5f - 1.0f,
+                     0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
+    }
+
+    draw_tune_icon_button_at(false, 8.0f, (float)LOOKS_GB_ADJUST_Y);
+    C2D_TextParse(t, staticBuf, "Brightness / Contrast");
+    C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
+    C2D_DrawText(t, C2D_WithColor, 30.0f, (float)LOOKS_GB_ADJUST_Y + 2.0f,
+                 0.5f, 0.34f, 0.34f, CLR_DIM);
 
     #define LVCOL_W   80
     #define LVTRACK_W  4
     #define LVHANDLE_W 14
     #define LVHANDLE_H  8
-    float cy = (float)LOOKS_PANEL_Y + 24.0f;
-    float vtrack_top = (float)LOOKS_PANEL_Y + 40.0f;
-    float vtrack_bot = 194.0f;
+    float cy = (float)LOOKS_GB_VLABEL_Y;
+    float vtrack_top = (float)LOOKS_GB_VTOP;
+    float vtrack_bot = (float)LOOKS_GB_VBOT;
     float vtrack_h   = vtrack_bot - vtrack_top;
     for (int i = 0; i < 4; i++) {
         float col_cx = i * LVCOL_W + LVCOL_W / 2.0f;
@@ -1655,6 +1684,7 @@ static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
 }
 
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                    const PaletteDef *user_palettes,
                     const FilterParams *p, const FilterRanges *ranges,
                     int looks_stage, bool looks_stage_open,
                     bool presets_open, bool tune_open,
@@ -1844,7 +1874,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         draw_looks_lomo_panel(staticBuf, &t, lomo_enabled, lomo_preset,
                               lomo_strength);
     } else if (looks_stage == LOOKS_STAGE_GB) {
-        draw_looks_tone_sliders(staticBuf, &t, p, ranges, gb_enabled);
+        draw_looks_tone_sliders(staticBuf, &t, user_palettes, p, ranges, gb_enabled);
     } else if (looks_stage == LOOKS_STAGE_STYLE) {
         draw_looks_style_panel(staticBuf, &t, remap_enabled, remap_style,
                                remap_cell_size, remap_strength);

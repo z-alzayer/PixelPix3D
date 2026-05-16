@@ -152,6 +152,15 @@
 #define LOOKS_CELL_LABEL_Y  108
 #define LOOKS_CELL_Y        126
 #define LOOKS_STRENGTH_Y    170
+#define LOOKS_GB_STYLE_COLS  3
+#define LOOKS_GB_STYLE_GAP   5
+#define LOOKS_GB_STYLE_Y     LOOKS_PANEL_Y
+#define LOOKS_GB_STYLE_H    20
+#define LOOKS_GB_STYLE_W    ((BOT_W - (LOOKS_GB_STYLE_COLS + 1) * LOOKS_GB_STYLE_GAP) / LOOKS_GB_STYLE_COLS)
+#define LOOKS_GB_ADJUST_Y   94
+#define LOOKS_GB_VLABEL_Y  116
+#define LOOKS_GB_VTOP      132
+#define LOOKS_GB_VBOT      194
 
 // ---------------------------------------------------------------------------
 // Style tab geometry (y=0..200)
