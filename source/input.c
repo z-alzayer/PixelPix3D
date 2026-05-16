@@ -823,7 +823,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
                     // Delay, colour swatches, and preview controls live in the
                     // right zone; output selection is in the title row.
-                    if ((tapped || touched) && tx >= 160) {
+                    if ((tapped || touched) && tx >= 160 &&
+                        ty >= SHOOT_CONTENT_Y && ty < SHOOT_SAVE_Y) {
                         if (shoot->stereo_output != STEREO_OUTPUT_WIGGLE) {
                             if (!tapped) return false;
                             float total_aw = 2 * ANA_SWATCH_W + ANA_SWATCH_GAP;
