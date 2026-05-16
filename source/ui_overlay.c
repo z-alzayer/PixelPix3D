@@ -366,7 +366,8 @@ void draw_ui(C3D_RenderTarget *bot,
     } else if (app->active_tab == TAB_STYLE) {
         draw_style_tab(staticBuf, dynBuf,
                        shoot->remap_enabled, shoot->remap_style,
-                       shoot->remap_cell_size, shoot->remap_strength);
+                       shoot->remap_cell_size, shoot->remap_strength,
+                       shoot->presets, shoot->preset_selected, settings_flash);
     } else if (app->active_tab == TAB_FX) {
         draw_fx_tab(staticBuf, dynBuf, shoot->presets, shoot->preset_selected, settings_flash);
     } else if (app->active_tab == TAB_MORE) {

@@ -48,7 +48,9 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                            bool sticker_placing);
 void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     bool remap_enabled, int remap_style,
-                    int remap_cell_size, int remap_strength);
+                    int remap_cell_size, int remap_strength,
+                    const PipelinePreset *presets, int preset_selected,
+                    bool settings_flash);
 void draw_fx_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  const PipelinePreset *presets, int preset_selected,
                  bool settings_flash);

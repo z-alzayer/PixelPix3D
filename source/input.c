@@ -204,7 +204,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   AppState *app, ShootState *shoot, WiggleState *wig,
                   GalleryState *gal, EditState *edit,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
-                  bool *do_defaults_reset,
+                  bool *do_defaults_reset, bool *do_clear_look,
                   bool *do_gallery_toggle,
                   bool *do_edit_cancel, bool *do_edit_savenew,
                   bool *do_edit_overwrite, bool *do_edit_enter) {
@@ -212,6 +212,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     *do_save          = false;
     *do_defaults_save = false;
     *do_defaults_reset = false;
+    *do_clear_look    = false;
     *do_gallery_toggle = false;
     *do_edit_cancel   = false;
     *do_edit_savenew  = false;
@@ -356,9 +357,9 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         } else if (seg == TAB_STYLE) {
             app->active_tab = TAB_STYLE;
         } else if (seg == TAB_FX) {
-            app->active_tab = TAB_FX;
+            *do_gallery_toggle = true;
         } else if (seg == TAB_MORE) {
-            app->active_tab = (app->active_tab == TAB_MORE) ? TAB_SHOOT : TAB_MORE;
+            app->active_tab = TAB_MORE;
         }
         return true;
     }
@@ -825,8 +826,15 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
 
-            // Save button (always at bottom when not in gallery)
-            if (tapped && ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
+            if (tapped && hit(tx, ty, SHOOT_CLEAR_X, SHOOT_CLEAR_Y,
+                              SHOOT_CLEAR_W, SHOOT_CLEAR_H)) {
+                *do_clear_look = true;
+                return true;
+            }
+
+            // Primary save/capture button (always at bottom when not in gallery)
+            if (tapped && hit(tx, ty, SHOOT_PRIMARY_X, SHOOT_SAVE_Y,
+                              SHOOT_PRIMARY_W, SHOOT_SAVE_H)) {
                 *do_save = true;
                 return true;
             }
@@ -837,8 +845,27 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // STYLE tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_STYLE && ty < NAV_Y) {
-        if (tapped && ty >= STYLE_REMAP_Y0 &&
-            ty < STYLE_REMAP_Y0 + 2 * STYLE_REMAP_BTN_H + STYLE_REMAP_GAP) {
+        if (tapped) {
+            for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+                int bx = LOOKS_PRESET_GAP + i * (LOOKS_PRESET_W + LOOKS_PRESET_GAP);
+                if (hit(tx, ty, bx, LOOKS_PRESET_Y, LOOKS_PRESET_W, LOOKS_PRESET_H)) {
+                    shoot->preset_selected = i;
+                    apply_preset_to_legacy(shoot, wig, app, i);
+                    return true;
+                }
+            }
+            if (hit(tx, ty, LOOKS_RESET_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
+                reset_all_presets(shoot, wig, app);
+                return true;
+            }
+            if (hit(tx, ty, LOOKS_STORE_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
+                save_current_to_preset(shoot, wig, app, shoot->preset_selected);
+                return true;
+            }
+        }
+
+        if (tapped && ty >= LOOKS_STYLE_Y0 &&
+            ty < LOOKS_STYLE_Y0 + 2 * LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP) {
             static const int style_vals[REMAP_STYLE_COUNT] = {
                 REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
                 REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
@@ -847,8 +874,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 int row = i / 3;
                 int col = i % 3;
                 int bx = STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP);
-                int by = STYLE_REMAP_Y0 + row * (STYLE_REMAP_BTN_H + STYLE_REMAP_GAP);
-                if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, STYLE_REMAP_BTN_H)) {
+                int by = LOOKS_STYLE_Y0 + row * (LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP);
+                if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H)) {
                     if (shoot->remap_enabled && shoot->remap_style == style_vals[i])
                         shoot->remap_enabled = false;
                     else {
@@ -865,7 +892,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             }
         }
 
-        if (ty >= STYLE_CELL_Y - 14 && ty < STYLE_CELL_Y + 14 &&
+        if (ty >= LOOKS_CELL_Y - 12 && ty < LOOKS_CELL_Y + 12 &&
             tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
             float t_val = (float)(tx - TRACK_X) / TRACK_W;
             if (t_val < 0.0f) t_val = 0.0f;
@@ -879,7 +906,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
 
-        if (ty >= STYLE_STRENGTH_Y - 14 && ty < STYLE_STRENGTH_Y + 14 &&
+        if (ty >= LOOKS_STRENGTH_Y - 10 && ty < LOOKS_STRENGTH_Y + 10 &&
             tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
             float t_val = (float)(tx - TRACK_X) / TRACK_W;
             if (t_val < 0.0f) t_val = 0.0f;

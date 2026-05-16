@@ -366,11 +366,12 @@ int main(void) {
                 app.params.pixel_size = (app.params.pixel_size % PX_STOPS) + 1;
             }
             } // end !gal.mode && !edit.active
-            // X: cycle through main tabs (Shoot → Style → FX → More → Shoot)
+            // X: cycle through main workspace tabs (Camera -> Looks -> Settings).
             // Disabled in gallery/edit mode to avoid accidental tab switches
             if ((kDown & KEY_X) && !gal.mode && !edit.active) {
-                if (app.active_tab <= TAB_MORE)
-                    app.active_tab = (app.active_tab + 1) % (TAB_MORE + 1);
+                if (app.active_tab == TAB_SHOOT) app.active_tab = TAB_STYLE;
+                else if (app.active_tab == TAB_STYLE) app.active_tab = TAB_MORE;
+                else app.active_tab = TAB_SHOOT;
             }
             // D-pad: context-aware per active_tab
             if (edit.active && app.active_tab == TAB_SHOOT) {
@@ -416,13 +417,14 @@ int main(void) {
             hidTouchRead(&touch);
 
             bool do_cam = false, do_defaults_save = false, do_defaults_reset = false;
+            bool do_clear_look = false;
             bool do_gallery_toggle = false;
             bool do_edit_cancel = false, do_edit_savenew = false, do_edit_overwrite = false;
             bool do_edit_enter_or_place = false;
             handle_touch(touch, kDown, kHeld,
                          &app, &shoot, &wig, &gal, &edit,
                          &do_cam, &do_save, &do_defaults_save,
-                         &do_defaults_reset,
+                         &do_defaults_reset, &do_clear_look,
                          &do_gallery_toggle,
                          &do_edit_cancel, &do_edit_savenew, &do_edit_overwrite,
                          &do_edit_enter_or_place);
@@ -432,6 +434,10 @@ int main(void) {
 
             if (do_gallery_toggle) {
                 gallery_toggle(&gal, &app, &edit, camReceiveEvent, &captureInterrupted);
+            }
+
+            if (do_clear_look) {
+                clear_processing_stack(&shoot, &wig, &app);
             }
 
             if (do_edit_cancel)

@@ -105,9 +105,32 @@
 #define SHOOT_FUTURE_Y   43
 #define SHOOT_FUTURE_H  115
 
-// Save button: y=158..200, full width
+// Save band: clear-look affordance + primary shutter action
 #define SHOOT_SAVE_Y    158
 #define SHOOT_SAVE_H     42
+#define SHOOT_CLEAR_X     6
+#define SHOOT_CLEAR_Y   164
+#define SHOOT_CLEAR_W    82
+#define SHOOT_CLEAR_H    30
+#define SHOOT_PRIMARY_X  94
+#define SHOOT_PRIMARY_W 220
+
+// Looks tab compact preset controls.
+#define LOOKS_PRESET_Y       28
+#define LOOKS_PRESET_H       22
+#define LOOKS_PRESET_GAP      4
+#define LOOKS_PRESET_W       ((BOT_W - (PIPELINE_PRESET_COUNT + 1) * LOOKS_PRESET_GAP) / PIPELINE_PRESET_COUNT)
+#define LOOKS_ACTION_Y       54
+#define LOOKS_ACTION_H       20
+#define LOOKS_ACTION_W      144
+#define LOOKS_RESET_X         8
+#define LOOKS_STORE_X       168
+#define LOOKS_STYLE_LABEL_Y  82
+#define LOOKS_STYLE_Y0      100
+#define LOOKS_STYLE_BTN_H    18
+#define LOOKS_CELL_LABEL_Y  152
+#define LOOKS_CELL_Y        166
+#define LOOKS_STRENGTH_Y    190
 
 // ---------------------------------------------------------------------------
 // Style tab geometry (y=0..200)
