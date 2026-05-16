@@ -44,6 +44,7 @@ void cleanup(void) {
 
 static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
                                    AppState *app) {
+    bool keep_wiggle_preview = wig->preview;
     FilterParams defaults = FILTER_DEFAULTS;
     app->params = defaults;
     shoot->gb_enabled = false;
@@ -51,9 +52,12 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     shoot->lomo_enabled = false;
     shoot->bend_enabled = false;
     wig->filter_active = false;
-    wig->preview = false;
+    wig->preview = keep_wiggle_preview;
+    wig->manual_align = false;
+    wig->align_dragging = false;
+    wig->align_changed = false;
     wig->rebuild = true;
-    shoot->shoot_mode_open = false;
+    shoot->shoot_mode_open = keep_wiggle_preview ? true : false;
     shoot->timer_open = false;
     shoot->looks_stage_open = false;
     shoot->presets_open = false;

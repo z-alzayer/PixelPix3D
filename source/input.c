@@ -884,7 +884,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
             if (tapped && hit(tx, ty, SHOOT_CLEAR_X, SHOOT_CLEAR_Y,
                               SHOOT_CLEAR_W, SHOOT_CLEAR_H)) {
-                if (wig->preview)
+                if (wig->preview && wig->manual_align)
                     return true;
                 *do_clear_look = true;
                 return true;
