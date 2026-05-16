@@ -21,6 +21,8 @@ typedef struct {
     bool timer_open;       // timer picker visible
     bool presets_open;     // preset panel visible
     int  preset_selected;  // active preset slot
+    int  looks_stage;      // LOOKS_STAGE_* selected in the Looks tab
+    bool looks_stage_open; // focused Looks stage panel visible
     int  shoot_timer_secs; // 0 = disabled
     bool gb_enabled;
     bool remap_enabled;

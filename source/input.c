@@ -153,10 +153,16 @@ static int tune_slider_value(int tx) {
     return v;
 }
 
-static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
-                                    ShootState *shoot, AppState *app,
-                                    WiggleState *wig) {
-    float cy = (float)SHOOT_CONTENT_Y;
+static int looks_stage_to_shoot_mode(int looks_stage) {
+    if (looks_stage == LOOKS_STAGE_BEND) return SHOOT_MODE_BEND;
+    if (looks_stage == LOOKS_STAGE_FX) return SHOOT_MODE_FX;
+    return SHOOT_MODE_LOMO;
+}
+
+static bool handle_tune_panel_touch_at(int tx, int ty, bool tapped, bool touched,
+                                       ShootState *shoot, AppState *app,
+                                       WiggleState *wig, int tune_mode,
+                                       float cy) {
     if (tapped && hit(tx, ty, 254, (int)cy + 2, 54, 16)) {
         settings_save_effect_tuning(&g_effect_tuning);
         app->settings_flash = 20;
@@ -166,7 +172,7 @@ static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
         return false;
 
     int row = -1;
-    if (shoot->shoot_mode == SHOOT_MODE_BEND) {
+    if (tune_mode == SHOOT_MODE_BEND) {
         if (ty >= (int)(cy + 32.0f - 14.0f) && ty < (int)(cy + 32.0f + 14.0f)) row = 0;
         else if (ty >= (int)(cy + 66.0f - 14.0f) && ty < (int)(cy + 66.0f + 14.0f)) row = 1;
     } else {
@@ -177,17 +183,17 @@ static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
     if (row < 0) return false;
 
     int v = tune_slider_value(tx);
-    if (shoot->shoot_mode == SHOOT_MODE_LOMO) {
+    if (tune_mode == SHOOT_MODE_LOMO) {
         LomoTune *t = &g_effect_tuning.lomo[shoot->lomo_preset];
         if (row == 0) t->exposure = v;
         else if (row == 1) t->color = v;
         else t->texture = v;
-    } else if (shoot->shoot_mode == SHOOT_MODE_BEND) {
+    } else if (tune_mode == SHOOT_MODE_BEND) {
         BendTune *t = &g_effect_tuning.bend[shoot->bend_preset];
         if (row == 0) t->wave = v;
         else if (row == 1) t->chaos = v;
         else return false;
-    } else if (shoot->shoot_mode == SHOOT_MODE_FX) {
+    } else if (tune_mode == SHOOT_MODE_FX) {
         int mode = app->params.fx_mode;
         if (mode < 0) mode = 0;
         if (mode > 6) mode = 6;
@@ -198,6 +204,13 @@ static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
     }
     wig->rebuild = true;
     return true;
+}
+
+static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
+                                    ShootState *shoot, AppState *app,
+                                    WiggleState *wig) {
+    return handle_tune_panel_touch_at(tx, ty, tapped, touched, shoot, app, wig,
+                                      shoot->shoot_mode, (float)SHOOT_CONTENT_Y);
 }
 
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
@@ -501,16 +514,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                                 set_gb_stage_enabled(shoot, wig, gb_enabled);
                                 shoot->shoot_mode = SHOOT_MODE_WIGGLE;
                             } else if (col == 2) {
-                                shoot->shoot_mode = SHOOT_MODE_GBCAM;
-                            } else if (col == 3) {
                                 shoot->shoot_mode = SHOOT_MODE_TONE;
-                            } else if (col == 4) {
-                                shoot->shoot_mode = SHOOT_MODE_LOMO;
-                            } else if (col == 5) {
-                                shoot->shoot_mode = SHOOT_MODE_BEND;
-                            } else if (col == 6) {
-                                shoot->shoot_mode = SHOOT_MODE_FX;
-                            } else if (col == 7) {
+                            } else if (col == 3) {
                                 shoot->timer_open = true;
                                 shoot->tune_open = false;
                                 return true;
@@ -847,83 +852,241 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // STYLE tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_STYLE && ty < NAV_Y) {
-        if (tapped) {
-            for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
-                int bx = LOOKS_PRESET_GAP + i * (LOOKS_PRESET_W + LOOKS_PRESET_GAP);
-                if (hit(tx, ty, bx, LOOKS_PRESET_Y, LOOKS_PRESET_W, LOOKS_PRESET_H)) {
-                    shoot->preset_selected = i;
-                    apply_preset_to_legacy(shoot, wig, app, i);
-                    return true;
-                }
-            }
-            if (hit(tx, ty, LOOKS_RESET_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
-                reset_all_presets(shoot, wig, app);
-                return true;
-            }
-            if (hit(tx, ty, LOOKS_STORE_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
-                save_current_to_preset(shoot, wig, app, shoot->preset_selected);
-                return true;
-            }
-        }
-
-        if (tapped && ty >= LOOKS_STYLE_Y0 &&
-            ty < LOOKS_STYLE_Y0 + 2 * LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP) {
-            static const int style_vals[REMAP_STYLE_COUNT] = {
-                REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
-                REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
-            };
-            for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
-                int row = i / 3;
-                int col = i % 3;
-                int bx = STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP);
-                int by = LOOKS_STYLE_Y0 + row * (LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP);
-                if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H)) {
-                    if (shoot->remap_enabled && shoot->remap_style == style_vals[i])
-                        shoot->remap_enabled = false;
-                    else {
-                        shoot->remap_style = style_vals[i];
-                        if (shoot->remap_style == REMAP_STYLE_TOON && shoot->remap_strength < 2)
-                            shoot->remap_strength = 2;
-                        else if (shoot->remap_style != REMAP_STYLE_TOON && shoot->remap_strength > 10)
-                            shoot->remap_strength = 10;
-                        shoot->remap_enabled = true;
+        bool in_panel = shoot->looks_stage_open || shoot->presets_open;
+        if (!in_panel) {
+            if (tapped) {
+                for (int i = 0; i < LOOKS_HOME_BTN_COUNT; i++) {
+                    int row = i / LOOKS_HOME_COLS;
+                    int col = i % LOOKS_HOME_COLS;
+                    int bx = LOOKS_HOME_GAP + col * (LOOKS_HOME_BTN_W + LOOKS_HOME_GAP);
+                    int by = LOOKS_HOME_Y + row * (LOOKS_HOME_BTN_H + LOOKS_HOME_GAP);
+                    if (hit(tx, ty, bx, by, LOOKS_HOME_BTN_W, LOOKS_HOME_BTN_H)) {
+                        shoot->tune_open = false;
+                        if (i == LOOKS_STAGE_COUNT) {
+                            shoot->presets_open = true;
+                        } else {
+                            shoot->looks_stage = i;
+                            shoot->looks_stage_open = true;
+                        }
+                        return true;
                     }
-                    wig->rebuild = true;
+                }
+            }
+            return false;
+        }
+
+        if (tapped && hit(tx, ty, LOOKS_BACK_X, LOOKS_HEADER_Y,
+                          LOOKS_BACK_W, LOOKS_HEADER_H)) {
+            if (shoot->tune_open) {
+                shoot->tune_open = false;
+            } else {
+                shoot->looks_stage_open = false;
+                shoot->presets_open = false;
+            }
+            return true;
+        }
+
+        if (shoot->presets_open) {
+            if (tapped) {
+                for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+                    int bx = LOOKS_PRESET_GAP + i * (LOOKS_PRESET_W + LOOKS_PRESET_GAP);
+                    if (hit(tx, ty, bx, LOOKS_PRESET_Y, LOOKS_PRESET_W, LOOKS_PRESET_H)) {
+                        shoot->preset_selected = i;
+                        apply_preset_to_legacy(shoot, wig, app, i);
+                        return true;
+                    }
+                }
+                if (hit(tx, ty, LOOKS_RESET_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
+                    reset_all_presets(shoot, wig, app);
+                    return true;
+                }
+                if (hit(tx, ty, LOOKS_STORE_X, LOOKS_ACTION_Y, LOOKS_ACTION_W, LOOKS_ACTION_H)) {
+                    save_current_to_preset(shoot, wig, app, shoot->preset_selected);
                     return true;
                 }
             }
+            return false;
         }
 
-        if (ty >= LOOKS_CELL_Y - 12 && ty < LOOKS_CELL_Y + 12 &&
-            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
-            float t_val = (float)(tx - TRACK_X) / TRACK_W;
-            if (t_val < 0.0f) t_val = 0.0f;
-            if (t_val > 1.0f) t_val = 1.0f;
-            int min_val = shoot->remap_style == REMAP_STYLE_TOON ? 1 : 4;
-            int val = min_val + (int)(t_val * (16 - min_val) + 0.5f);
-            if (val < min_val) val = min_val;
-            if (val > 16) val = 16;
-            shoot->remap_cell_size = val;
-            wig->rebuild = true;
+        bool has_tune = (shoot->looks_stage == LOOKS_STAGE_LOOK ||
+                         shoot->looks_stage == LOOKS_STAGE_BEND ||
+                         shoot->looks_stage == LOOKS_STAGE_FX);
+        if (has_tune && tapped && hit(tx, ty, LOOKS_TUNE_X, LOOKS_TUNE_Y, 16, 16)) {
+            shoot->tune_open = !shoot->tune_open;
             return true;
         }
+        if (shoot->tune_open && has_tune) {
+            int tune_mode = looks_stage_to_shoot_mode(shoot->looks_stage);
+            return handle_tune_panel_touch_at(tx, ty, tapped, touched,
+                                              shoot, app, wig, tune_mode,
+                                              (float)LOOKS_PANEL_Y);
+        }
 
-        if (ty >= LOOKS_STRENGTH_Y - 10 && ty < LOOKS_STRENGTH_Y + 10 &&
-            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
-            float t_val = (float)(tx - TRACK_X) / TRACK_W;
-            if (t_val < 0.0f) t_val = 0.0f;
-            if (t_val > 1.0f) t_val = 1.0f;
-            if (shoot->remap_style == REMAP_STYLE_TOON) {
-                shoot->remap_strength = 2 + (int)(t_val * 13.0f + 0.5f);
-                if (shoot->remap_strength < 2) shoot->remap_strength = 2;
-                if (shoot->remap_strength > 15) shoot->remap_strength = 15;
-            } else {
-                shoot->remap_strength = (int)(t_val * 10.0f + 0.5f);
-                if (shoot->remap_strength < 0) shoot->remap_strength = 0;
-                if (shoot->remap_strength > 10) shoot->remap_strength = 10;
+        if (shoot->looks_stage == LOOKS_STAGE_LOOK) {
+            float cy = (float)LOOKS_PANEL_Y;
+            if (tapped) {
+                for (int row = 0; row < LOMO_GRID_ROWS; row++) {
+                    for (int col = 0; col < LOMO_GRID_COLS; col++) {
+                        int idx = row * LOMO_GRID_COLS + col;
+                        if (idx >= LOMO_PRESET_COUNT) break;
+                        int bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
+                        int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
+                        if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
+                            if (shoot->lomo_enabled && shoot->lomo_preset == idx)
+                                shoot->lomo_enabled = false;
+                            else {
+                                shoot->lomo_preset = idx;
+                                shoot->lomo_enabled = true;
+                            }
+                            wig->rebuild = true;
+                            return true;
+                        }
+                    }
+                }
             }
-            wig->rebuild = true;
-            return true;
+            if (touched && shoot->lomo_enabled &&
+                ty >= (int)(cy + 84.0f - 14.0f) &&
+                ty <  (int)(cy + 84.0f + 14.0f) &&
+                tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                if (t_val < 0.0f) t_val = 0.0f;
+                if (t_val > 1.0f) t_val = 1.0f;
+                shoot->lomo_strength = (int)(t_val * 10.0f + 0.5f);
+                if (shoot->lomo_strength < 0)  shoot->lomo_strength = 0;
+                if (shoot->lomo_strength > 10) shoot->lomo_strength = 10;
+                wig->rebuild = true;
+                return true;
+            }
+        } else if (shoot->looks_stage == LOOKS_STAGE_GB) {
+            if (tapped && hit(tx, ty, 8, LOOKS_PANEL_Y, 70, 18)) {
+                set_gb_stage_enabled(shoot, wig, !current_gb_stage_enabled(shoot, wig));
+                return true;
+            }
+            #define LVCOL_W   80
+            #define LVHANDLE_H  8
+            float vtrack_top = (float)LOOKS_PANEL_Y + 40.0f;
+            float vtrack_bot = 194.0f;
+            float vtrack_h   = vtrack_bot - vtrack_top;
+            if (touched && ty >= (int)(vtrack_top - LVHANDLE_H) &&
+                ty <= (int)(vtrack_bot + LVHANDLE_H)) {
+                int col = tx / LVCOL_W;
+                if (col >= 0 && col < 4) {
+                    float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
+                    if (t_val < 0.0f) t_val = 0.0f;
+                    if (t_val > 1.0f) t_val = 1.0f;
+                    float mn, mx;
+                    float *field = NULL;
+                    if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
+                    else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
+                    else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
+                    else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
+                    *field = mn + t_val * (mx - mn);
+                    set_gb_stage_enabled(shoot, wig, true);
+                    return true;
+                }
+            }
+            #undef LVCOL_W
+            #undef LVHANDLE_H
+        } else if (shoot->looks_stage == LOOKS_STAGE_STYLE) {
+            if (tapped && ty >= LOOKS_STYLE_Y0 &&
+                ty < LOOKS_STYLE_Y0 + 2 * LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP) {
+                static const int style_vals[REMAP_STYLE_COUNT] = {
+                    REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+                    REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
+                };
+                for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
+                    int row = i / 3;
+                    int col = i % 3;
+                    int bx = STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP);
+                    int by = LOOKS_STYLE_Y0 + row * (LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP);
+                    if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H)) {
+                        if (shoot->remap_enabled && shoot->remap_style == style_vals[i])
+                            shoot->remap_enabled = false;
+                        else {
+                            shoot->remap_style = style_vals[i];
+                            if (shoot->remap_style == REMAP_STYLE_TOON && shoot->remap_strength < 2)
+                                shoot->remap_strength = 2;
+                            else if (shoot->remap_style != REMAP_STYLE_TOON && shoot->remap_strength > 10)
+                                shoot->remap_strength = 10;
+                            shoot->remap_enabled = true;
+                        }
+                        wig->rebuild = true;
+                        return true;
+                    }
+                }
+            }
+
+            if (ty >= LOOKS_CELL_Y - 12 && ty < LOOKS_CELL_Y + 12 &&
+                tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                if (t_val < 0.0f) t_val = 0.0f;
+                if (t_val > 1.0f) t_val = 1.0f;
+                int min_val = shoot->remap_style == REMAP_STYLE_TOON ? 1 : 4;
+                int val = min_val + (int)(t_val * (16 - min_val) + 0.5f);
+                if (val < min_val) val = min_val;
+                if (val > 16) val = 16;
+                shoot->remap_cell_size = val;
+                wig->rebuild = true;
+                return true;
+            }
+
+            if (ty >= LOOKS_STRENGTH_Y - 10 && ty < LOOKS_STRENGTH_Y + 10 &&
+                tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                if (t_val < 0.0f) t_val = 0.0f;
+                if (t_val > 1.0f) t_val = 1.0f;
+                if (shoot->remap_style == REMAP_STYLE_TOON) {
+                    shoot->remap_strength = 2 + (int)(t_val * 13.0f + 0.5f);
+                    if (shoot->remap_strength < 2) shoot->remap_strength = 2;
+                    if (shoot->remap_strength > 15) shoot->remap_strength = 15;
+                } else {
+                    shoot->remap_strength = (int)(t_val * 10.0f + 0.5f);
+                    if (shoot->remap_strength < 0) shoot->remap_strength = 0;
+                    if (shoot->remap_strength > 10) shoot->remap_strength = 10;
+                }
+                wig->rebuild = true;
+                return true;
+            }
+        } else if (shoot->looks_stage == LOOKS_STAGE_BEND) {
+            float cy = (float)LOOKS_PANEL_Y;
+            if (tapped) {
+                for (int row = 0; row < BEND_GRID_ROWS; row++) {
+                    for (int col = 0; col < BEND_GRID_COLS; col++) {
+                        int idx = row * BEND_GRID_COLS + col;
+                        if (idx >= BEND_PRESET_COUNT) break;
+                        int bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
+                        int by = (int)(cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP));
+                        if (hit(tx, ty, bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H)) {
+                            if (shoot->bend_enabled && shoot->bend_preset == idx)
+                                shoot->bend_enabled = false;
+                            else {
+                                shoot->bend_preset = idx;
+                                shoot->bend_enabled = true;
+                            }
+                            wig->rebuild = true;
+                            return true;
+                        }
+                    }
+                }
+            }
+            if (touched && shoot->bend_enabled &&
+                ty >= (int)(cy + 84.0f - 14.0f) &&
+                ty <  (int)(cy + 84.0f + 14.0f) &&
+                tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+                float t_val = (float)(tx - TRACK_X) / TRACK_W;
+                if (t_val < 0.0f) t_val = 0.0f;
+                if (t_val > 1.0f) t_val = 1.0f;
+                shoot->bend_strength = (int)(t_val * 10.0f + 0.5f);
+                if (shoot->bend_strength < 0)  shoot->bend_strength = 0;
+                if (shoot->bend_strength > 10) shoot->bend_strength = 10;
+                wig->rebuild = true;
+                return true;
+            }
+        } else if (shoot->looks_stage == LOOKS_STAGE_FX) {
+            if (handle_fx_compact_touch(tx, ty, tapped, touched, p, (float)LOOKS_PANEL_Y)) {
+                wig->rebuild = true;
+                return true;
+            }
         }
     }
 

@@ -305,6 +305,17 @@ static void draw_tune_icon_button(bool active) {
     }
 }
 
+static void draw_tune_icon_button_at(bool active, float x, float y) {
+    draw_pill(x, y, 16.0f, 16.0f, active ? CLR_ACCENT : CLR_BTN);
+    u32 col = active ? CLR_WHITE : CLR_TEXT;
+    for (int i = 0; i < 3; i++) {
+        float ly = y + 4.5f + i * 3.5f;
+        C2D_DrawRectSolid(x + 4.5f, ly, 0.6f, 7.0f, 1.0f, col);
+        float kx = x + 5.0f + (float)((i * 3) % 6);
+        C2D_DrawRectSolid(kx, ly - 1.0f, 0.7f, 2.0f, 2.8f, col);
+    }
+}
+
 static void draw_looks_slider(float cy, float mn, float mx, float val) {
     const float handle_w = 10.0f;
     const float handle_h = 12.0f;
@@ -495,13 +506,9 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
     // -----------------------------------------------------------------------
     if (!gallery_mode) {
         if (!shoot_mode_open && !timer_open) {
-            // ---- Quick-access row: capture selectors + effect stages ----
+            // ---- Quick-access row: capture selectors + capture-local tools ----
             static const char *mode_labels[SHOOT_STAGE_BTN_COUNT] = {
-                "Still", "Wiggle", "GB", "Tone",
-                "Look", "Bend", "FX", "Timer"
-            };
-            static const char *fx_short[7] = {
-                "Off", "Scan-H", "Scan-V", "LCD", "Vign", "Chroma", "Grain"
+                "Still", "Wiggle", "Tone", "Timer"
             };
 
             for (int i = 0; i < SHOOT_STAGE_BTN_COUNT; i++) {
@@ -513,49 +520,39 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
                 bool sel = false;
                 if (i == 0) sel = (capture_mode == CAPTURE_MODE_STILL);
                 else if (i == 1) sel = (capture_mode == CAPTURE_MODE_STEREO);
-                else if (i == 2) sel = gb_enabled;
-                else if (i == 3) sel = (!gb_enabled &&
+                else if (i == 2) sel = (!gb_enabled &&
                                         (fabsf(p->brightness - ranges->bright_def) > 0.001f ||
                                          fabsf(p->contrast - ranges->contrast_def) > 0.001f ||
                                          fabsf(p->saturation - ranges->sat_def) > 0.001f ||
                                          fabsf(p->gamma - ranges->gamma_def) > 0.001f));
-                else if (i == 4) sel = lomo_enabled;
-                else if (i == 5) sel = bend_enabled;
-                else if (i == 6) sel = (p->fx_mode != FX_NONE);
-                else if (i == 7) sel = (shoot_timer_secs > 0);
+                else if (i == 3) sel = (shoot_timer_secs > 0);
 
                 draw_pill(bx, by, SHOOT_MODE_BTN_W, SHOOT_MODE_ROW_H,
-                          (i == 7 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
+                          (i == 3 && sel) ? CLR_CONFIRM : (sel ? CLR_ACCENT : CLR_BTN));
 
                 C2D_TextParse(&t, staticBuf, mode_labels[i]);
                 float tw2 = 0, th2 = 0;
                 C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw2, &th2);
+                float label_y = by + (SHOOT_MODE_ROW_H - 42.0f) * 0.5f;
+                float sub_y = label_y + 24.0f;
                 C2D_DrawText(&t, C2D_WithColor,
                              bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
-                             by + 11.0f,
+                             label_y,
                              0.5f, 0.40f, 0.40f,
                              sel ? CLR_WHITE : CLR_TEXT);
 
                 char sub[24];
                 if (i == 0) snprintf(sub, sizeof(sub), "photo");
                 else if (i == 1) snprintf(sub, sizeof(sub), "motion");
-                else if (i == 2) snprintf(sub, sizeof(sub), gb_enabled ? "on" : "off");
-                else if (i == 3) snprintf(sub, sizeof(sub), "levels");
-                else if (i == 4) snprintf(sub, sizeof(sub), lomo_enabled ? lomo_presets[lomo_preset].name : "off");
-                else if (i == 5) snprintf(sub, sizeof(sub), bend_enabled ? bend_presets[bend_preset].name : "off");
-                else if (i == 6) {
-                    int fx = p->fx_mode;
-                    if (fx < 0) fx = 0;
-                    if (fx > 6) fx = 6;
-                    snprintf(sub, sizeof(sub), "%s", fx_short[fx]);
-                } else if (shoot_timer_secs > 0) snprintf(sub, sizeof(sub), "%ds", shoot_timer_secs);
+                else if (i == 2) snprintf(sub, sizeof(sub), "levels");
+                else if (shoot_timer_secs > 0) snprintf(sub, sizeof(sub), "%ds", shoot_timer_secs);
                 else snprintf(sub, sizeof(sub), "off");
 
                 C2D_TextParse(&t, staticBuf, sub);
                 C2D_TextGetDimensions(&t, 0.28f, 0.28f, &tw2, &th2);
                 C2D_DrawText(&t, C2D_WithColor,
                              bx + (SHOOT_MODE_BTN_W - tw2) / 2.0f,
-                             by + 32.0f,
+                             sub_y,
                              0.5f, 0.28f, 0.28f,
                              sel ? C2D_Color32(230, 240, 255, 255) : CLR_DIM);
             }
@@ -1475,63 +1472,124 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 // STYLE tab
 // ---------------------------------------------------------------------------
 
-void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
-                    bool remap_enabled, int remap_style,
-                    int remap_cell_size, int remap_strength,
-                    const PipelinePreset *presets, int preset_selected,
-                    bool settings_flash) {
-    float sc = 0.38f;
-    C2D_Text t;
-    (void)dynBuf;
-    (void)settings_flash;
+static void draw_looks_tone_sliders(C2D_TextBuf staticBuf, C2D_Text *t,
+                                    const FilterParams *p,
+                                    const FilterRanges *ranges,
+                                    bool gb_enabled) {
+    float vals[4]  = { p->brightness,  p->contrast,    p->saturation,   p->gamma };
+    float mins[4]  = { ranges->bright_min,  ranges->contrast_min, ranges->sat_min,  ranges->gamma_min };
+    float maxs[4]  = { ranges->bright_max,  ranges->contrast_max, ranges->sat_max,  ranges->gamma_max };
+    float defs[4]  = { ranges->bright_def,  ranges->contrast_def, ranges->sat_def,  ranges->gamma_def };
+    static const char *vlbls[4] = { "Brt", "Con", "Sat", "Gam" };
 
-    C2D_TextParse(&t, staticBuf, "Looks");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_LABEL_Y, 0.5f, 0.50f, 0.50f, CLR_ACCENT);
+    draw_pill(8.0f, (float)LOOKS_PANEL_Y, 70.0f, 18.0f,
+              gb_enabled ? CLR_ACCENT : CLR_BTN);
+    C2D_TextParse(t, staticBuf, gb_enabled ? "GB On" : "GB Off");
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(t, 0.32f, 0.32f, &tw, &th);
+    C2D_DrawText(t, C2D_WithColor,
+                 8.0f + (70.0f - tw) * 0.5f,
+                 (float)LOOKS_PANEL_Y + (18.0f - th) * 0.5f - 1.0f,
+                 0.5f, 0.32f, 0.32f, gb_enabled ? CLR_WHITE : CLR_TEXT);
 
-    for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
-        float bx = (float)(LOOKS_PRESET_GAP + i * (LOOKS_PRESET_W + LOOKS_PRESET_GAP));
-        bool sel = (preset_selected == i);
-        draw_pill(bx, (float)LOOKS_PRESET_Y, (float)LOOKS_PRESET_W,
-                  (float)LOOKS_PRESET_H, sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, presets[i].name);
-        float tw = 0, th = 0;
-        C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
-        if (tw > LOOKS_PRESET_W - 8) {
-            C2D_TextGetDimensions(&t, 0.24f, 0.24f, &tw, &th);
-            C2D_DrawText(&t, C2D_WithColor,
-                         bx + ((float)LOOKS_PRESET_W - tw) / 2.0f,
-                         (float)LOOKS_PRESET_Y + ((float)LOOKS_PRESET_H - th) / 2.0f,
-                         0.5f, 0.24f, 0.24f, sel ? CLR_WHITE : CLR_TEXT);
-        } else {
-            C2D_DrawText(&t, C2D_WithColor,
-                         bx + ((float)LOOKS_PRESET_W - tw) / 2.0f,
-                         (float)LOOKS_PRESET_Y + ((float)LOOKS_PRESET_H - th) / 2.0f,
-                         0.5f, 0.30f, 0.30f, sel ? CLR_WHITE : CLR_TEXT);
+    #define LVCOL_W   80
+    #define LVTRACK_W  4
+    #define LVHANDLE_W 14
+    #define LVHANDLE_H  8
+    float cy = (float)LOOKS_PANEL_Y + 24.0f;
+    float vtrack_top = (float)LOOKS_PANEL_Y + 40.0f;
+    float vtrack_bot = 194.0f;
+    float vtrack_h   = vtrack_bot - vtrack_top;
+    for (int i = 0; i < 4; i++) {
+        float col_cx = i * LVCOL_W + LVCOL_W / 2.0f;
+        float tx_left = col_cx - LVTRACK_W / 2.0f;
+        C2D_TextParse(t, staticBuf, vlbls[i]);
+        C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
+                     col_cx - tw / 2.0f, cy,
+                     0.5f, 0.34f, 0.34f, CLR_DIM);
+        C2D_DrawRectSolid(tx_left, vtrack_top, 0.5f, LVTRACK_W, vtrack_h, CLR_TRACK);
+        float mn = mins[i], mx = maxs[i], df = defs[i], v = vals[i];
+        float t_val = (v  - mn) / (mx - mn);
+        float t_def = (df - mn) / (mx - mn);
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        float hy = vtrack_top + (1.0f - t_val) * vtrack_h;
+        float dy = vtrack_top + (1.0f - t_def) * vtrack_h;
+        float fill_top = hy < dy ? hy : dy;
+        float fill_bot = hy > dy ? hy : dy;
+        if (fill_bot > fill_top)
+            C2D_DrawRectSolid(tx_left, fill_top, 0.4f, LVTRACK_W, fill_bot - fill_top, CLR_FILL);
+        C2D_DrawRectSolid(col_cx - 4.0f, dy - 0.5f, 0.4f, 8.0f, 1.0f, CLR_DIM);
+        draw_rounded_rect_on_panel(col_cx - LVHANDLE_W / 2.0f, hy - LVHANDLE_H / 2.0f,
+                                   LVHANDLE_W, LVHANDLE_H, 2.0f, CLR_HANDLE);
+    }
+    #undef LVCOL_W
+    #undef LVTRACK_W
+    #undef LVHANDLE_W
+    #undef LVHANDLE_H
+}
+
+static void draw_looks_lomo_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  bool lomo_enabled, int lomo_preset,
+                                  int lomo_strength) {
+    float cy = (float)LOOKS_PANEL_Y;
+    for (int row = 0; row < LOMO_GRID_ROWS; row++) {
+        for (int col = 0; col < LOMO_GRID_COLS; col++) {
+            int idx = row * LOMO_GRID_COLS + col;
+            if (idx >= LOMO_PRESET_COUNT) break;
+            float bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
+            float by = cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP);
+            bool sel = lomo_enabled && (lomo_preset == idx);
+            draw_pill(bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H,
+                      sel ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(t, staticBuf, lomo_presets[idx].name);
+            float tw = 0, th = 0;
+            C2D_TextGetDimensions(t, 0.42f, 0.42f, &tw, &th);
+            C2D_DrawText(t, C2D_WithColor,
+                         bx + (LOMO_GRID_BTN_W - tw) / 2.0f,
+                         by + (LOMO_GRID_BTN_H - th) / 2.0f - 1.0f,
+                         0.5f, 0.42f, 0.42f,
+                         sel ? CLR_WHITE : CLR_TEXT);
         }
     }
+    draw_stage_strength_row(staticBuf, t, "Strength", lomo_strength,
+                            lomo_enabled, cy + 66.0f, cy + 70.0f,
+                            cy + 84.0f, cy + 70.0f);
+}
 
-    draw_pill((float)LOOKS_RESET_X, (float)LOOKS_ACTION_Y,
-              (float)LOOKS_ACTION_W, (float)LOOKS_ACTION_H, CLR_BTN);
-    C2D_TextParse(&t, staticBuf, "Reset Presets");
-    float tw = 0, th = 0;
-    C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor,
-                 LOOKS_RESET_X + (LOOKS_ACTION_W - tw) / 2.0f,
-                 LOOKS_ACTION_Y + (LOOKS_ACTION_H - th) / 2.0f,
-                 0.5f, 0.34f, 0.34f, CLR_TEXT);
+static void draw_looks_bend_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  bool bend_enabled, int bend_preset,
+                                  int bend_strength) {
+    float cy = (float)LOOKS_PANEL_Y;
+    for (int row = 0; row < BEND_GRID_ROWS; row++) {
+        for (int col = 0; col < BEND_GRID_COLS; col++) {
+            int idx = row * BEND_GRID_COLS + col;
+            if (idx >= BEND_PRESET_COUNT) break;
+            float bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
+            float by = cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP);
+            bool sel = bend_enabled && (bend_preset == idx);
+            draw_pill(bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H,
+                      sel ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(t, staticBuf, bend_presets[idx].name);
+            float tw = 0, th = 0;
+            C2D_TextGetDimensions(t, 0.42f, 0.42f, &tw, &th);
+            C2D_DrawText(t, C2D_WithColor,
+                         bx + (BEND_GRID_BTN_W - tw) / 2.0f,
+                         by + (BEND_GRID_BTN_H - th) / 2.0f - 1.0f,
+                         0.5f, 0.42f, 0.42f,
+                         sel ? CLR_WHITE : CLR_TEXT);
+        }
+    }
+    draw_stage_strength_row(staticBuf, t, "Strength", bend_strength,
+                            bend_enabled, cy + 66.0f, cy + 70.0f,
+                            cy + 84.0f, cy + 70.0f);
+}
 
-    draw_pill((float)LOOKS_STORE_X, (float)LOOKS_ACTION_Y,
-              (float)LOOKS_ACTION_W, (float)LOOKS_ACTION_H, CLR_CONFIRM);
-    C2D_TextParse(&t, staticBuf, "Store Current");
-    C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
-    C2D_DrawText(&t, C2D_WithColor,
-                 LOOKS_STORE_X + (LOOKS_ACTION_W - tw) / 2.0f,
-                 LOOKS_ACTION_Y + (LOOKS_ACTION_H - th) / 2.0f,
-                 0.5f, 0.34f, 0.34f, CLR_WHITE);
-
-    C2D_DrawRectSolid(0, LOOKS_STYLE_LABEL_Y - 6, 0.5f, BOT_W, 1, CLR_DIVIDER);
-    C2D_TextParse(&t, staticBuf, "Style");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)LOOKS_STYLE_LABEL_Y, 0.5f, 0.42f, 0.42f, CLR_ACCENT);
+static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                   bool remap_enabled, int remap_style,
+                                   int remap_cell_size, int remap_strength) {
+    float sc = 0.38f;
 
     static const char *style_labels[REMAP_STYLE_COUNT] = {
         "ASCII", "Color", "Matrix", "Toon", "Pink", "CCD"
@@ -1540,6 +1598,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
         REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
     };
+    float tw = 0, th = 0;
     for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
         int row = i / 3;
         int col = i % 3;
@@ -1548,9 +1607,9 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         bool sel = remap_enabled && remap_style == style_vals[i];
         draw_pill(bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H,
                   sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, style_labels[i]);
-        C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
-        C2D_DrawText(&t, C2D_WithColor,
+        C2D_TextParse(t, staticBuf, style_labels[i]);
+        C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
                      bx + ((float)STYLE_REMAP_BTN_W - tw) * 0.5f,
                      by + ((float)LOOKS_STYLE_BTN_H - th) * 0.5f - 1.0f,
                      0.5f, 0.34f, 0.34f, sel ? CLR_WHITE : CLR_TEXT);
@@ -1560,8 +1619,8 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 
     char buf[16];
     bool toon_mode = remap_enabled && remap_style == REMAP_STYLE_TOON;
-    C2D_TextParse(&t, staticBuf, toon_mode ? "Threshold" : "Cell");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_TEXT);
+    C2D_TextParse(t, staticBuf, toon_mode ? "Threshold" : "Cell");
+    C2D_DrawText(t, C2D_WithColor, 8.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_TEXT);
     int shown_cell = remap_cell_size;
     if (toon_mode && shown_cell < 1) shown_cell = 1;
     if (!toon_mode && shown_cell < 4) shown_cell = 4;
@@ -1570,15 +1629,15 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         snprintf(buf, sizeof(buf), "%d", shown_cell);
     else
         snprintf(buf, sizeof(buf), "%dpx", shown_cell);
-    C2D_TextParse(&t, staticBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 280.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
+    C2D_TextParse(t, staticBuf, buf);
+    C2D_DrawText(t, C2D_WithColor, 280.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
     draw_looks_slider((float)LOOKS_CELL_Y,
                       toon_mode ? 1.0f : 4.0f,
                       16.0f,
                       (float)shown_cell);
 
-    C2D_TextParse(&t, staticBuf, toon_mode ? "Clusters" : "Strength");
-    C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
+    C2D_TextParse(t, staticBuf, toon_mode ? "Clusters" : "Strength");
+    C2D_DrawText(t, C2D_WithColor, 8.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
                  0.5f, sc, sc, remap_enabled ? CLR_TEXT : CLR_TRACK);
     int shown_strength = remap_strength;
     if (toon_mode) {
@@ -1586,13 +1645,215 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         if (shown_strength > 15) shown_strength = 15;
     }
     snprintf(buf, sizeof(buf), "%d", shown_strength);
-    C2D_TextParse(&t, staticBuf, buf);
-    C2D_DrawText(&t, C2D_WithColor, 284.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
+    C2D_TextParse(t, staticBuf, buf);
+    C2D_DrawText(t, C2D_WithColor, 284.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
                  0.5f, sc, sc, CLR_DIM);
     draw_looks_slider((float)LOOKS_STRENGTH_Y,
                       toon_mode ? 2.0f : 0.0f,
                       toon_mode ? 15.0f : 10.0f,
                       (float)shown_strength);
+}
+
+void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
+                    const FilterParams *p, const FilterRanges *ranges,
+                    int looks_stage, bool looks_stage_open,
+                    bool presets_open, bool tune_open,
+                    bool gb_enabled,
+                    bool remap_enabled, int remap_style,
+                    int remap_cell_size, int remap_strength,
+                    bool lomo_enabled, int lomo_preset, int lomo_strength,
+                    bool bend_enabled, int bend_preset, int bend_strength,
+                    const PipelinePreset *presets, int preset_selected,
+                    bool settings_flash) {
+    C2D_Text t;
+    (void)dynBuf;
+    (void)settings_flash;
+
+    static const char *stage_labels[LOOKS_HOME_BTN_COUNT] = {
+        "Look", "GB", "Style", "Bend", "FX", "Presets"
+    };
+    static const char *style_names[REMAP_STYLE_COUNT] = {
+        "ASCII", "Color", "Matrix", "Toon", "Pink", "CCD"
+    };
+    static const int style_vals[REMAP_STYLE_COUNT] = {
+        REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+        REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
+    };
+    static const char *fx_short[7] = {
+        "Off", "Scan-H", "Scan-V", "LCD", "Vign", "Chroma", "Grain"
+    };
+
+    if (!looks_stage_open && !presets_open) {
+        C2D_TextParse(&t, staticBuf, "Looks");
+        C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_LABEL_Y,
+                     0.5f, 0.50f, 0.50f, CLR_ACCENT);
+        for (int i = 0; i < LOOKS_HOME_BTN_COUNT; i++) {
+            int row = i / LOOKS_HOME_COLS;
+            int col = i % LOOKS_HOME_COLS;
+            float bx = LOOKS_HOME_GAP + col * (LOOKS_HOME_BTN_W + LOOKS_HOME_GAP);
+            float by = LOOKS_HOME_Y + row * (LOOKS_HOME_BTN_H + LOOKS_HOME_GAP);
+            bool active = false;
+            char sub[24];
+            if (i == LOOKS_STAGE_LOOK) {
+                active = lomo_enabled;
+                snprintf(sub, sizeof(sub), "%s", lomo_enabled ? lomo_presets[lomo_preset].name : "off");
+            } else if (i == LOOKS_STAGE_GB) {
+                active = gb_enabled;
+                snprintf(sub, sizeof(sub), "%s", gb_enabled ? "on" : "off");
+            } else if (i == LOOKS_STAGE_STYLE) {
+                active = remap_enabled;
+                const char *name = "custom";
+                for (int s = 0; s < REMAP_STYLE_COUNT; s++) {
+                    if (remap_style == style_vals[s]) {
+                        name = style_names[s];
+                        break;
+                    }
+                }
+                snprintf(sub, sizeof(sub), "%s", remap_enabled ? name : "off");
+            } else if (i == LOOKS_STAGE_BEND) {
+                active = bend_enabled;
+                snprintf(sub, sizeof(sub), "%s", bend_enabled ? bend_presets[bend_preset].name : "off");
+            } else if (i == LOOKS_STAGE_FX) {
+                active = (p->fx_mode != FX_NONE);
+                int fx = p->fx_mode;
+                if (fx < 0) fx = 0;
+                if (fx > 6) fx = 6;
+                snprintf(sub, sizeof(sub), "%s", fx_short[fx]);
+            } else {
+                active = !preset_is_empty(&presets[preset_selected]);
+                snprintf(sub, sizeof(sub), "slot %d", preset_selected + 1);
+            }
+
+            draw_pill(bx, by, LOOKS_HOME_BTN_W, LOOKS_HOME_BTN_H,
+                      active ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, stage_labels[i]);
+            float tw = 0, th = 0;
+            C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((float)LOOKS_HOME_BTN_W - tw) * 0.5f,
+                         by + 18.0f,
+                         0.5f, 0.42f, 0.42f, active ? CLR_WHITE : CLR_TEXT);
+            C2D_TextParse(&t, staticBuf, sub);
+            C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((float)LOOKS_HOME_BTN_W - tw) * 0.5f,
+                         by + 42.0f,
+                         0.5f, 0.30f, 0.30f,
+                         active ? C2D_Color32(230, 240, 255, 255) : CLR_DIM);
+        }
+        return;
+    }
+
+    draw_pill((float)LOOKS_BACK_X, (float)LOOKS_HEADER_Y,
+              (float)LOOKS_BACK_W, (float)LOOKS_HEADER_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "< Back");
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 LOOKS_BACK_X + (LOOKS_BACK_W - tw) * 0.5f,
+                 LOOKS_HEADER_Y + (LOOKS_HEADER_H - th) * 0.5f - 1.0f,
+                 0.5f, 0.40f, 0.40f, CLR_TEXT);
+
+    if (presets_open) {
+        C2D_TextParse(&t, staticBuf, "Presets");
+        C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     (BOT_W - tw) * 0.5f,
+                     LOOKS_HEADER_Y + (LOOKS_HEADER_H - th) * 0.5f - 1.0f,
+                     0.5f, 0.46f, 0.46f, CLR_ACCENT);
+        C2D_DrawRectSolid(0, LOOKS_HEADER_Y + LOOKS_HEADER_H + 4, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+        for (int i = 0; i < PIPELINE_PRESET_COUNT; i++) {
+            float bx = (float)(LOOKS_PRESET_GAP + i * (LOOKS_PRESET_W + LOOKS_PRESET_GAP));
+            bool sel = (preset_selected == i);
+            draw_pill(bx, (float)LOOKS_PRESET_Y, (float)LOOKS_PRESET_W,
+                      (float)LOOKS_PRESET_H, sel ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, presets[i].name);
+            C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+            if (tw > LOOKS_PRESET_W - 8) {
+                C2D_TextGetDimensions(&t, 0.24f, 0.24f, &tw, &th);
+                C2D_DrawText(&t, C2D_WithColor,
+                             bx + ((float)LOOKS_PRESET_W - tw) / 2.0f,
+                             (float)LOOKS_PRESET_Y + ((float)LOOKS_PRESET_H - th) / 2.0f,
+                             0.5f, 0.24f, 0.24f, sel ? CLR_WHITE : CLR_TEXT);
+            } else {
+                C2D_DrawText(&t, C2D_WithColor,
+                             bx + ((float)LOOKS_PRESET_W - tw) / 2.0f,
+                             (float)LOOKS_PRESET_Y + ((float)LOOKS_PRESET_H - th) / 2.0f,
+                             0.5f, 0.30f, 0.30f, sel ? CLR_WHITE : CLR_TEXT);
+            }
+        }
+
+        draw_pill((float)LOOKS_STORE_X, (float)LOOKS_ACTION_Y,
+                  (float)LOOKS_ACTION_W, (float)LOOKS_ACTION_H, CLR_CONFIRM);
+        C2D_TextParse(&t, staticBuf, "Store Current");
+        C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     LOOKS_STORE_X + (LOOKS_ACTION_W - tw) / 2.0f,
+                     LOOKS_ACTION_Y + (LOOKS_ACTION_H - th) / 2.0f,
+                     0.5f, 0.38f, 0.38f, CLR_WHITE);
+
+        draw_pill((float)LOOKS_RESET_X, (float)LOOKS_ACTION_Y,
+                  (float)LOOKS_ACTION_W, (float)LOOKS_ACTION_H, CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "Reset Presets");
+        C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     LOOKS_RESET_X + (LOOKS_ACTION_W - tw) / 2.0f,
+                     LOOKS_ACTION_Y + (LOOKS_ACTION_H - th) / 2.0f,
+                     0.5f, 0.38f, 0.38f, CLR_TEXT);
+        return;
+    }
+
+    int panel_mode = SHOOT_MODE_LOMO;
+    const char *title = "Look";
+    bool has_tune = false;
+    if (looks_stage == LOOKS_STAGE_GB) {
+        panel_mode = SHOOT_MODE_GBCAM;
+        title = "GB";
+    } else if (looks_stage == LOOKS_STAGE_STYLE) {
+        title = "Style";
+    } else if (looks_stage == LOOKS_STAGE_BEND) {
+        panel_mode = SHOOT_MODE_BEND;
+        title = "Bend";
+        has_tune = true;
+    } else if (looks_stage == LOOKS_STAGE_FX) {
+        panel_mode = SHOOT_MODE_FX;
+        title = "FX";
+        has_tune = true;
+    } else {
+        has_tune = true;
+    }
+
+    C2D_TextParse(&t, staticBuf, title);
+    C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 (BOT_W - tw) * 0.5f,
+                 LOOKS_HEADER_Y + (LOOKS_HEADER_H - th) * 0.5f - 1.0f,
+                 0.5f, 0.46f, 0.46f, CLR_ACCENT);
+    if (has_tune)
+        draw_tune_icon_button_at(tune_open, (float)LOOKS_TUNE_X, (float)LOOKS_TUNE_Y);
+    C2D_DrawRectSolid(0, LOOKS_HEADER_Y + LOOKS_HEADER_H + 4, 0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    if (tune_open && has_tune) {
+        draw_tune_panel(staticBuf, &t, panel_mode, lomo_preset,
+                        bend_preset, p->fx_mode, (float)LOOKS_PANEL_Y);
+        return;
+    }
+
+    if (looks_stage == LOOKS_STAGE_LOOK) {
+        draw_looks_lomo_panel(staticBuf, &t, lomo_enabled, lomo_preset,
+                              lomo_strength);
+    } else if (looks_stage == LOOKS_STAGE_GB) {
+        draw_looks_tone_sliders(staticBuf, &t, p, ranges, gb_enabled);
+    } else if (looks_stage == LOOKS_STAGE_STYLE) {
+        draw_looks_style_panel(staticBuf, &t, remap_enabled, remap_style,
+                               remap_cell_size, remap_strength);
+    } else if (looks_stage == LOOKS_STAGE_BEND) {
+        draw_looks_bend_panel(staticBuf, &t, bend_enabled, bend_preset,
+                              bend_strength);
+    } else {
+        draw_fx_panel_compact(staticBuf, &t, p, (float)LOOKS_PANEL_Y);
+    }
 }
 
 // ---------------------------------------------------------------------------

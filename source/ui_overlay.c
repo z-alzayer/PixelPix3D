@@ -369,9 +369,17 @@ void draw_ui(C3D_RenderTarget *bot,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
                        shoot->tune_open);
     } else if (app->active_tab == TAB_STYLE) {
+        bool gb_stage_enabled = (shoot->capture_mode == CAPTURE_MODE_STEREO)
+                             ? wig->filter_active : shoot->gb_enabled;
         draw_style_tab(staticBuf, dynBuf,
+                       &app->params, &app->ranges,
+                       shoot->looks_stage, shoot->looks_stage_open,
+                       shoot->presets_open, shoot->tune_open,
+                       gb_stage_enabled,
                        shoot->remap_enabled, shoot->remap_style,
                        shoot->remap_cell_size, shoot->remap_strength,
+                       shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
+                       shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
                        shoot->presets, shoot->preset_selected, settings_flash);
     } else if (app->active_tab == TAB_FX) {
         draw_fx_tab(staticBuf, dynBuf, shoot->presets, shoot->preset_selected, settings_flash);

@@ -115,22 +115,43 @@
 #define SHOOT_PRIMARY_X  94
 #define SHOOT_PRIMARY_W 220
 
-// Looks tab compact preset controls.
-#define LOOKS_PRESET_Y       28
+// Looks tab home + focused panel controls.
+#define LOOKS_HOME_BTN_COUNT  6
+#define LOOKS_HOME_COLS       3
+#define LOOKS_HOME_ROWS       2
+#define LOOKS_HOME_GAP        8
+#define LOOKS_HOME_Y         34
+#define LOOKS_HOME_BTN_W     ((BOT_W - (LOOKS_HOME_COLS + 1) * LOOKS_HOME_GAP) / LOOKS_HOME_COLS)
+#define LOOKS_HOME_BTN_H     66
+
+#define LOOKS_HEADER_Y        6
+#define LOOKS_HEADER_H       24
+#define LOOKS_BACK_X          4
+#define LOOKS_BACK_W         64
+#define LOOKS_TUNE_X        296
+#define LOOKS_TUNE_Y         10
+
+#define LOOKS_PRESET_Y       46
 #define LOOKS_PRESET_H       22
 #define LOOKS_PRESET_GAP      4
 #define LOOKS_PRESET_W       ((BOT_W - (PIPELINE_PRESET_COUNT + 1) * LOOKS_PRESET_GAP) / PIPELINE_PRESET_COUNT)
-#define LOOKS_ACTION_Y       54
-#define LOOKS_ACTION_H       20
+#define LOOKS_ACTION_Y       86
+#define LOOKS_ACTION_H       26
 #define LOOKS_ACTION_W      144
 #define LOOKS_RESET_X         8
 #define LOOKS_STORE_X       168
+#define LOOKS_STAGE_COUNT     5
+#define LOOKS_STAGE_GAP       4
+#define LOOKS_STAGE_Y        78
+#define LOOKS_STAGE_H        24
+#define LOOKS_STAGE_W        ((BOT_W - (LOOKS_STAGE_COUNT + 1) * LOOKS_STAGE_GAP) / LOOKS_STAGE_COUNT)
+#define LOOKS_PANEL_Y        44
 #define LOOKS_STYLE_LABEL_Y  82
-#define LOOKS_STYLE_Y0      100
-#define LOOKS_STYLE_BTN_H    18
-#define LOOKS_CELL_LABEL_Y  152
-#define LOOKS_CELL_Y        166
-#define LOOKS_STRENGTH_Y    190
+#define LOOKS_STYLE_Y0      LOOKS_PANEL_Y
+#define LOOKS_STYLE_BTN_H    24
+#define LOOKS_CELL_LABEL_Y  108
+#define LOOKS_CELL_Y        126
+#define LOOKS_STRENGTH_Y    170
 
 // ---------------------------------------------------------------------------
 // Style tab geometry (y=0..200)
@@ -162,12 +183,19 @@
 #define SHOOT_MODE_FX         5
 #define SHOOT_MODE_COUNT      6
 
-// Shoot quick-access row: capture source + effect stages.
-#define SHOOT_STAGE_BTN_COUNT  8
+// Looks tab stage order mirrors the render pipeline.
+#define LOOKS_STAGE_LOOK       0
+#define LOOKS_STAGE_GB         1
+#define LOOKS_STAGE_STYLE      2
+#define LOOKS_STAGE_BEND       3
+#define LOOKS_STAGE_FX         4
+
+// Shoot quick-access row: capture source, wiggle, tone, timer.
+#define SHOOT_STAGE_BTN_COUNT  4
 #define SHOOT_STAGE_GRID_COLS  4
-#define SHOOT_STAGE_GRID_ROWS  2
+#define SHOOT_STAGE_GRID_ROWS  1
 #define SHOOT_MODE_ROW1_Y     44
-#define SHOOT_MODE_ROW_H      52
+#define SHOOT_MODE_ROW_H     108
 #define SHOOT_MODE_BTN_GAP     6
 #define SHOOT_MODE_BTN_W      ((BOT_W - (SHOOT_STAGE_GRID_COLS + 1) * SHOOT_MODE_BTN_GAP) / SHOOT_STAGE_GRID_COLS)
 #define SHOOT_MODE_ROW2_Y     (SHOOT_MODE_ROW1_Y + SHOOT_MODE_ROW_H + SHOOT_MODE_BTN_GAP)

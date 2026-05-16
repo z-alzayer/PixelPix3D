@@ -55,6 +55,9 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     wig->rebuild = true;
     shoot->shoot_mode_open = false;
     shoot->timer_open = false;
+    shoot->looks_stage_open = false;
+    shoot->presets_open = false;
+    shoot->tune_open = false;
 }
 
 static void render_bottom_ui(C3D_RenderTarget *bot,
@@ -211,6 +214,8 @@ int main(void) {
         .timer_open       = false,
         .presets_open     = false,
         .preset_selected  = 0,
+        .looks_stage      = LOOKS_STAGE_LOOK,
+        .looks_stage_open = false,
         .shoot_timer_secs = 0,
         .gb_enabled       = false,
         .remap_enabled    = false,
