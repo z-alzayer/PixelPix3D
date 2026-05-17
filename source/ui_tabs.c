@@ -389,6 +389,58 @@ static void draw_tune_icon_button_at(bool active, float x, float y) {
     }
 }
 
+static void draw_tone_sliders_vertical(C2D_TextBuf staticBuf, C2D_Text *t,
+                                       const FilterParams *p,
+                                       const FilterRanges *ranges,
+                                       float cy) {
+    float vals[4] = { p->brightness, p->contrast, p->saturation, p->gamma };
+    float mins[4] = { ranges->bright_min, ranges->contrast_min, ranges->sat_min, ranges->gamma_min };
+    float maxs[4] = { ranges->bright_max, ranges->contrast_max, ranges->sat_max, ranges->gamma_max };
+    float defs[4] = { ranges->bright_def, ranges->contrast_def, ranges->sat_def, ranges->gamma_def };
+    static const char *labels[4] = { "Brt", "Con", "Sat", "Gam" };
+    float vtrack_top = cy + (float)TONE_VTRACK_TOP_OFF;
+    float vtrack_bot = (float)TONE_VTRACK_BOTTOM;
+    float vtrack_h = vtrack_bot - vtrack_top;
+
+    for (int i = 0; i < 4; i++) {
+        float col_cx = i * (float)TONE_VCOL_W + (float)TONE_VCOL_W * 0.5f;
+        float tx_left = col_cx - (float)TONE_VTRACK_W * 0.5f;
+        float tw = 0, th = 0;
+        C2D_TextParse(t, staticBuf, labels[i]);
+        C2D_TextGetDimensions(t, 0.36f, 0.36f, &tw, &th);
+        C2D_DrawText(t, C2D_WithColor,
+                     col_cx - tw * 0.5f,
+                     cy,
+                     0.5f, 0.36f, 0.36f, CLR_TEXT);
+
+        float mn = mins[i], mx = maxs[i], df = defs[i], v = vals[i];
+        float t_val = (v - mn) / (mx - mn);
+        float t_def = (df - mn) / (mx - mn);
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        if (t_def < 0.0f) t_def = 0.0f;
+        if (t_def > 1.0f) t_def = 1.0f;
+        float hy = vtrack_top + (1.0f - t_val) * vtrack_h;
+        float dy = vtrack_top + (1.0f - t_def) * vtrack_h;
+
+        C2D_DrawRectSolid(tx_left, vtrack_top, 0.5f,
+                          (float)TONE_VTRACK_W, vtrack_h, CLR_TRACK);
+        float fill_top = hy < dy ? hy : dy;
+        float fill_bot = hy > dy ? hy : dy;
+        if (fill_bot > fill_top)
+            C2D_DrawRectSolid(tx_left, fill_top, 0.5f,
+                              (float)TONE_VTRACK_W, fill_bot - fill_top,
+                              CLR_FILL);
+        C2D_DrawRectSolid(col_cx - 4.0f, dy - 0.5f,
+                          0.4f, 8.0f, 1.0f, CLR_DIM);
+        draw_rounded_rect_on_panel(col_cx - (float)TONE_VHANDLE_W * 0.5f,
+                                   hy - (float)TONE_VHANDLE_H * 0.5f,
+                                   (float)TONE_VHANDLE_W,
+                                   (float)TONE_VHANDLE_H,
+                                   2.0f, CLR_HANDLE);
+    }
+}
+
 static void draw_looks_slider(float cy, float mn, float mx, float val) {
     const float handle_w = 10.0f;
     const float handle_h = 12.0f;
@@ -769,53 +821,7 @@ void draw_shoot_tab(C2D_TextBuf staticBuf,
             }
 
             if (shoot_mode == SHOOT_MODE_GBCAM || shoot_mode == SHOOT_MODE_TONE) {
-                // 4 vertical sliders: Brt / Con / Sat / Gam
-                // Each column centred in a 80px wide lane, track spans SHOOT_CONTENT_Y..SHOOT_SAVE_Y-4
-                float vals[4]  = { p->brightness,  p->contrast,    p->saturation,   p->gamma };
-                float mins[4]  = { ranges->bright_min,  ranges->contrast_min, ranges->sat_min,  ranges->gamma_min };
-                float maxs[4]  = { ranges->bright_max,  ranges->contrast_max, ranges->sat_max,  ranges->gamma_max };
-                float defs[4]  = { ranges->bright_def,  ranges->contrast_def, ranges->sat_def,  ranges->gamma_def };
-                static const char *vlbls[4] = { "Brt", "Con", "Sat", "Gam" };
-                #define VCOL_W   80
-                #define VTRACK_W  4
-                #define VHANDLE_W 14
-                #define VHANDLE_H  8
-                float vtrack_top = cy + 14.0f;
-                float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
-                float vtrack_h   = vtrack_bot - vtrack_top;
-                for (int i = 0; i < 4; i++) {
-                    float col_cx = i * VCOL_W + VCOL_W / 2.0f;
-                    float tx_left = col_cx - VTRACK_W / 2.0f;
-                    // Label
-                    C2D_TextParse(&t, staticBuf, vlbls[i]);
-                    float tw2 = 0, th2 = 0;
-                    C2D_TextGetDimensions(&t, 0.36f, 0.36f, &tw2, &th2);
-                    C2D_DrawText(&t, C2D_WithColor,
-                                 col_cx - tw2 / 2.0f, cy,
-                                 0.5f, 0.36f, 0.36f, CLR_DIM);
-                    // Track
-                    C2D_DrawRectSolid(tx_left, vtrack_top, 0.5f, VTRACK_W, vtrack_h, CLR_TRACK);
-                    float mn = mins[i], mx = maxs[i], df = defs[i], v = vals[i];
-                    float t_val = (v  - mn) / (mx - mn);
-                    float t_def = (df - mn) / (mx - mn);
-                    if (t_val < 0.0f) t_val = 0.0f;
-                    if (t_val > 1.0f) t_val = 1.0f;
-                    float hy = vtrack_top + (1.0f - t_val) * vtrack_h;
-                    float dy = vtrack_top + (1.0f - t_def) * vtrack_h;
-                    float fill_top = hy < dy ? hy : dy;
-                    float fill_bot = hy > dy ? hy : dy;
-                    if (fill_bot > fill_top)
-                        C2D_DrawRectSolid(tx_left, fill_top, 0.4f, VTRACK_W, fill_bot - fill_top, CLR_FILL);
-                    // Default tick
-                    C2D_DrawRectSolid(col_cx - 4.0f, dy - 0.5f, 0.4f, 8.0f, 1.0f, CLR_DIM);
-                    // Handle
-                    draw_rounded_rect_on_panel(col_cx - VHANDLE_W / 2.0f, hy - VHANDLE_H / 2.0f,
-                                               VHANDLE_W, VHANDLE_H, 2.0f, CLR_HANDLE);
-                }
-                #undef VCOL_W
-                #undef VTRACK_W
-                #undef VHANDLE_W
-                #undef VHANDLE_H
+                draw_tone_sliders_vertical(staticBuf, &t, p, ranges, cy);
 
             } else if (shoot_mode == SHOOT_MODE_WIGGLE) {
                 // Wiggle panel layout:
@@ -1496,91 +1502,64 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 // STYLE tab
 // ---------------------------------------------------------------------------
 
-static void draw_looks_tone_sliders(C2D_TextBuf staticBuf, C2D_Text *t,
-                                    const PaletteDef *user_palettes,
-                                    const FilterParams *p,
-                                    const FilterRanges *ranges,
-                                    bool gb_enabled) {
-    float vals[4]  = { p->brightness,  p->contrast,    p->saturation,   p->gamma };
-    float mins[4]  = { ranges->bright_min,  ranges->contrast_min, ranges->sat_min,  ranges->gamma_min };
-    float maxs[4]  = { ranges->bright_max,  ranges->contrast_max, ranges->sat_max,  ranges->gamma_max };
-    float defs[4]  = { ranges->bright_def,  ranges->contrast_def, ranges->sat_def,  ranges->gamma_def };
-    static const char *vlbls[4] = { "Brt", "Con", "Sat", "Gam" };
+static void draw_looks_gb_adjust_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                       const FilterParams *p,
+                                       const FilterRanges *ranges) {
+    draw_tone_sliders_vertical(staticBuf, t, p, ranges, (float)LOOKS_PANEL_Y);
+}
 
+static void draw_looks_gb_palette_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                        const PaletteDef *user_palettes,
+                                        const FilterParams *p,
+                                        bool gb_enabled) {
     float tw = 0, th = 0;
 
+    C2D_TextParse(t, staticBuf, "Palette");
+    C2D_TextGetDimensions(t, 0.40f, 0.40f, &tw, &th);
+    C2D_DrawText(t, C2D_WithColor, 8.0f, (float)LOOKS_PANEL_Y + 4.0f,
+                 0.5f, 0.40f, 0.40f, CLR_DIM);
+
+    const float btn_w = 148.0f;
+    const float btn_h = 38.0f;
+    const float gap_x = 8.0f;
+    const float gap_y = 8.0f;
+    const float x0 = 8.0f;
+    const float y0 = (float)LOOKS_PANEL_Y + 24.0f;
+
     for (int i = 0; i < PALETTE_COUNT; i++) {
-        int row = i / LOOKS_GB_STYLE_COLS;
-        int col = i % LOOKS_GB_STYLE_COLS;
-        float bx = LOOKS_GB_STYLE_GAP + col * (LOOKS_GB_STYLE_W + LOOKS_GB_STYLE_GAP);
-        float by = LOOKS_GB_STYLE_Y + row * (LOOKS_GB_STYLE_H + LOOKS_GB_STYLE_GAP);
+        int row = i / 2;
+        int col = i % 2;
+        float bx = x0 + col * (btn_w + gap_x);
+        float by = y0 + row * (btn_h + gap_y);
         bool sel = gb_enabled && p->palette == i;
-        draw_pill(bx, by, LOOKS_GB_STYLE_W, LOOKS_GB_STYLE_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
+        const PaletteDef *pal = user_palettes ? &user_palettes[i] : &palettes[i];
 
-        if (user_palettes && user_palettes[i].size > 0) {
-            u32 swatch_col = C2D_Color32(user_palettes[i].colors[0][0],
-                                         user_palettes[i].colors[0][1],
-                                         user_palettes[i].colors[0][2], 255);
-            draw_rounded_rect_on_panel(bx + 4.0f, by + 5.0f, 10.0f, 10.0f,
-                                       2.0f, swatch_col);
-        }
+        draw_pill(bx, by, btn_w, btn_h, sel ? CLR_ACCENT : CLR_BTN);
 
-        C2D_TextParse(t, staticBuf, user_palettes ? user_palettes[i].name : palettes[i].name);
-        float sc = 0.25f;
+        C2D_TextParse(t, staticBuf, pal->name);
+        float sc = 0.38f;
         C2D_TextGetDimensions(t, sc, sc, &tw, &th);
-        if (tw > LOOKS_GB_STYLE_W - 22.0f) {
-            sc = 0.21f;
+        if (tw > btn_w - 12.0f) {
+            sc = 0.34f;
             C2D_TextGetDimensions(t, sc, sc, &tw, &th);
         }
         C2D_DrawText(t, C2D_WithColor,
-                     bx + 18.0f + ((LOOKS_GB_STYLE_W - 22.0f) - tw) * 0.5f,
-                     by + (LOOKS_GB_STYLE_H - th) * 0.5f - 1.0f,
+                     bx + (btn_w - tw) * 0.5f,
+                     by + 5.0f,
                      0.5f, sc, sc, sel ? CLR_WHITE : CLR_TEXT);
-    }
 
-    draw_tune_icon_button_at(false, 8.0f, (float)LOOKS_GB_ADJUST_Y);
-    C2D_TextParse(t, staticBuf, "Brightness / Contrast");
-    C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
-    C2D_DrawText(t, C2D_WithColor, 30.0f, (float)LOOKS_GB_ADJUST_Y + 2.0f,
-                 0.5f, 0.34f, 0.34f, CLR_DIM);
-
-    #define LVCOL_W   80
-    #define LVTRACK_W  4
-    #define LVHANDLE_W 14
-    #define LVHANDLE_H  8
-    float cy = (float)LOOKS_GB_VLABEL_Y;
-    float vtrack_top = (float)LOOKS_GB_VTOP;
-    float vtrack_bot = (float)LOOKS_GB_VBOT;
-    float vtrack_h   = vtrack_bot - vtrack_top;
-    for (int i = 0; i < 4; i++) {
-        float col_cx = i * LVCOL_W + LVCOL_W / 2.0f;
-        float tx_left = col_cx - LVTRACK_W / 2.0f;
-        C2D_TextParse(t, staticBuf, vlbls[i]);
-        C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
-        C2D_DrawText(t, C2D_WithColor,
-                     col_cx - tw / 2.0f, cy,
-                     0.5f, 0.34f, 0.34f, CLR_DIM);
-        C2D_DrawRectSolid(tx_left, vtrack_top, 0.5f, LVTRACK_W, vtrack_h, CLR_TRACK);
-        float mn = mins[i], mx = maxs[i], df = defs[i], v = vals[i];
-        float t_val = (v  - mn) / (mx - mn);
-        float t_def = (df - mn) / (mx - mn);
-        if (t_val < 0.0f) t_val = 0.0f;
-        if (t_val > 1.0f) t_val = 1.0f;
-        float hy = vtrack_top + (1.0f - t_val) * vtrack_h;
-        float dy = vtrack_top + (1.0f - t_def) * vtrack_h;
-        float fill_top = hy < dy ? hy : dy;
-        float fill_bot = hy > dy ? hy : dy;
-        if (fill_bot > fill_top)
-            C2D_DrawRectSolid(tx_left, fill_top, 0.4f, LVTRACK_W, fill_bot - fill_top, CLR_FILL);
-        C2D_DrawRectSolid(col_cx - 4.0f, dy - 0.5f, 0.4f, 8.0f, 1.0f, CLR_DIM);
-        draw_rounded_rect_on_panel(col_cx - LVHANDLE_W / 2.0f, hy - LVHANDLE_H / 2.0f,
-                                   LVHANDLE_W, LVHANDLE_H, 2.0f, CLR_HANDLE);
+        int swatches = pal->size;
+        if (swatches < 1) swatches = 1;
+        if (swatches > 8) swatches = 8;
+        float sw_w = (btn_w - 16.0f) / (float)swatches;
+        for (int s = 0; s < swatches; s++) {
+            u32 swatch_col = C2D_Color32(pal->colors[s][0],
+                                         pal->colors[s][1],
+                                         pal->colors[s][2], 255);
+            C2D_DrawRectSolid(bx + 8.0f + s * sw_w, by + 25.0f,
+                              0.55f, sw_w, 6.0f, swatch_col);
+        }
     }
-    #undef LVCOL_W
-    #undef LVTRACK_W
-    #undef LVHANDLE_W
-    #undef LVHANDLE_H
 }
 
 static void draw_looks_lomo_panel(C2D_TextBuf staticBuf, C2D_Text *t,
@@ -1753,7 +1732,13 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                 snprintf(sub, sizeof(sub), "%s", lomo_enabled ? lomo_presets[lomo_preset].name : "off");
             } else if (i == LOOKS_STAGE_GB) {
                 active = gb_enabled;
-                snprintf(sub, sizeof(sub), "%s", gb_enabled ? "on" : "off");
+                if (gb_enabled && p->palette >= 0 && p->palette < PALETTE_COUNT) {
+                    const PaletteDef *pal = user_palettes ? &user_palettes[p->palette]
+                                                           : &palettes[p->palette];
+                    snprintf(sub, sizeof(sub), "%s", pal->name);
+                } else {
+                    snprintf(sub, sizeof(sub), "off");
+                }
             } else if (i == LOOKS_STAGE_STYLE) {
                 active = remap_enabled;
                 const char *name = "custom";
@@ -1869,6 +1854,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     if (looks_stage == LOOKS_STAGE_GB) {
         panel_mode = SHOOT_MODE_GBCAM;
         title = "GB";
+        has_tune = true;
     } else if (looks_stage == LOOKS_STAGE_STYLE) {
         title = "Style";
     } else if (looks_stage == LOOKS_STAGE_BEND) {
@@ -1894,8 +1880,12 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     C2D_DrawRectSolid(0, LOOKS_HEADER_Y + LOOKS_HEADER_H + 4, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
     if (tune_open && has_tune) {
-        draw_tune_panel(staticBuf, &t, panel_mode, lomo_preset,
-                        bend_preset, p->fx_mode, (float)LOOKS_PANEL_Y);
+        if (looks_stage == LOOKS_STAGE_GB) {
+            draw_looks_gb_adjust_panel(staticBuf, &t, p, ranges);
+        } else {
+            draw_tune_panel(staticBuf, &t, panel_mode, lomo_preset,
+                            bend_preset, p->fx_mode, (float)LOOKS_PANEL_Y);
+        }
         return;
     }
 
@@ -1903,7 +1893,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         draw_looks_lomo_panel(staticBuf, &t, lomo_enabled, lomo_preset,
                               lomo_strength);
     } else if (looks_stage == LOOKS_STAGE_GB) {
-        draw_looks_tone_sliders(staticBuf, &t, user_palettes, p, ranges, gb_enabled);
+        draw_looks_gb_palette_panel(staticBuf, &t, user_palettes, p, gb_enabled);
     } else if (looks_stage == LOOKS_STAGE_STYLE) {
         draw_looks_style_panel(staticBuf, &t, remap_enabled, remap_style,
                                remap_cell_size, remap_strength);

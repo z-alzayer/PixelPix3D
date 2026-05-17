@@ -152,16 +152,6 @@
 #define LOOKS_CELL_LABEL_Y  108
 #define LOOKS_CELL_Y        126
 #define LOOKS_STRENGTH_Y    170
-#define LOOKS_GB_STYLE_COLS  3
-#define LOOKS_GB_STYLE_GAP   5
-#define LOOKS_GB_STYLE_Y     LOOKS_PANEL_Y
-#define LOOKS_GB_STYLE_H    20
-#define LOOKS_GB_STYLE_W    ((BOT_W - (LOOKS_GB_STYLE_COLS + 1) * LOOKS_GB_STYLE_GAP) / LOOKS_GB_STYLE_COLS)
-#define LOOKS_GB_ADJUST_Y   94
-#define LOOKS_GB_VLABEL_Y  116
-#define LOOKS_GB_VTOP      132
-#define LOOKS_GB_VBOT      194
-
 // ---------------------------------------------------------------------------
 // Style tab geometry (y=0..200)
 // ---------------------------------------------------------------------------
@@ -233,13 +223,13 @@
 #define SHOOT_MANUAL_ALIGN_W 124
 #define SHOOT_MANUAL_ALIGN_H  22
 
-// Horizontal sliders inside GB Cam panel (4 sliders stacked)
-// Each row: label + slider + value. Rows at relative offsets from SHOOT_CONTENT_Y
-#define SHOOT_HSLIDER_ROW_H   20   // spacing between slider rows
-#define SHOOT_HSLIDER_LBL_W   28   // left label column width
-#define SHOOT_HSLIDER_VAL_W   28   // right value column width
-#define SHOOT_HSLIDER_X      (4 + SHOOT_HSLIDER_LBL_W + 4)
-#define SHOOT_HSLIDER_W      (BOT_W - SHOOT_HSLIDER_X - SHOOT_HSLIDER_VAL_W - 8)
+// Shared vertical Tone/GB adjustment sliders.
+#define TONE_VCOL_W          80
+#define TONE_VTRACK_TOP_OFF  14
+#define TONE_VTRACK_BOTTOM   (SHOOT_SAVE_Y - 6)
+#define TONE_VTRACK_W         4
+#define TONE_VHANDLE_W       14
+#define TONE_VHANDLE_H        8
 
 // Timer/Photobooth panel: 3 timer buttons
 #define SHOOT_TIMER_BTN_Y   (SHOOT_CONTENT_Y + 8)

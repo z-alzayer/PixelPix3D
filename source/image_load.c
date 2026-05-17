@@ -820,6 +820,61 @@ int save_png(const char *path, const uint8_t *rgb888, int width, int height) {
 // Seeded by file_counter_init(); incremented on each save.
 static int s_next_n = -1;  // -1 = not yet initialised
 
+static int ascii_lower(int c) {
+    return (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c;
+}
+
+static int ext_eq_ci(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    while (*a && *b) {
+        if (ascii_lower((unsigned char)*a++) != ascii_lower((unsigned char)*b++))
+            return 0;
+    }
+    return *a == 0 && *b == 0;
+}
+
+static int parse_saved_photo_name(const char *name, int *out_n, int *out_type) {
+    if (!name || !out_n || !out_type) return 0;
+    if (!name[0] || !name[1] || !name[2]) return 0;
+    char p0 = (char)ascii_lower((unsigned char)name[0]);
+    char p1 = (char)ascii_lower((unsigned char)name[1]);
+    if (name[2] != '_') return 0;
+
+    int i = 3;
+    int n = 0;
+    int digits = 0;
+    while (name[i] >= '0' && name[i] <= '9') {
+        n = n * 10 + (name[i] - '0');
+        i++;
+        digits++;
+    }
+    if (digits < 1 || name[i] != '.') return 0;
+    const char *ext = name + i + 1;
+
+    if (p0 == 'g' && p1 == 'b' &&
+        (ext_eq_ci(ext, "jpg") || ext_eq_ci(ext, "jpeg"))) {
+        *out_n = n;
+        *out_type = 0;
+        return 1;
+    }
+    if (p0 == 'g' && p1 == 'w' && ext_eq_ci(ext, "gif")) {
+        *out_n = n;
+        *out_type = 1;
+        return 1;
+    }
+    if (p0 == 'g' && p1 == 'w' && ext_eq_ci(ext, "png")) {
+        *out_n = n;
+        *out_type = 2;
+        return 1;
+    }
+    if (p0 == 'g' && p1 == 'a' && ext_eq_ci(ext, "png")) {
+        *out_n = n;
+        *out_type = 3;
+        return 1;
+    }
+    return 0;
+}
+
 // Call once at startup. ini_val is the persisted next_file_n from settings
 // (pass 0 if not present). We take max(ini_val, dir_scan+1) so we never
 // reuse a number even if the INI was deleted or is stale.
@@ -833,10 +888,9 @@ void file_counter_init(const char *dir, int ini_val) {
         struct dirent *e;
         while ((e = readdir(d)) != NULL) {
             int n = 0;
-            if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1 && n > max_n) max_n = n;
-            if (sscanf(e->d_name, "GW_%d.gif", &n) == 1 && n > max_n) max_n = n;
-            if (sscanf(e->d_name, "GW_%d.png", &n) == 1 && n > max_n) max_n = n;
-            if (sscanf(e->d_name, "GA_%d.png", &n) == 1 && n > max_n) max_n = n;
+            int type = 0;
+            if (parse_saved_photo_name(e->d_name, &n, &type) && n > max_n)
+                max_n = n;
         }
         closedir(d);
     }
@@ -857,10 +911,8 @@ int next_save_path(const char *dir, char *out_path, int out_len) {
 }
 
 // Scan dir for saved still/stereo files, fill paths[] sorted descending by number.
-// Both file types share the same 4-digit counter space so they interleave naturally.
+// All save types share the same 4-digit counter space so they interleave naturally.
 int list_saved_photos(const char *dir, char paths[][64], int max) {
-    // Pack type (0=JPG, 1=GIF) in high bit of a 32-bit slot alongside the number.
-    // Sorting by value descending keeps them interleaved correctly.
     int nums[256];
     int types[256];  // 0=JPG, 1=GIF, 2=GW PNG, 3=GA PNG
     int count = 0;
@@ -870,21 +922,10 @@ int list_saved_photos(const char *dir, char paths[][64], int max) {
     struct dirent *e;
     while ((e = readdir(d)) != NULL && count < max) {
         int n = 0;
-        if (sscanf(e->d_name, "GB_%d.JPG", &n) == 1) {
+        int type = 0;
+        if (parse_saved_photo_name(e->d_name, &n, &type)) {
             nums[count]  = n;
-            types[count] = 0;
-            count++;
-        } else if (sscanf(e->d_name, "GW_%d.gif", &n) == 1) {
-            nums[count]  = n;
-            types[count] = 1;
-            count++;
-        } else if (sscanf(e->d_name, "GW_%d.png", &n) == 1) {
-            nums[count]  = n;
-            types[count] = 2;
-            count++;
-        } else if (sscanf(e->d_name, "GA_%d.png", &n) == 1) {
-            nums[count]  = n;
-            types[count] = 3;
+            types[count] = type;
             count++;
         }
     }

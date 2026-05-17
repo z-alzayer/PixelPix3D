@@ -265,6 +265,35 @@ static bool handle_tune_panel_touch(int tx, int ty, bool tapped, bool touched,
                                       shoot->shoot_mode, (float)SHOOT_CONTENT_Y);
 }
 
+static bool handle_tone_slider_touch(int tx, int ty, bool touched,
+                                     AppState *app, FilterParams *p,
+                                     float cy) {
+    float vtrack_top = cy + (float)TONE_VTRACK_TOP_OFF;
+    float vtrack_bot = (float)TONE_VTRACK_BOTTOM;
+    float vtrack_h = vtrack_bot - vtrack_top;
+    if (!touched ||
+        ty < (int)(vtrack_top - (float)TONE_VHANDLE_H) ||
+        ty > (int)(vtrack_bot + (float)TONE_VHANDLE_H)) {
+        return false;
+    }
+
+    int col = tx / TONE_VCOL_W;
+    if (col < 0 || col >= 4) return false;
+
+    float t_val = 1.0f - ((float)ty - vtrack_top) / vtrack_h;
+    if (t_val < 0.0f) t_val = 0.0f;
+    if (t_val > 1.0f) t_val = 1.0f;
+
+    float mn, mx;
+    float *field = NULL;
+    if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
+    else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
+    else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
+    else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
+    *field = mn + t_val * (mx - mn);
+    return true;
+}
+
 bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   AppState *app, ShootState *shoot, WiggleState *wig,
                   GalleryState *gal, EditState *edit,
@@ -656,59 +685,17 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                         return true;
                     }
 
-                    #define VCOL_W   80
-                    #define VHANDLE_W 14
-                    #define VHANDLE_H  8
-                    float vtrack_top = (float)SHOOT_CONTENT_Y + 14.0f;
-                    float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
-                    float vtrack_h   = vtrack_bot - vtrack_top;
-                    if (touched && ty >= (int)(vtrack_top - VHANDLE_H) && ty <= (int)(vtrack_bot + VHANDLE_H)) {
-                        int col = tx / VCOL_W;
-                        if (col >= 0 && col < 4) {
-                            float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
-                            if (t_val < 0.0f) t_val = 0.0f;
-                            if (t_val > 1.0f) t_val = 1.0f;
-                            float mn, mx;
-                            float *field = NULL;
-                            if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
-                            else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
-                            else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
-                            else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
-                            *field = mn + t_val * (mx - mn);
-                            set_gb_stage_enabled(shoot, wig, true);
-                            return true;
-                        }
+                    if (handle_tone_slider_touch(tx, ty, touched, app, p,
+                                                 (float)SHOOT_CONTENT_Y)) {
+                        set_gb_stage_enabled(shoot, wig, true);
+                        return true;
                     }
-                    #undef VCOL_W
-                    #undef VHANDLE_W
-                    #undef VHANDLE_H
                 } else if (shoot->shoot_mode == SHOOT_MODE_TONE) {
-                    #define VCOL_W   80
-                    #define VHANDLE_W 14
-                    #define VHANDLE_H  8
-                    float vtrack_top = (float)SHOOT_CONTENT_Y + 14.0f;
-                    float vtrack_bot = (float)SHOOT_SAVE_Y - 6.0f;
-                    float vtrack_h   = vtrack_bot - vtrack_top;
-                    if (touched && ty >= (int)(vtrack_top - VHANDLE_H) && ty <= (int)(vtrack_bot + VHANDLE_H)) {
-                        int col = tx / VCOL_W;
-                        if (col >= 0 && col < 4) {
-                            float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
-                            if (t_val < 0.0f) t_val = 0.0f;
-                            if (t_val > 1.0f) t_val = 1.0f;
-                            float mn, mx;
-                            float *field = NULL;
-                            if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
-                            else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
-                            else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
-                            else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
-                            *field = mn + t_val * (mx - mn);
-                            wig->rebuild = true;
-                            return true;
-                        }
+                    if (handle_tone_slider_touch(tx, ty, touched, app, p,
+                                                 (float)SHOOT_CONTENT_Y)) {
+                        wig->rebuild = true;
+                        return true;
                     }
-                    #undef VCOL_W
-                    #undef VHANDLE_W
-                    #undef VHANDLE_H
                 } else if (shoot->shoot_mode == SHOOT_MODE_LOMO) {
                     // 3×2 preset grid
                     float cy = (float)SHOOT_CONTENT_Y;
@@ -962,6 +949,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         }
 
         bool has_tune = (shoot->looks_stage == LOOKS_STAGE_LOOK ||
+                         shoot->looks_stage == LOOKS_STAGE_GB ||
                          shoot->looks_stage == LOOKS_STAGE_BEND ||
                          shoot->looks_stage == LOOKS_STAGE_FX);
         if (has_tune && tapped && hit(tx, ty, LOOKS_TUNE_X, LOOKS_TUNE_Y, 16, 16)) {
@@ -969,6 +957,14 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return true;
         }
         if (shoot->tune_open && has_tune) {
+            if (shoot->looks_stage == LOOKS_STAGE_GB) {
+                if (handle_tone_slider_touch(tx, ty, touched, app, p,
+                                             (float)LOOKS_PANEL_Y)) {
+                    set_gb_stage_enabled(shoot, wig, true);
+                    return true;
+                }
+                return false;
+            }
             int tune_mode = looks_stage_to_shoot_mode(shoot->looks_stage);
             return handle_tune_panel_touch_at(tx, ty, tapped, touched,
                                               shoot, app, wig, tune_mode,
@@ -1012,12 +1008,19 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             }
         } else if (shoot->looks_stage == LOOKS_STAGE_GB) {
             if (tapped) {
+                const int gb_cols = 2;
+                const int gb_btn_w = 148;
+                const int gb_btn_h = 38;
+                const int gb_gap_x = 8;
+                const int gb_gap_y = 8;
+                const int gb_x0 = 8;
+                const int gb_y0 = LOOKS_PANEL_Y + 24;
                 for (int i = 0; i < PALETTE_COUNT; i++) {
-                    int row = i / LOOKS_GB_STYLE_COLS;
-                    int col = i % LOOKS_GB_STYLE_COLS;
-                    int bx = LOOKS_GB_STYLE_GAP + col * (LOOKS_GB_STYLE_W + LOOKS_GB_STYLE_GAP);
-                    int by = LOOKS_GB_STYLE_Y + row * (LOOKS_GB_STYLE_H + LOOKS_GB_STYLE_GAP);
-                    if (hit(tx, ty, bx, by, LOOKS_GB_STYLE_W, LOOKS_GB_STYLE_H)) {
+                    int row = i / gb_cols;
+                    int col = i % gb_cols;
+                    int bx = gb_x0 + col * (gb_btn_w + gb_gap_x);
+                    int by = gb_y0 + row * (gb_btn_h + gb_gap_y);
+                    if (hit(tx, ty, bx, by, gb_btn_w, gb_btn_h)) {
                         bool gb_enabled = current_gb_stage_enabled(shoot, wig);
                         if (gb_enabled && p->palette == i) {
                             set_gb_stage_enabled(shoot, wig, false);
@@ -1029,31 +1032,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                     }
                 }
             }
-            #define LVCOL_W   80
-            #define LVHANDLE_H  8
-            float vtrack_top = (float)LOOKS_GB_VTOP;
-            float vtrack_bot = (float)LOOKS_GB_VBOT;
-            float vtrack_h   = vtrack_bot - vtrack_top;
-            if (touched && ty >= (int)(vtrack_top - LVHANDLE_H) &&
-                ty <= (int)(vtrack_bot + LVHANDLE_H)) {
-                int col = tx / LVCOL_W;
-                if (col >= 0 && col < 4) {
-                    float t_val = 1.0f - (float)(ty - vtrack_top) / vtrack_h;
-                    if (t_val < 0.0f) t_val = 0.0f;
-                    if (t_val > 1.0f) t_val = 1.0f;
-                    float mn, mx;
-                    float *field = NULL;
-                    if      (col == 0) { mn = app->ranges.bright_min;   mx = app->ranges.bright_max;   field = &p->brightness;  }
-                    else if (col == 1) { mn = app->ranges.contrast_min; mx = app->ranges.contrast_max; field = &p->contrast;    }
-                    else if (col == 2) { mn = app->ranges.sat_min;      mx = app->ranges.sat_max;      field = &p->saturation;  }
-                    else               { mn = app->ranges.gamma_min;    mx = app->ranges.gamma_max;    field = &p->gamma;       }
-                    *field = mn + t_val * (mx - mn);
-                    set_gb_stage_enabled(shoot, wig, true);
-                    return true;
-                }
-            }
-            #undef LVCOL_W
-            #undef LVHANDLE_H
         } else if (shoot->looks_stage == LOOKS_STAGE_STYLE) {
             if (tapped && ty >= LOOKS_STYLE_Y0 &&
                 ty < LOOKS_STYLE_Y0 + 2 * LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP) {
