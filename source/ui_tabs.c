@@ -25,6 +25,37 @@ static const char *s_fx_labels_compact[6] = {
     "Scan-H", "Scan-V", "LCD", "Vignette", "Chroma", "Grain"
 };
 
+#define LOOKS_CARD_X0       8.0f
+#define LOOKS_CARD_Y0       ((float)LOOKS_PANEL_Y)
+#define LOOKS_CARD_W      148.0f
+#define LOOKS_CARD_H       30.0f
+#define LOOKS_CARD_GAP_X    8.0f
+#define LOOKS_CARD_GAP_Y    5.0f
+
+#define LOOKS_STYLE_CARD_H    27.0f
+#define LOOKS_STYLE_CARD_GAP   4.0f
+
+#define LOOKS_ICON_VIGNETTE  0
+#define LOOKS_ICON_GRAIN     1
+#define LOOKS_ICON_MONO      2
+#define LOOKS_ICON_CHROMA    3
+#define LOOKS_ICON_SCAN_H    4
+#define LOOKS_ICON_BURN      5
+#define LOOKS_ICON_SCAN_V    6
+#define LOOKS_ICON_LCD       7
+#define LOOKS_ICON_GLITCH    8
+#define LOOKS_ICON_WAVE      9
+#define LOOKS_ICON_SHIFT    10
+#define LOOKS_ICON_SOLAR    11
+#define LOOKS_ICON_TILES    12
+#define LOOKS_ICON_PRISM    13
+#define LOOKS_ICON_ASCII    14
+#define LOOKS_ICON_COLOR    15
+#define LOOKS_ICON_MATRIX   16
+#define LOOKS_ICON_TOON     17
+#define LOOKS_ICON_PINK     18
+#define LOOKS_ICON_CCD      19
+
 static const int s_delay_anchors[] = {50, 100, 250, 500, 750, 1000};
 #define DELAY_ANCHOR_COUNT ((int)(sizeof(s_delay_anchors) / sizeof(s_delay_anchors[0])))
 
@@ -389,6 +420,118 @@ static void draw_tune_icon_button_at(bool active, float x, float y) {
     }
 }
 
+static void draw_looks_card_icon(float x, float y, int type, u32 col) {
+    float cx = x + 18.0f;
+    float cy = y + 15.0f;
+    if (type == LOOKS_ICON_VIGNETTE) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 8.0f, 0.62f, 5.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy - 8.0f, 0.62f, 2.0f, 5.0f, col);
+        C2D_DrawRectSolid(cx + 3.0f, cy - 8.0f, 0.62f, 5.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx + 6.0f, cy - 8.0f, 0.62f, 2.0f, 5.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy + 6.0f, 0.62f, 5.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy + 3.0f, 0.62f, 2.0f, 5.0f, col);
+        C2D_DrawRectSolid(cx + 3.0f, cy + 6.0f, 0.62f, 5.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx + 6.0f, cy + 3.0f, 0.62f, 2.0f, 5.0f, col);
+    } else if (type == LOOKS_ICON_GRAIN) {
+        for (int i = 0; i < 8; i++) {
+            float px = cx - 8.0f + (float)((i * 5) % 16);
+            float py = cy - 7.0f + (float)((i * 7) % 15);
+            C2D_DrawRectSolid(px, py, 0.62f, 2.0f, 2.0f, col);
+        }
+    } else if (type == LOOKS_ICON_MONO) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, col);
+        C2D_DrawRectSolid(cx - 2.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, C2D_Color32(125, 135, 150, 255));
+        C2D_DrawRectSolid(cx + 4.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, C2D_Color32(55, 60, 70, 255));
+    } else if (type == LOOKS_ICON_CHROMA) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 5.0f, 0.62f, 9.0f, 9.0f, C2D_Color32(230, 50, 70, 255));
+        C2D_DrawRectSolid(cx - 3.0f, cy - 2.0f, 0.63f, 9.0f, 9.0f, C2D_Color32(40, 180, 95, 255));
+        C2D_DrawRectSolid(cx + 1.0f, cy - 8.0f, 0.64f, 9.0f, 9.0f, C2D_Color32(50, 100, 235, 255));
+    } else if (type == LOOKS_ICON_SCAN_H) {
+        for (int i = 0; i < 5; i++)
+            C2D_DrawRectSolid(cx - 8.0f, cy - 8.0f + i * 4.0f, 0.62f, 16.0f, 2.0f, col);
+    } else if (type == LOOKS_ICON_SCAN_V) {
+        for (int i = 0; i < 5; i++)
+            C2D_DrawRectSolid(cx - 8.0f + i * 4.0f, cy - 8.0f, 0.62f, 2.0f, 16.0f, col);
+    } else if (type == LOOKS_ICON_BURN) {
+        C2D_DrawRectSolid(cx - 6.0f, cy + 2.0f, 0.62f, 12.0f, 5.0f, C2D_Color32(220, 55, 35, 255));
+        C2D_DrawRectSolid(cx - 3.0f, cy - 3.0f, 0.63f, 9.0f, 6.0f, C2D_Color32(245, 125, 45, 255));
+        C2D_DrawRectSolid(cx + 1.0f, cy - 8.0f, 0.64f, 4.0f, 6.0f, C2D_Color32(255, 205, 80, 255));
+    } else if (type == LOOKS_ICON_LCD || type == LOOKS_ICON_MATRIX) {
+        for (int yy = 0; yy < 3; yy++)
+            for (int xx = 0; xx < 3; xx++)
+                C2D_DrawRectSolid(cx - 8.0f + xx * 6.0f, cy - 8.0f + yy * 6.0f,
+                                  0.62f, 4.0f, 4.0f, col);
+    } else if (type == LOOKS_ICON_GLITCH) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 7.0f, 5.0f, col);
+        C2D_DrawRectSolid(cx + 1.0f, cy - 4.0f, 0.62f, 9.0f, 4.0f, col);
+        C2D_DrawRectSolid(cx - 5.0f, cy + 2.0f, 0.62f, 13.0f, 5.0f, col);
+    } else if (type == LOOKS_ICON_WAVE) {
+        for (int i = 0; i < 6; i++) {
+            float py = cy + ((i % 2) ? -5.0f : 3.0f);
+            C2D_DrawRectSolid(cx - 8.0f + i * 3.0f, py, 0.62f, 3.0f, 3.0f, col);
+        }
+    } else if (type == LOOKS_ICON_SHIFT) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 5.0f, 0.62f, 12.0f, 3.0f, col);
+        C2D_DrawRectSolid(cx - 4.0f, cy + 2.0f, 0.62f, 12.0f, 3.0f, col);
+        C2D_DrawRectSolid(cx + 4.0f, cy - 8.0f, 0.62f, 5.0f, 9.0f, col);
+    } else if (type == LOOKS_ICON_SOLAR) {
+        C2D_DrawRectSolid(cx - 4.0f, cy - 4.0f, 0.62f, 8.0f, 8.0f, col);
+        C2D_DrawRectSolid(cx - 1.0f, cy - 10.0f, 0.62f, 2.0f, 4.0f, col);
+        C2D_DrawRectSolid(cx - 1.0f, cy + 6.0f, 0.62f, 2.0f, 4.0f, col);
+        C2D_DrawRectSolid(cx - 10.0f, cy - 1.0f, 0.62f, 4.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx + 6.0f, cy - 1.0f, 0.62f, 4.0f, 2.0f, col);
+    } else if (type == LOOKS_ICON_TILES) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 8.0f, 0.62f, 6.0f, 6.0f, col);
+        C2D_DrawRectSolid(cx + 2.0f, cy - 6.0f, 0.62f, 6.0f, 6.0f, col);
+        C2D_DrawRectSolid(cx - 3.0f, cy + 3.0f, 0.62f, 6.0f, 6.0f, col);
+    } else if (type == LOOKS_ICON_PRISM || type == LOOKS_ICON_COLOR) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, C2D_Color32(230, 60, 70, 255));
+        C2D_DrawRectSolid(cx - 2.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, C2D_Color32(55, 175, 90, 255));
+        C2D_DrawRectSolid(cx + 4.0f, cy - 7.0f, 0.62f, 5.0f, 14.0f, C2D_Color32(55, 95, 230, 255));
+    } else if (type == LOOKS_ICON_ASCII) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 3.0f, 3.0f, col);
+        C2D_DrawRectSolid(cx - 2.0f, cy - 7.0f, 0.62f, 8.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy - 1.0f, 0.62f, 10.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 2.0f, cy + 5.0f, 0.62f, 8.0f, 2.0f, col);
+    } else if (type == LOOKS_ICON_TOON) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 16.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy + 6.0f, 0.62f, 16.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 2.0f, 15.0f, col);
+        C2D_DrawRectSolid(cx + 6.0f, cy - 7.0f, 0.62f, 2.0f, 15.0f, col);
+    } else if (type == LOOKS_ICON_PINK) {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 16.0f, 14.0f, C2D_Color32(230, 90, 175, 255));
+        C2D_DrawRectSolid(cx - 4.0f, cy - 3.0f, 0.63f, 8.0f, 6.0f, C2D_Color32(255, 180, 220, 255));
+    } else {
+        C2D_DrawRectSolid(cx - 8.0f, cy - 7.0f, 0.62f, 16.0f, 11.0f, col);
+        C2D_DrawRectSolid(cx - 5.0f, cy + 6.0f, 0.62f, 10.0f, 2.0f, col);
+        C2D_DrawRectSolid(cx - 3.0f, cy - 4.0f, 0.63f, 3.0f, 3.0f, CLR_BTN);
+        C2D_DrawRectSolid(cx + 3.0f, cy - 4.0f, 0.63f, 3.0f, 3.0f, CLR_BTN);
+    }
+}
+
+static void draw_looks_effect_card(C2D_TextBuf staticBuf, C2D_Text *t,
+                                   float bx, float by, float bw, float bh,
+                                   const char *label, bool selected,
+                                   int icon_type) {
+    draw_pill(bx, by, bw, bh, selected ? CLR_ACCENT : CLR_BTN);
+    u32 fg = selected ? CLR_WHITE : CLR_TEXT;
+    u32 icon = selected ? C2D_Color32(230, 240, 255, 255) : CLR_ACCENT;
+    draw_looks_card_icon(bx, by + (bh - 30.0f) * 0.5f, icon_type, icon);
+
+    C2D_TextParse(t, staticBuf, label);
+    float sc = 0.38f;
+    float tw = 0, th = 0;
+    C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+    if (tw > bw - 42.0f) {
+        sc = 0.32f;
+        C2D_TextGetDimensions(t, sc, sc, &tw, &th);
+    }
+    C2D_DrawText(t, C2D_WithColor,
+                 bx + 38.0f,
+                 by + (bh - th) * 0.5f - 1.0f,
+                 0.5f, sc, sc, fg);
+}
+
 static void draw_tone_sliders_vertical(C2D_TextBuf staticBuf, C2D_Text *t,
                                        const FilterParams *p,
                                        const FilterRanges *ranges,
@@ -482,6 +625,27 @@ static void draw_fx_panel_compact(C2D_TextBuf staticBuf, C2D_Text *t,
 
     draw_fx_intensity_row(staticBuf, t, p, cy + 62.0f, cy + 66.0f, cy + 84.0f,
                           cy + 66.0f, true);
+}
+
+static void draw_looks_fx_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                const FilterParams *p, float cy) {
+    static const int fx_icons[6] = {
+        LOOKS_ICON_SCAN_H, LOOKS_ICON_SCAN_V, LOOKS_ICON_LCD,
+        LOOKS_ICON_VIGNETTE, LOOKS_ICON_CHROMA, LOOKS_ICON_GRAIN
+    };
+    for (int i = 0; i < 6; i++) {
+        int row = i / 2;
+        int col = i % 2;
+        float bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+        float by = cy + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+        bool sel = (p->fx_mode == s_fx_modes_compact[i]);
+        draw_looks_effect_card(staticBuf, t, bx, by, LOOKS_CARD_W,
+                               LOOKS_CARD_H, s_fx_labels_compact[i],
+                               sel, fx_icons[i]);
+    }
+
+    draw_fx_intensity_row(staticBuf, t, p, cy + 106.0f, cy + 112.0f,
+                          cy + 132.0f, cy + 112.0f, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -1566,62 +1730,52 @@ static void draw_looks_lomo_panel(C2D_TextBuf staticBuf, C2D_Text *t,
                                   bool lomo_enabled, int lomo_preset,
                                   int lomo_strength) {
     float cy = (float)LOOKS_PANEL_Y;
-    for (int row = 0; row < LOMO_GRID_ROWS; row++) {
-        for (int col = 0; col < LOMO_GRID_COLS; col++) {
-            int idx = row * LOMO_GRID_COLS + col;
-            if (idx >= LOMO_PRESET_COUNT) break;
-            float bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
-            float by = cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP);
-            bool sel = lomo_enabled && (lomo_preset == idx);
-            draw_pill(bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H,
-                      sel ? CLR_ACCENT : CLR_BTN);
-            C2D_TextParse(t, staticBuf, lomo_presets[idx].name);
-            float tw = 0, th = 0;
-            C2D_TextGetDimensions(t, 0.42f, 0.42f, &tw, &th);
-            C2D_DrawText(t, C2D_WithColor,
-                         bx + (LOMO_GRID_BTN_W - tw) / 2.0f,
-                         by + (LOMO_GRID_BTN_H - th) / 2.0f - 1.0f,
-                         0.5f, 0.42f, 0.42f,
-                         sel ? CLR_WHITE : CLR_TEXT);
-        }
+    static const int lomo_icons[LOMO_PRESET_COUNT] = {
+        LOOKS_ICON_VIGNETTE, LOOKS_ICON_GRAIN, LOOKS_ICON_MONO,
+        LOOKS_ICON_CHROMA, LOOKS_ICON_SCAN_H, LOOKS_ICON_BURN
+    };
+    for (int i = 0; i < LOMO_PRESET_COUNT; i++) {
+        int row = i / 2;
+        int col = i % 2;
+        float bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+        float by = cy + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+        bool sel = lomo_enabled && (lomo_preset == i);
+        draw_looks_effect_card(staticBuf, t, bx, by, LOOKS_CARD_W,
+                               LOOKS_CARD_H, lomo_presets[i].name,
+                               sel, lomo_icons[i]);
     }
     draw_stage_strength_row(staticBuf, t, "Strength", lomo_strength,
-                            lomo_enabled, cy + 66.0f, cy + 70.0f,
-                            cy + 84.0f, cy + 70.0f);
+                            lomo_enabled, cy + 106.0f, cy + 112.0f,
+                            cy + 132.0f, cy + 112.0f);
 }
 
 static void draw_looks_bend_panel(C2D_TextBuf staticBuf, C2D_Text *t,
                                   bool bend_enabled, int bend_preset,
                                   int bend_strength) {
     float cy = (float)LOOKS_PANEL_Y;
-    for (int row = 0; row < BEND_GRID_ROWS; row++) {
-        for (int col = 0; col < BEND_GRID_COLS; col++) {
-            int idx = row * BEND_GRID_COLS + col;
-            if (idx >= BEND_PRESET_COUNT) break;
-            float bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
-            float by = cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP);
-            bool sel = bend_enabled && (bend_preset == idx);
-            draw_pill(bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H,
-                      sel ? CLR_ACCENT : CLR_BTN);
-            C2D_TextParse(t, staticBuf, bend_presets[idx].name);
-            float tw = 0, th = 0;
-            C2D_TextGetDimensions(t, 0.42f, 0.42f, &tw, &th);
-            C2D_DrawText(t, C2D_WithColor,
-                         bx + (BEND_GRID_BTN_W - tw) / 2.0f,
-                         by + (BEND_GRID_BTN_H - th) / 2.0f - 1.0f,
-                         0.5f, 0.42f, 0.42f,
-                         sel ? CLR_WHITE : CLR_TEXT);
-        }
+    static const int bend_icons[BEND_PRESET_COUNT] = {
+        LOOKS_ICON_GLITCH, LOOKS_ICON_WAVE, LOOKS_ICON_SHIFT,
+        LOOKS_ICON_SOLAR, LOOKS_ICON_TILES, LOOKS_ICON_PRISM
+    };
+    for (int i = 0; i < BEND_PRESET_COUNT; i++) {
+        int row = i / 2;
+        int col = i % 2;
+        float bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+        float by = cy + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+        bool sel = bend_enabled && (bend_preset == i);
+        draw_looks_effect_card(staticBuf, t, bx, by, LOOKS_CARD_W,
+                               LOOKS_CARD_H, bend_presets[i].name,
+                               sel, bend_icons[i]);
     }
     draw_stage_strength_row(staticBuf, t, "Strength", bend_strength,
-                            bend_enabled, cy + 66.0f, cy + 70.0f,
-                            cy + 84.0f, cy + 70.0f);
+                            bend_enabled, cy + 106.0f, cy + 112.0f,
+                            cy + 132.0f, cy + 112.0f);
 }
 
 static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
                                    bool remap_enabled, int remap_style,
                                    int remap_cell_size, int remap_strength) {
-    float sc = 0.38f;
+    float sc = 0.34f;
 
     static const char *style_labels[REMAP_STYLE_COUNT] = {
         "ASCII", "Color", "Matrix", "Toon", "Pink", "CCD"
@@ -1630,29 +1784,27 @@ static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
         REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
         REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
     };
-    float tw = 0, th = 0;
+    static const int style_icons[REMAP_STYLE_COUNT] = {
+        LOOKS_ICON_ASCII, LOOKS_ICON_COLOR, LOOKS_ICON_MATRIX,
+        LOOKS_ICON_TOON, LOOKS_ICON_PINK, LOOKS_ICON_CCD
+    };
     for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
-        int row = i / 3;
-        int col = i % 3;
-        float bx = (float)(STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP));
-        float by = (float)(LOOKS_STYLE_Y0 + row * (LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP));
+        int row = i / 2;
+        int col = i % 2;
+        float bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+        float by = (float)LOOKS_PANEL_Y + row * (LOOKS_STYLE_CARD_H + LOOKS_STYLE_CARD_GAP);
         bool sel = remap_enabled && remap_style == style_vals[i];
-        draw_pill(bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H,
-                  sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(t, staticBuf, style_labels[i]);
-        C2D_TextGetDimensions(t, 0.34f, 0.34f, &tw, &th);
-        C2D_DrawText(t, C2D_WithColor,
-                     bx + ((float)STYLE_REMAP_BTN_W - tw) * 0.5f,
-                     by + ((float)LOOKS_STYLE_BTN_H - th) * 0.5f - 1.0f,
-                     0.5f, 0.34f, 0.34f, sel ? CLR_WHITE : CLR_TEXT);
+        draw_looks_effect_card(staticBuf, t, bx, by, LOOKS_CARD_W,
+                               LOOKS_STYLE_CARD_H, style_labels[i],
+                               sel, style_icons[i]);
     }
 
-    C2D_DrawRectSolid(8, LOOKS_CELL_LABEL_Y - 8, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
+    C2D_DrawRectSolid(8, 137.0f, 0.5f, BOT_W - 16, 1, CLR_DIVIDER);
 
     char buf[16];
     bool toon_mode = remap_enabled && remap_style == REMAP_STYLE_TOON;
     C2D_TextParse(t, staticBuf, toon_mode ? "Threshold" : "Cell");
-    C2D_DrawText(t, C2D_WithColor, 8.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_TEXT);
+    C2D_DrawText(t, C2D_WithColor, 8.0f, 142.0f, 0.5f, sc, sc, CLR_TEXT);
     int shown_cell = remap_cell_size;
     if (toon_mode && shown_cell < 1) shown_cell = 1;
     if (!toon_mode && shown_cell < 4) shown_cell = 4;
@@ -1662,14 +1814,14 @@ static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
     else
         snprintf(buf, sizeof(buf), "%dpx", shown_cell);
     C2D_TextParse(t, staticBuf, buf);
-    C2D_DrawText(t, C2D_WithColor, 280.0f, (float)LOOKS_CELL_LABEL_Y, 0.5f, sc, sc, CLR_DIM);
-    draw_looks_slider((float)LOOKS_CELL_Y,
+    C2D_DrawText(t, C2D_WithColor, 284.0f, 142.0f, 0.5f, sc, sc, CLR_DIM);
+    draw_looks_slider(156.0f,
                       toon_mode ? 1.0f : 4.0f,
                       16.0f,
                       (float)shown_cell);
 
     C2D_TextParse(t, staticBuf, toon_mode ? "Clusters" : "Strength");
-    C2D_DrawText(t, C2D_WithColor, 8.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
+    C2D_DrawText(t, C2D_WithColor, 8.0f, 173.0f,
                  0.5f, sc, sc, remap_enabled ? CLR_TEXT : CLR_TRACK);
     int shown_strength = remap_strength;
     if (toon_mode) {
@@ -1678,9 +1830,9 @@ static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
     }
     snprintf(buf, sizeof(buf), "%d", shown_strength);
     C2D_TextParse(t, staticBuf, buf);
-    C2D_DrawText(t, C2D_WithColor, 284.0f, (float)LOOKS_STRENGTH_Y - 12.0f,
+    C2D_DrawText(t, C2D_WithColor, 284.0f, 173.0f,
                  0.5f, sc, sc, CLR_DIM);
-    draw_looks_slider((float)LOOKS_STRENGTH_Y,
+    draw_looks_slider(187.0f,
                       toon_mode ? 2.0f : 0.0f,
                       toon_mode ? 15.0f : 10.0f,
                       (float)shown_strength);
@@ -1901,7 +2053,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         draw_looks_bend_panel(staticBuf, &t, bend_enabled, bend_preset,
                               bend_strength);
     } else {
-        draw_fx_panel_compact(staticBuf, &t, p, (float)LOOKS_PANEL_Y);
+        draw_looks_fx_panel(staticBuf, &t, p, (float)LOOKS_PANEL_Y);
     }
 }
 

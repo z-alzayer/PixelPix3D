@@ -11,6 +11,15 @@ bool hit(int px, int py, int rx, int ry, int rw, int rh) {
 static const int s_delay_anchors[] = {50, 100, 250, 500, 750, 1000};
 #define DELAY_ANCHOR_COUNT ((int)(sizeof(s_delay_anchors) / sizeof(s_delay_anchors[0])))
 
+#define LOOKS_CARD_X0       8
+#define LOOKS_CARD_Y0       LOOKS_PANEL_Y
+#define LOOKS_CARD_W      148
+#define LOOKS_CARD_H       30
+#define LOOKS_CARD_GAP_X    8
+#define LOOKS_CARD_GAP_Y    5
+#define LOOKS_STYLE_CARD_H  27
+#define LOOKS_STYLE_CARD_GAP 4
+
 static int clamp_wiggle_delay_ms(int delay_ms) {
     if (delay_ms < 50) return 50;
     if (delay_ms > 1000) return 1000;
@@ -110,6 +119,40 @@ static bool handle_fx_compact_touch(int tx, int ty, bool tapped, bool touched,
     }
     if (touched && p->fx_mode != FX_NONE &&
         ty >= (int)(cy + 84.0f - 14.0f) && ty < (int)(cy + 84.0f + 14.0f) &&
+        tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+        float t_val = (float)(tx - TRACK_X) / TRACK_W;
+        if (t_val < 0.0f) t_val = 0.0f;
+        if (t_val > 1.0f) t_val = 1.0f;
+        p->fx_intensity = (int)(t_val * 10.0f + 0.5f);
+        if (p->fx_intensity < 0)  p->fx_intensity = 0;
+        if (p->fx_intensity > 10) p->fx_intensity = 10;
+        return true;
+    }
+    return false;
+}
+
+static bool handle_looks_fx_touch(int tx, int ty, bool tapped, bool touched,
+                                  FilterParams *p, float cy) {
+    static const int fx_modes[6] = {
+        FX_SCAN_H, FX_SCAN_V, FX_LCD,
+        FX_VIGNETTE, FX_CHROMA, FX_GRAIN
+    };
+
+    if (tapped) {
+        for (int i = 0; i < 6; i++) {
+            int row = i / 2;
+            int col = i % 2;
+            int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+            int by = (int)cy + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+            if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_CARD_H)) {
+                if (p->fx_mode == fx_modes[i]) p->fx_mode = FX_NONE;
+                else p->fx_mode = fx_modes[i];
+                return true;
+            }
+        }
+    }
+    if (touched && p->fx_mode != FX_NONE &&
+        ty >= (int)(cy + 132.0f - 14.0f) && ty < (int)(cy + 132.0f + 14.0f) &&
         tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
         float t_val = (float)(tx - TRACK_X) / TRACK_W;
         if (t_val < 0.0f) t_val = 0.0f;
@@ -974,28 +1017,26 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         if (shoot->looks_stage == LOOKS_STAGE_LOOK) {
             float cy = (float)LOOKS_PANEL_Y;
             if (tapped) {
-                for (int row = 0; row < LOMO_GRID_ROWS; row++) {
-                    for (int col = 0; col < LOMO_GRID_COLS; col++) {
-                        int idx = row * LOMO_GRID_COLS + col;
-                        if (idx >= LOMO_PRESET_COUNT) break;
-                        int bx = LOMO_GRID_GAP + col * (LOMO_GRID_BTN_W + LOMO_GRID_GAP);
-                        int by = (int)(cy + row * (LOMO_GRID_BTN_H + LOMO_GRID_GAP));
-                        if (hit(tx, ty, bx, by, LOMO_GRID_BTN_W, LOMO_GRID_BTN_H)) {
-                            if (shoot->lomo_enabled && shoot->lomo_preset == idx)
-                                shoot->lomo_enabled = false;
-                            else {
-                                shoot->lomo_preset = idx;
-                                shoot->lomo_enabled = true;
-                            }
-                            wig->rebuild = true;
-                            return true;
+                for (int i = 0; i < LOMO_PRESET_COUNT; i++) {
+                    int row = i / 2;
+                    int col = i % 2;
+                    int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                    int by = LOOKS_CARD_Y0 + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+                    if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_CARD_H)) {
+                        if (shoot->lomo_enabled && shoot->lomo_preset == i)
+                            shoot->lomo_enabled = false;
+                        else {
+                            shoot->lomo_preset = i;
+                            shoot->lomo_enabled = true;
                         }
+                        wig->rebuild = true;
+                        return true;
                     }
                 }
             }
             if (touched && shoot->lomo_enabled &&
-                ty >= (int)(cy + 84.0f - 14.0f) &&
-                ty <  (int)(cy + 84.0f + 14.0f) &&
+                ty >= (int)(cy + 132.0f - 14.0f) &&
+                ty <  (int)(cy + 132.0f + 14.0f) &&
                 tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
                 float t_val = (float)(tx - TRACK_X) / TRACK_W;
                 if (t_val < 0.0f) t_val = 0.0f;
@@ -1033,18 +1074,18 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
         } else if (shoot->looks_stage == LOOKS_STAGE_STYLE) {
-            if (tapped && ty >= LOOKS_STYLE_Y0 &&
-                ty < LOOKS_STYLE_Y0 + 2 * LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP) {
+            if (tapped && ty >= LOOKS_PANEL_Y &&
+                ty < LOOKS_PANEL_Y + 3 * LOOKS_STYLE_CARD_H + 2 * LOOKS_STYLE_CARD_GAP) {
                 static const int style_vals[REMAP_STYLE_COUNT] = {
                     REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
                     REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
                 };
                 for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
-                    int row = i / 3;
-                    int col = i % 3;
-                    int bx = STYLE_REMAP_X0 + col * (STYLE_REMAP_BTN_W + STYLE_REMAP_GAP);
-                    int by = LOOKS_STYLE_Y0 + row * (LOOKS_STYLE_BTN_H + STYLE_REMAP_GAP);
-                    if (hit(tx, ty, bx, by, STYLE_REMAP_BTN_W, LOOKS_STYLE_BTN_H)) {
+                    int row = i / 2;
+                    int col = i % 2;
+                    int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                    int by = LOOKS_PANEL_Y + row * (LOOKS_STYLE_CARD_H + LOOKS_STYLE_CARD_GAP);
+                    if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_STYLE_CARD_H)) {
                         if (shoot->remap_enabled && shoot->remap_style == style_vals[i])
                             shoot->remap_enabled = false;
                         else {
@@ -1061,7 +1102,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 }
             }
 
-            if (ty >= LOOKS_CELL_Y - 12 && ty < LOOKS_CELL_Y + 12 &&
+            if (ty >= 156 - 12 && ty < 156 + 12 &&
                 tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
                 float t_val = (float)(tx - TRACK_X) / TRACK_W;
                 if (t_val < 0.0f) t_val = 0.0f;
@@ -1075,7 +1116,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
 
-            if (ty >= LOOKS_STRENGTH_Y - 10 && ty < LOOKS_STRENGTH_Y + 10 &&
+            if (ty >= 187 - 10 && ty < 187 + 10 &&
                 tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
                 float t_val = (float)(tx - TRACK_X) / TRACK_W;
                 if (t_val < 0.0f) t_val = 0.0f;
@@ -1095,28 +1136,26 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         } else if (shoot->looks_stage == LOOKS_STAGE_BEND) {
             float cy = (float)LOOKS_PANEL_Y;
             if (tapped) {
-                for (int row = 0; row < BEND_GRID_ROWS; row++) {
-                    for (int col = 0; col < BEND_GRID_COLS; col++) {
-                        int idx = row * BEND_GRID_COLS + col;
-                        if (idx >= BEND_PRESET_COUNT) break;
-                        int bx = BEND_GRID_GAP + col * (BEND_GRID_BTN_W + BEND_GRID_GAP);
-                        int by = (int)(cy + row * (BEND_GRID_BTN_H + BEND_GRID_GAP));
-                        if (hit(tx, ty, bx, by, BEND_GRID_BTN_W, BEND_GRID_BTN_H)) {
-                            if (shoot->bend_enabled && shoot->bend_preset == idx)
-                                shoot->bend_enabled = false;
-                            else {
-                                shoot->bend_preset = idx;
-                                shoot->bend_enabled = true;
-                            }
-                            wig->rebuild = true;
-                            return true;
+                for (int i = 0; i < BEND_PRESET_COUNT; i++) {
+                    int row = i / 2;
+                    int col = i % 2;
+                    int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                    int by = LOOKS_CARD_Y0 + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+                    if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_CARD_H)) {
+                        if (shoot->bend_enabled && shoot->bend_preset == i)
+                            shoot->bend_enabled = false;
+                        else {
+                            shoot->bend_preset = i;
+                            shoot->bend_enabled = true;
                         }
+                        wig->rebuild = true;
+                        return true;
                     }
                 }
             }
             if (touched && shoot->bend_enabled &&
-                ty >= (int)(cy + 84.0f - 14.0f) &&
-                ty <  (int)(cy + 84.0f + 14.0f) &&
+                ty >= (int)(cy + 132.0f - 14.0f) &&
+                ty <  (int)(cy + 132.0f + 14.0f) &&
                 tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
                 float t_val = (float)(tx - TRACK_X) / TRACK_W;
                 if (t_val < 0.0f) t_val = 0.0f;
@@ -1128,7 +1167,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 return true;
             }
         } else if (shoot->looks_stage == LOOKS_STAGE_FX) {
-            if (handle_fx_compact_touch(tx, ty, tapped, touched, p, (float)LOOKS_PANEL_Y)) {
+            if (handle_looks_fx_touch(tx, ty, tapped, touched, p, (float)LOOKS_PANEL_Y)) {
                 wig->rebuild = true;
                 return true;
             }
