@@ -921,10 +921,17 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 *do_clear_look = true;
                 return true;
             }
+            if (wig->preview &&
+                tapped && hit(tx, ty, SHOOT_CANCEL_X, SHOOT_CLEAR_Y,
+                              SHOOT_CANCEL_W, SHOOT_CLEAR_H)) {
+                return true;
+            }
 
             // Primary save/capture button (always at bottom when not in gallery)
-            if (tapped && hit(tx, ty, SHOOT_PRIMARY_X, SHOOT_SAVE_Y,
-                              SHOOT_PRIMARY_W, SHOOT_SAVE_H)) {
+            int primary_x = wig->preview ? SHOOT_PREVIEW_PRIMARY_X : SHOOT_PRIMARY_X;
+            int primary_w = wig->preview ? SHOOT_PREVIEW_PRIMARY_W : SHOOT_PRIMARY_W;
+            if (tapped && hit(tx, ty, primary_x, SHOOT_SAVE_Y,
+                              primary_w, SHOOT_SAVE_H)) {
                 *do_save = true;
                 return true;
             }

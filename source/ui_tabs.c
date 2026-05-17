@@ -1251,22 +1251,43 @@ draw_save_button:
         }
         C2D_DrawRectSolid(0, SHOOT_SAVE_Y, 0.5f, BOT_W, SHOOT_SAVE_H, CLR_PANEL);
 
+        bool show_preview_cancel = wiggle_preview && !wiggle_manual_align;
+        u32 clear_bg = wiggle_manual_align ? C2D_Color32(205, 55, 60, 255) : CLR_BTN;
         draw_pill((float)SHOOT_CLEAR_X, (float)SHOOT_CLEAR_Y,
-                  (float)SHOOT_CLEAR_W, (float)SHOOT_CLEAR_H, CLR_BTN);
-        C2D_TextParse(&t, staticBuf, wiggle_manual_align ? "Cancel" : "Clear Look");
+                  (float)SHOOT_CLEAR_W, (float)SHOOT_CLEAR_H, clear_bg);
+        C2D_TextParse(&t, staticBuf,
+                      wiggle_manual_align ? "Cancel" : "Clear Look");
         C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
         C2D_DrawText(&t, C2D_WithColor,
                      SHOOT_CLEAR_X + (SHOOT_CLEAR_W - tw) / 2.0f,
                      SHOOT_CLEAR_Y + (SHOOT_CLEAR_H - th) / 2.0f - 1.0f,
-                     0.5f, 0.32f, 0.32f, CLR_TEXT);
+                     0.5f, 0.32f, 0.32f,
+                     wiggle_manual_align ? CLR_WHITE : CLR_TEXT);
 
-        draw_pill((float)SHOOT_PRIMARY_X, (float)SHOOT_SAVE_Y + 3.0f,
-                  (float)SHOOT_PRIMARY_W, (float)SHOOT_SAVE_H - 6.0f, save_bg);
+        if (show_preview_cancel) {
+            draw_pill((float)SHOOT_CANCEL_X, (float)SHOOT_CLEAR_Y,
+                      (float)SHOOT_CANCEL_W, (float)SHOOT_CLEAR_H,
+                      C2D_Color32(205, 55, 60, 255));
+            C2D_TextParse(&t, staticBuf, "Cancel");
+            C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         SHOOT_CANCEL_X + (SHOOT_CANCEL_W - tw) / 2.0f,
+                         SHOOT_CLEAR_Y + (SHOOT_CLEAR_H - th) / 2.0f - 1.0f,
+                         0.5f, 0.32f, 0.32f, CLR_WHITE);
+        }
+
+        float primary_x = show_preview_cancel ? (float)SHOOT_PREVIEW_PRIMARY_X
+                                              : (float)SHOOT_PRIMARY_X;
+        float primary_w = show_preview_cancel ? (float)SHOOT_PREVIEW_PRIMARY_W
+                                              : (float)SHOOT_PRIMARY_W;
+        draw_pill(primary_x, (float)SHOOT_SAVE_Y + 3.0f,
+                  primary_w, (float)SHOOT_SAVE_H - 6.0f, save_bg);
         C2D_TextParse(&t, staticBuf, save_label);
-        C2D_TextGetDimensions(&t, 0.56f, 0.56f, &tw, &th);
-        float slx = SHOOT_PRIMARY_X + (SHOOT_PRIMARY_W - tw) / 2.0f;
+        float save_sc = show_preview_cancel ? 0.46f : 0.56f;
+        C2D_TextGetDimensions(&t, save_sc, save_sc, &tw, &th);
+        float slx = primary_x + (primary_w - tw) / 2.0f;
         C2D_DrawText(&t, C2D_WithColor, slx, (float)SHOOT_SAVE_Y + 12.0f, 0.5f,
-                     0.56f, 0.56f, save_txt);
+                     save_sc, save_sc, save_txt);
     }
 }
 

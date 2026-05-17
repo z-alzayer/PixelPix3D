@@ -419,8 +419,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                 return;
         }
 
-        bool cancel = wtapped && wtouch.px >= SHOOT_CLEAR_X &&
-                      wtouch.px < SHOOT_CLEAR_X + SHOOT_CLEAR_W &&
+        bool cancel = wtapped && wtouch.px >= SHOOT_CANCEL_X &&
+                      wtouch.px < SHOOT_CANCEL_X + SHOOT_CANCEL_W &&
                       wtouch.py >= SHOOT_CLEAR_Y &&
                       wtouch.py < SHOOT_CLEAR_Y + SHOOT_CLEAR_H;
         if (cancel || (kDown & KEY_B)) {
@@ -534,8 +534,8 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
                     return;
             }
 
-            if (wtapped && tx >= SHOOT_PRIMARY_X &&
-                tx < SHOOT_PRIMARY_X + SHOOT_PRIMARY_W &&
+            if (wtapped && tx >= SHOOT_PREVIEW_PRIMARY_X &&
+                tx < SHOOT_PREVIEW_PRIMARY_X + SHOOT_PREVIEW_PRIMARY_W &&
                 ty >= SHOOT_SAVE_Y && ty < SHOOT_SAVE_Y + SHOOT_SAVE_H)
                 do_save = true;
 
@@ -565,7 +565,11 @@ void wiggle_preview_update(WiggleState *wig, SaveThreadState *save,
     }
 
 save_or_cancel:
-    if (kDown & KEY_B) {
+    bool touch_cancel = wtapped && wtouch.px >= SHOOT_CANCEL_X &&
+                        wtouch.px < SHOOT_CANCEL_X + SHOOT_CANCEL_W &&
+                        wtouch.py >= SHOOT_CLEAR_Y &&
+                        wtouch.py < SHOOT_CLEAR_Y + SHOOT_CLEAR_H;
+    if (touch_cancel || (kDown & KEY_B)) {
         wig->preview = false;
     } else if ((do_save || (kDown & KEY_A)) && !save->busy) {
         char save_path[64];

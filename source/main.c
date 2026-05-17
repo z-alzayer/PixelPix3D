@@ -375,7 +375,9 @@ int main(void) {
             if (kDown & KEY_ZR) {
                 cycle_palette_forward(&app);
             }
-            if (kDown & KEY_B) {
+            if ((kDown & KEY_B) && wig.preview) {
+                // Wiggle/anaglyph preview handles B as Cancel below.
+            } else if (kDown & KEY_B) {
                 app.params.pixel_size = (app.params.pixel_size % PX_STOPS) + 1;
             }
             } // end !gal.mode && !edit.active
@@ -387,7 +389,7 @@ int main(void) {
                 else app.active_tab = TAB_SHOOT;
             }
             // D-pad: context-aware per active_tab
-            if (edit.active && app.active_tab == TAB_SHOOT) {
+            if (edit.active) {
                 edit_handle_input(&edit, kDown, kHeld);
             } else if (app.active_tab == TAB_SHOOT) {
                 // On shoot screen: d-pad nudges brightness (up/down) and palette (left/right)
