@@ -80,6 +80,18 @@ static int round_to_int(float v) {
     return (int)(v >= 0.0f ? v + 0.5f : v - 0.5f);
 }
 
+static bool ext_is_ci(const char *ext, const char *want) {
+    if (!ext || !want) return false;
+    while (*ext && *want) {
+        char a = *ext++;
+        char b = *want++;
+        if (a >= 'A' && a <= 'Z') a = (char)(a - 'A' + 'a');
+        if (b >= 'A' && b <= 'Z') b = (char)(b - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return *ext == 0 && *want == 0;
+}
+
 static void remap_stickers_for_save(PlacedSticker *dst,
                                     const PlacedSticker *src,
                                     int src_w, int src_h,
@@ -145,6 +157,7 @@ void edit_save(EditState *edit, GalleryState *gal,
     char out_path[80];
     const char *src_path = gal->paths[gal->sel];
     const char *src_ext = strrchr(src_path, '.');
+    bool src_is_png = ext_is_ci(src_ext, ".png");
 
     PlacedSticker remapped[STICKER_MAX];
     EditCompositeCtx ctx = {
@@ -208,13 +221,18 @@ cleanup_wiggle:
         if (overwrite) {
             snprintf(out_path, sizeof(out_path), "%s", src_path);
         } else {
-            if (!next_save_path(SAVE_DIR, out_path, sizeof(out_path))) {
+            bool got_path = src_is_png
+                          ? next_anaglyph_path(SAVE_DIR, out_path, sizeof(out_path))
+                          : next_save_path(SAVE_DIR, out_path, sizeof(out_path));
+            if (!got_path) {
                 free_loaded_image(save_rgb888);
                 return;
             }
             settings_save_file_counter(file_counter_next());
         }
-        saved = save_jpeg(out_path, save_rgb888, src_w, src_h);
+        saved = src_is_png
+              ? save_png(out_path, save_rgb888, src_w, src_h)
+              : save_jpeg(out_path, save_rgb888, src_w, src_h);
         free_loaded_image(save_rgb888);
     }
 
