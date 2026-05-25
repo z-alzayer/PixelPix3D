@@ -110,8 +110,11 @@ void gallery_load_selected(GalleryState *gal) {
     bool is_gif = ext_is(ext, ".gif");
     gal->n_frames   = 1;
     gal->delay_ms   = WIGGLE_DEFAULT_DELAY_MS;
+    gal->src_w      = CAMERA_WIDTH;
+    gal->src_h      = CAMERA_HEIGHT;
     gal->anim_tick  = svcGetSystemTick();
     gal->anim_frame = 0;
+    load_image_info(gpath, &gal->src_w, &gal->src_h);
     uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
     if (is_png || is_gif) {
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)

@@ -57,36 +57,26 @@ static void pixels_to_rgb565_crop_fill(const uint8_t *pixels, int img_w, int img
     }
 }
 
-static void pixels_to_rgb565_portrait_fit(const uint8_t *pixels, int img_w, int img_h,
-                                          uint16_t *dst, int width, int height) {
+static void pixels_to_rgb565_fit(const uint8_t *pixels, int img_w, int img_h,
+                                 uint16_t *dst, int width, int height) {
     memset(dst, 0, width * height * sizeof(uint16_t));
 
-    int crop_w = img_w;
-    int crop_h = img_h;
-    int crop_x = 0;
-    int crop_y = 0;
-    if ((long long)crop_w * 4 > (long long)crop_h * 3) {
-        crop_w = (crop_h * 3) / 4;
-        if (crop_w < 1) crop_w = 1;
-        crop_x = (img_w - crop_w) / 2;
-    } else {
-        crop_h = (crop_w * 4) / 3;
-        if (crop_h < 1) crop_h = 1;
-        crop_y = (img_h - crop_h) / 2;
-    }
-
+    int draw_w = width;
     int draw_h = height;
-    int draw_w = (draw_h * 3) / 4;
-    if (draw_w < 1) draw_w = 1;
-    if (draw_h < 1) draw_h = 1;
-
+    if ((long long)img_w * height > (long long)img_h * width) {
+        draw_h = (img_h * width) / img_w;
+        if (draw_h < 1) draw_h = 1;
+    } else {
+        draw_w = (img_w * height) / img_h;
+        if (draw_w < 1) draw_w = 1;
+    }
     int ox = (width - draw_w) / 2;
     int oy = (height - draw_h) / 2;
 
     for (int y = 0; y < draw_h; y++) {
-        int sy = crop_y + (y * crop_h) / draw_h;
+        int sy = (y * img_h) / draw_h;
         for (int x = 0; x < draw_w; x++) {
-            int sx = crop_x + (x * crop_w) / draw_w;
+            int sx = (x * img_w) / draw_w;
             int idx = (sy * img_w + sx) * 3;
             dst[(oy + y) * width + (ox + x)] = rgb888_to_565_pixel(pixels + idx);
         }
@@ -95,10 +85,7 @@ static void pixels_to_rgb565_portrait_fit(const uint8_t *pixels, int img_w, int 
 
 static void pixels_to_rgb565_gallery_still(const uint8_t *pixels, int img_w, int img_h,
                                            uint16_t *dst, int width, int height) {
-    if (img_h > img_w)
-        pixels_to_rgb565_portrait_fit(pixels, img_w, img_h, dst, width, height);
-    else
-        pixels_to_rgb565_crop_fill(pixels, img_w, img_h, dst, width, height);
+    pixels_to_rgb565_fit(pixels, img_w, img_h, dst, width, height);
 }
 
 static void gif_indices_to_rgb565_portrait_fit(const uint8_t *indices,
@@ -164,6 +151,15 @@ int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height) 
     if (!pixels) return 0;
     pixels_to_rgb565_gallery_still(pixels, img_w, img_h, dst, width, height);
     stbi_image_free(pixels);
+    return 1;
+}
+
+int load_image_info(const char *path, int *out_w, int *out_h) {
+    int w = 0, h = 0, comp = 0;
+    if (!stbi_info(path, &w, &h, &comp))
+        return 0;
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
     return 1;
 }
 
@@ -414,7 +410,7 @@ int load_apng_frames_to_rgb565(const char *path,
             uint8_t *pixels = stbi_load_from_memory(tmp, (int)sz, &w, &h, &ch, 3);
             if (pixels) {
                 if (h > w)
-                    pixels_to_rgb565_portrait_fit(pixels, w, h, frames[loaded], width, height);
+                    pixels_to_rgb565_fit(pixels, w, h, frames[loaded], width, height);
                 else
                     pixels_to_rgb565_crop_fill(pixels, w, h, frames[loaded], width, height);
                 stbi_image_free(pixels);

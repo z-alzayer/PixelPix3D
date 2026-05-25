@@ -95,6 +95,8 @@ typedef struct {
     int   loaded;            // index of photo currently in thumb buffers (-1 = none)
     int   n_frames;          // 1 = still, >1 = wiggle animation
     int   delay_ms;
+    int   src_w;
+    int   src_h;
     u64   anim_tick;
     int   anim_frame;
 } GalleryState;

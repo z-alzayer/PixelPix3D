@@ -70,4 +70,13 @@ void composite_frame_rgb888(unsigned char *photo_rgb888,
                              int photo_w, int photo_h,
                              const char *frame_path);
 
+// Alpha-blend a frame into a sub-rectangle, optionally rotating landscape
+// frame art for portrait-oriented images.
+void composite_frame_rgb888_region(unsigned char *photo_rgb888,
+                                   int photo_w, int photo_h,
+                                   const char *frame_path,
+                                   int dst_x, int dst_y,
+                                   int dst_w, int dst_h,
+                                   bool portrait);
+
 #endif

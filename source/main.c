@@ -272,6 +272,8 @@ int main(void) {
         .loaded     = -1,
         .n_frames   = 1,
         .delay_ms   = WIGGLE_DEFAULT_DELAY_MS,
+        .src_w      = CAMERA_WIDTH,
+        .src_h      = CAMERA_HEIGHT,
         .anim_tick  = 0,
         .anim_frame = 0,
     };

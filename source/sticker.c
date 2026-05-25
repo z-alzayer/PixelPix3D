@@ -241,15 +241,39 @@ load:;
 void composite_frame_rgb888(unsigned char *photo_rgb888,
                              int photo_w, int photo_h,
                              const char *frame_path) {
+    composite_frame_rgb888_region(photo_rgb888, photo_w, photo_h, frame_path,
+                                  0, 0, photo_w, photo_h,
+                                  photo_h > photo_w);
+}
+
+void composite_frame_rgb888_region(unsigned char *photo_rgb888,
+                                   int photo_w, int photo_h,
+                                   const char *frame_path,
+                                   int dst_x, int dst_y,
+                                   int dst_w, int dst_h,
+                                   bool portrait) {
     int w, h;
     const unsigned char *data = frame_cache_get(frame_path, &w, &h);
     if (!data) return;
-    for (int y = 0; y < photo_h; y++) {
-        int sy_fr = y * h / photo_h;
-        for (int x = 0; x < photo_w; x++) {
-            int sx_fr = x * w / photo_w;
+    if (dst_w <= 0 || dst_h <= 0) return;
+    bool rotate = portrait && w > h;
+    for (int y = 0; y < dst_h; y++) {
+        int py = dst_y + y;
+        if (py < 0 || py >= photo_h) continue;
+        int sy_base = (y * h) / dst_h;
+        for (int x = 0; x < dst_w; x++) {
+            int px = dst_x + x;
+            if (px < 0 || px >= photo_w) continue;
+            int sy_fr = rotate ? h - 1 - ((x * h) / dst_w)
+                               : sy_base;
+            if (sy_fr < 0) sy_fr = 0;
+            if (sy_fr >= h) sy_fr = h - 1;
+            int sx_fr = rotate ? (y * w) / dst_h
+                               : (x * w) / dst_w;
+            if (sx_fr < 0) sx_fr = 0;
+            if (sx_fr >= w) sx_fr = w - 1;
             const unsigned char *src = data + (sy_fr * w + sx_fr) * 4;
-            unsigned char *dst = photo_rgb888 + (y * photo_w + x) * 3;
+            unsigned char *dst = photo_rgb888 + (py * photo_w + px) * 3;
             unsigned int alpha = src[3];
             if (alpha == 0) continue;
             if (alpha == 255) {

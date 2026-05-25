@@ -193,6 +193,27 @@ static int round_to_int(float v) {
     return (int)(v >= 0.0f ? v + 0.5f : v - 0.5f);
 }
 
+static void fit_rect_for_aspect(int src_w, int src_h,
+                                int dst_w, int dst_h,
+                                int *out_x, int *out_y,
+                                int *out_w, int *out_h) {
+    int draw_w = dst_w;
+    int draw_h = dst_h;
+    if (src_w > 0 && src_h > 0) {
+        if ((long long)src_w * dst_h > (long long)src_h * dst_w) {
+            draw_h = (src_h * dst_w) / src_w;
+            if (draw_h < 1) draw_h = 1;
+        } else {
+            draw_w = (src_w * dst_h) / src_h;
+            if (draw_w < 1) draw_w = 1;
+        }
+    }
+    if (out_x) *out_x = (dst_w - draw_w) / 2;
+    if (out_y) *out_y = (dst_h - draw_h) / 2;
+    if (out_w) *out_w = draw_w;
+    if (out_h) *out_h = draw_h;
+}
+
 static bool ext_is_ci(const char *ext, const char *want) {
     if (!ext || !want) return false;
     while (*ext && *want) {
@@ -843,10 +864,23 @@ void edit_render_top(const EditState *edit, const GalleryState *gal,
                                      edit->placed[si].angle_deg);
     }
     // Frame overlay
-    if (edit->gallery_frame >= 0 && edit->gallery_frame < FRAME_COUNT)
-        composite_frame_rgb888(rgb888_buf,
-                               CAMERA_WIDTH, CAMERA_HEIGHT,
-                               s_frame_paths[edit->gallery_frame]);
+    if (edit->gallery_frame >= 0 && edit->gallery_frame < FRAME_COUNT) {
+        if (!edit->wiggle_source && gal && gal->src_w > 0 && gal->src_h > 0) {
+            int fx = 0, fy = 0, fw = CAMERA_WIDTH, fh = CAMERA_HEIGHT;
+            fit_rect_for_aspect(gal->src_w, gal->src_h,
+                                CAMERA_WIDTH, CAMERA_HEIGHT,
+                                &fx, &fy, &fw, &fh);
+            composite_frame_rgb888_region(rgb888_buf,
+                                          CAMERA_WIDTH, CAMERA_HEIGHT,
+                                          s_frame_paths[edit->gallery_frame],
+                                          fx, fy, fw, fh,
+                                          gal->src_h > gal->src_w);
+        } else {
+            composite_frame_rgb888(rgb888_buf,
+                                   CAMERA_WIDTH, CAMERA_HEIGHT,
+                                   s_frame_paths[edit->gallery_frame]);
+        }
+    }
     // Cursor crosshair: visible when placing
     if (edit->placing && edit->tab == GEDIT_TAB_STICKERS) {
         int cx = (int)edit->cursor_x;

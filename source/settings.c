@@ -58,23 +58,20 @@ static void ini_set_key(const char *key, const char *value) {
 }
 
 void settings_save(const FilterParams *p, int save_scale, int shutter_button) {
-    ensure_settings_dir();
-    FILE *f = fopen(SETTINGS_PATH, "w");
-    if (!f) return;
-    fprintf(f, "pixel_size=%d\n",   p->pixel_size);
-    fprintf(f, "color_levels=%d\n", p->color_levels);
-    fprintf(f, "brightness=%.2f\n", (double)p->brightness);
-    fprintf(f, "contrast=%.2f\n",   (double)p->contrast);
-    fprintf(f, "gamma=%.2f\n",      (double)p->gamma);
-    fprintf(f, "saturation=%.2f\n", (double)p->saturation);
-    fprintf(f, "palette=%d\n",      p->palette);
-    fprintf(f, "dither_mode=%d\n",  p->dither_mode);
-    fprintf(f, "invert=%d\n",       p->invert ? 1 : 0);
-    fprintf(f, "save_scale=%d\n",   save_scale);
-    fprintf(f, "fx_mode=%d\n",      p->fx_mode);
-    fprintf(f, "fx_intensity=%d\n", p->fx_intensity);
-    fprintf(f, "shutter_button=%d\n", shutter_button);
-    fclose(f);
+    char val[16];
+    snprintf(val, sizeof(val), "%d", p->pixel_size);       ini_set_key("pixel_size", val);
+    snprintf(val, sizeof(val), "%d", p->color_levels);     ini_set_key("color_levels", val);
+    snprintf(val, sizeof(val), "%.2f", (double)p->brightness); ini_set_key("brightness", val);
+    snprintf(val, sizeof(val), "%.2f", (double)p->contrast);   ini_set_key("contrast", val);
+    snprintf(val, sizeof(val), "%.2f", (double)p->gamma);      ini_set_key("gamma", val);
+    snprintf(val, sizeof(val), "%.2f", (double)p->saturation); ini_set_key("saturation", val);
+    snprintf(val, sizeof(val), "%d", p->palette);          ini_set_key("palette", val);
+    snprintf(val, sizeof(val), "%d", p->dither_mode);      ini_set_key("dither_mode", val);
+    snprintf(val, sizeof(val), "%d", p->invert ? 1 : 0);   ini_set_key("invert", val);
+    snprintf(val, sizeof(val), "%d", save_scale);          ini_set_key("save_scale", val);
+    snprintf(val, sizeof(val), "%d", p->fx_mode);          ini_set_key("fx_mode", val);
+    snprintf(val, sizeof(val), "%d", p->fx_intensity);     ini_set_key("fx_intensity", val);
+    snprintf(val, sizeof(val), "%d", shutter_button);      ini_set_key("shutter_button", val);
 }
 
 void settings_load(FilterParams *p, int *save_scale, int *shutter_button) {

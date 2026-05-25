@@ -11,6 +11,9 @@ int load_jpeg_to_rgb565(const char *path, uint16_t *dst, int width, int height);
 // Intended for gallery still previews without stbi's full PNG allocations.
 int load_png_to_rgb565_fast(const char *path, uint16_t *dst, int width, int height);
 
+// Read image dimensions without loading full pixel data.
+int load_image_info(const char *path, int *out_w, int *out_h);
+
 // Load a still image at native resolution as RGB888. The returned buffer must
 // be released with free_loaded_image().
 int load_image_rgb888_native(const char *path,
