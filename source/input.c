@@ -235,6 +235,187 @@ static void reset_all_presets(ShootState *shoot, WiggleState *wig,
     apply_preset_to_legacy(shoot, wig, app, 0);
 }
 
+static bool edit_handle_looks_touch(EditState *edit, int tx, int ty,
+                                    bool tapped, bool touched) {
+    static const int style_vals[REMAP_STYLE_COUNT] = {
+        REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+        REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
+    };
+
+    if (!edit->fx_stage_open) {
+        if (!tapped) return false;
+        for (int i = 0; i < LOOKS_STAGE_COUNT; i++) {
+            int row = i / LOOKS_HOME_COLS;
+            int col = i % LOOKS_HOME_COLS;
+            int bx = LOOKS_HOME_GAP + col * (LOOKS_HOME_BTN_W + LOOKS_HOME_GAP);
+            int by = LOOKS_HOME_Y + row * (LOOKS_HOME_BTN_H + LOOKS_HOME_GAP);
+            if (hit(tx, ty, bx, by, LOOKS_HOME_BTN_W, LOOKS_HOME_BTN_H)) {
+                edit->fx_stage = i;
+                edit->fx_stage_open = true;
+                edit->fx_tune_open = false;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (tapped && hit(tx, ty, LOOKS_BACK_X, GEDIT_LOOKS_HEADER_Y,
+                      LOOKS_BACK_W, GEDIT_LOOKS_HEADER_H)) {
+        edit->fx_tune_open = false;
+        edit->fx_stage_open = false;
+        return true;
+    }
+
+    if (edit->fx_stage == LOOKS_STAGE_LOOK) {
+        float cy = (float)LOOKS_PANEL_Y;
+        if (tapped) {
+            for (int i = 0; i < LOMO_PRESET_COUNT; i++) {
+                int row = i / 2;
+                int col = i % 2;
+                int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                int by = LOOKS_CARD_Y0 + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+                if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_CARD_H)) {
+                    if (edit->pipeline.base.enabled && edit->pipeline.base.preset == i)
+                        edit->pipeline.base.enabled = false;
+                    else {
+                        edit->pipeline.base.preset = i;
+                        edit->pipeline.base.enabled = true;
+                    }
+                    return true;
+                }
+            }
+        }
+        if (touched && edit->pipeline.base.enabled &&
+            ty >= (int)(cy + 132.0f - 14.0f) &&
+            ty <  (int)(cy + 132.0f + 14.0f) &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            edit->pipeline.base.strength = (int)(t_val * 10.0f + 0.5f);
+            return true;
+        }
+    } else if (edit->fx_stage == LOOKS_STAGE_GB) {
+        if (tapped) {
+            const int gb_btn_w = 148;
+            const int gb_btn_h = 38;
+            const int gb_gap_x = 8;
+            const int gb_gap_y = 8;
+            const int gb_x0 = 8;
+            const int gb_y0 = LOOKS_PANEL_Y + 24;
+            for (int i = 0; i < PALETTE_COUNT; i++) {
+                int row = i / 2;
+                int col = i % 2;
+                int bx = gb_x0 + col * (gb_btn_w + gb_gap_x);
+                int by = gb_y0 + row * (gb_btn_h + gb_gap_y);
+                if (hit(tx, ty, bx, by, gb_btn_w, gb_btn_h)) {
+                    if (edit->pipeline.gb.enabled && edit->pipeline.gb.params.palette == i)
+                        edit->pipeline.gb.enabled = false;
+                    else {
+                        edit->pipeline.gb.params.palette = i;
+                        edit->pipeline.gb.enabled = true;
+                    }
+                    return true;
+                }
+            }
+        }
+    } else if (edit->fx_stage == LOOKS_STAGE_STYLE) {
+        if (tapped && ty >= LOOKS_PANEL_Y &&
+            ty < LOOKS_PANEL_Y + 3 * LOOKS_STYLE_CARD_H + 2 * LOOKS_STYLE_CARD_GAP) {
+            for (int i = 0; i < REMAP_STYLE_COUNT; i++) {
+                int row = i / 2;
+                int col = i % 2;
+                int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                int by = LOOKS_PANEL_Y + row * (LOOKS_STYLE_CARD_H + LOOKS_STYLE_CARD_GAP);
+                if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_STYLE_CARD_H)) {
+                    if (edit->pipeline.remap.enabled &&
+                        edit->pipeline.remap.style == style_vals[i]) {
+                        edit->pipeline.remap.enabled = false;
+                    } else {
+                        edit->pipeline.remap.style = style_vals[i];
+                        if (edit->pipeline.remap.style == REMAP_STYLE_TOON &&
+                            edit->pipeline.remap.strength < 2)
+                            edit->pipeline.remap.strength = 2;
+                        else if (edit->pipeline.remap.style != REMAP_STYLE_TOON &&
+                                 edit->pipeline.remap.strength > 10)
+                            edit->pipeline.remap.strength = 10;
+                        edit->pipeline.remap.enabled = true;
+                    }
+                    return true;
+                }
+            }
+        }
+
+        if (ty >= 156 - 12 && ty < 156 + 12 &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            int min_val = edit->pipeline.remap.style == REMAP_STYLE_TOON ? 1 : 4;
+            int val = min_val + (int)(t_val * (16 - min_val) + 0.5f);
+            if (val < min_val) val = min_val;
+            if (val > 16) val = 16;
+            edit->pipeline.remap.cell_size = val;
+            edit->pipeline.remap.enabled = true;
+            return true;
+        }
+
+        if (ty >= 187 - 10 && ty < 187 + 10 &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            if (edit->pipeline.remap.style == REMAP_STYLE_TOON)
+                edit->pipeline.remap.strength = 2 + (int)(t_val * 13.0f + 0.5f);
+            else
+                edit->pipeline.remap.strength = (int)(t_val * 10.0f + 0.5f);
+            edit->pipeline.remap.enabled = true;
+            return true;
+        }
+    } else if (edit->fx_stage == LOOKS_STAGE_BEND) {
+        float cy = (float)LOOKS_PANEL_Y;
+        if (tapped) {
+            for (int i = 0; i < BEND_PRESET_COUNT; i++) {
+                int row = i / 2;
+                int col = i % 2;
+                int bx = LOOKS_CARD_X0 + col * (LOOKS_CARD_W + LOOKS_CARD_GAP_X);
+                int by = LOOKS_CARD_Y0 + row * (LOOKS_CARD_H + LOOKS_CARD_GAP_Y);
+                if (hit(tx, ty, bx, by, LOOKS_CARD_W, LOOKS_CARD_H)) {
+                    if (edit->pipeline.bend.enabled && edit->pipeline.bend.preset == i)
+                        edit->pipeline.bend.enabled = false;
+                    else {
+                        edit->pipeline.bend.preset = i;
+                        edit->pipeline.bend.enabled = true;
+                    }
+                    return true;
+                }
+            }
+        }
+        if (touched && edit->pipeline.bend.enabled &&
+            ty >= (int)(cy + 132.0f - 14.0f) &&
+            ty <  (int)(cy + 132.0f + 14.0f) &&
+            tx >= TRACK_X - 8 && tx <= TRACK_X + TRACK_W + 8) {
+            float t_val = (float)(tx - TRACK_X) / TRACK_W;
+            if (t_val < 0.0f) t_val = 0.0f;
+            if (t_val > 1.0f) t_val = 1.0f;
+            edit->pipeline.bend.strength = (int)(t_val * 10.0f + 0.5f);
+            return true;
+        }
+    } else if (edit->fx_stage == LOOKS_STAGE_FX) {
+        FilterParams p = edit->pipeline.gb.params;
+        p.fx_mode = edit->pipeline.post.enabled ? edit->pipeline.post.fx_mode : FX_NONE;
+        p.fx_intensity = edit->pipeline.post.fx_intensity;
+        if (handle_looks_fx_touch(tx, ty, tapped, touched, &p, (float)LOOKS_PANEL_Y)) {
+            edit->pipeline.post.enabled = p.fx_mode != FX_NONE;
+            edit->pipeline.post.fx_mode = p.fx_mode;
+            edit->pipeline.post.fx_intensity = p.fx_intensity;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static int tune_slider_value(int tx) {
     const float tune_track_x = 92.0f;
     const float tune_track_w = 150.0f;
@@ -368,10 +549,8 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // Gallery edit mode — intercepts ALL touch when active (must be first)
     // -----------------------------------------------------------------------
     if (edit->active) {
-        if (!tapped) return false;
-
         // Action bar (bottom strip)
-        if (ty >= GEDIT_ACT_Y) {
+        if (tapped && ty >= GEDIT_ACT_Y) {
             if (hit(tx, ty, GEDIT_BTN_CANCEL_X,  GEDIT_ACT_Y, GEDIT_BTN_CANCEL_W,  GEDIT_ACT_H)) {
                 *do_edit_cancel = true; return true;
             }
@@ -384,9 +563,34 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return false;
         }
 
+        if (!tapped && edit->tab != GEDIT_TAB_LOOKS)
+            return false;
+
         // Tab bar
-        if (ty < GEDIT_TAB_H) {
-            edit->tab = (tx < GEDIT_TAB_W) ? 0 : 1;
+        if (tapped && ty < GEDIT_TAB_H) {
+            edit->tab = tx / GEDIT_TAB_W;
+            if (edit->tab < 0) edit->tab = 0;
+            if (edit->tab >= GEDIT_TAB_COUNT) edit->tab = GEDIT_TAB_COUNT - 1;
+            if (edit->tab != GEDIT_TAB_STICKERS) edit->placing = false;
+            if (edit->tab != GEDIT_TAB_LOOKS) {
+                edit->fx_stage_open = false;
+                edit->fx_tune_open = false;
+            }
+            return true;
+        }
+
+        if (edit->tab == GEDIT_TAB_LOOKS) {
+            return edit_handle_looks_touch(edit, tx, ty, tapped, touched);
+        }
+
+        if (edit->tab == GEDIT_TAB_FRAMES) {
+            for (int i = 0; i < FRAME_PICKER_COUNT; i++) {
+                int fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
+                if (ty >= fy && ty < fy + FRAME_PILL_H && tx < 160) {
+                    edit->gallery_frame = i - 1;
+                    return true;
+                }
+            }
             return true;
         }
 
@@ -394,7 +598,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         #define CAT_STRIP_Y0  (GEDIT_TAB_H + 2)
         #define CAT_STRIP_H   18
         #define CAT_BTN_W_I   ((160 - 4) / STICKER_CAT_COUNT)
-        if (edit->tab == 0 && tx < 160 &&
+        if (edit->tab == GEDIT_TAB_STICKERS && tx < 160 &&
             ty >= CAT_STRIP_Y0 && ty < CAT_STRIP_Y0 + CAT_STRIP_H) {
             int ci = (tx - 2) / CAT_BTN_W_I;
             if (ci < 0) ci = 0;
@@ -412,7 +616,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         #undef CAT_BTN_W_I
 
         // Info area tap (y = GEDIT_PICKER_BOT..GEDIT_ACT_Y) → "Place" selected sticker
-        if (edit->tab == 0 && ty >= GEDIT_PICKER_BOT && ty < GEDIT_ACT_Y) {
+        if (edit->tab == GEDIT_TAB_STICKERS && ty >= GEDIT_PICKER_BOT && ty < GEDIT_ACT_Y) {
             *do_edit_enter = true;
             return true;
         }
@@ -421,7 +625,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         #define RSCROLL_UP_Y0   116
         #define RSCROLL_DN_Y0   141
         #define RSCROLL_BTN_H    22
-        if (edit->tab == 0 && tx >= 160) {
+        if (edit->tab == GEDIT_TAB_STICKERS && tx >= 160) {
             sticker_cat_load(edit->sticker_cat);
             int _rc = sticker_cats[edit->sticker_cat].count;
             int _tr = (_rc + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
@@ -445,7 +649,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
         // Picker area — left panel (x=0..159)
         if (ty >= SGRID_BASE_Y && ty < GEDIT_PICKER_BOT && tx < 160) {
-            if (edit->tab == 0) {
+            if (edit->tab == GEDIT_TAB_STICKERS) {
                 // Sticker grid
                 #define SGRID_X0    2
                 #define SGRID_ROW_H GEDIT_STICKER_ROW_H
@@ -464,15 +668,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                 #undef SGRID_X0
                 #undef SGRID_ROW_H
                 #undef SGRID_BASE_Y
-            } else {
-                // Frame picker
-                for (int i = 0; i < FRAME_COUNT; i++) {
-                    int fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
-                    if (ty >= fy && ty < fy + FRAME_PILL_H && tx < 160) {
-                        edit->gallery_frame = i;
-                        return true;
-                    }
-                }
             }
         }
         return false;

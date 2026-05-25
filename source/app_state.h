@@ -105,7 +105,11 @@ typedef struct {
 
 typedef struct {
     bool  active;            // edit mode on
-    int   tab;               // 0 = stickers, 1 = frames
+    int   tab;               // GEDIT_TAB_* selected on the edit screen
+    int   fx_stage;          // LOOKS_STAGE_* selected in the edit Looks tab
+    bool  fx_stage_open;     // edit Looks home vs selected stage panel
+    bool  fx_tune_open;      // reserved for shared Looks tune panels
+    EffectPipeline pipeline; // post-capture effects applied before overlays
     int   sticker_cat;
     int   sticker_sel;
     int   sticker_scroll;

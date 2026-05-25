@@ -336,7 +336,11 @@ void draw_ui(C3D_RenderTarget *bot,
 
     // Content area dispatch
     if (edit->active) {
-        draw_gallery_edit_tab(staticBuf, edit->tab, edit->sticker_cat, edit->sticker_sel,
+        draw_gallery_edit_tab(staticBuf, app->user_palettes, &app->ranges,
+                              &edit->pipeline,
+                              edit->tab, edit->fx_stage,
+                              edit->fx_stage_open, edit->fx_tune_open,
+                              edit->sticker_cat, edit->sticker_sel,
                               edit->sticker_scroll, edit->gallery_frame,
                               edit->cursor_x, edit->cursor_y,
                               edit->pending_scale, edit->pending_angle,
@@ -380,7 +384,7 @@ void draw_ui(C3D_RenderTarget *bot,
                        shoot->remap_cell_size, shoot->remap_strength,
                        shoot->lomo_enabled, shoot->lomo_preset, shoot->lomo_strength,
                        shoot->bend_enabled, shoot->bend_preset, shoot->bend_strength,
-                       shoot->presets, shoot->preset_selected, settings_flash);
+                       shoot->presets, shoot->preset_selected, settings_flash, true, true);
     } else if (app->active_tab == TAB_MORE) {
         draw_more_tab(staticBuf, &app->params, app->save_scale, app->shutter_button, settings_flash);
     } else if (app->active_tab == TAB_PALETTE_ED) {

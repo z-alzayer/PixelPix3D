@@ -278,7 +278,10 @@ int main(void) {
     // Edit state
     EditState edit = {
         .active         = false,
-        .tab            = 0,
+        .tab            = GEDIT_TAB_LOOKS,
+        .fx_stage       = LOOKS_STAGE_LOOK,
+        .fx_stage_open  = false,
+        .fx_tune_open   = false,
         .sticker_cat    = 0,
         .sticker_sel    = 0,
         .sticker_scroll = 0,
@@ -317,6 +320,7 @@ int main(void) {
     settings_load_effect_tuning(&g_effect_tuning);
     app.default_params = app.params;
     app.params = (FilterParams)FILTER_DEFAULTS;
+    pipeline_state_init(&edit.pipeline, &app.params);
     filter_set_user_palettes(app.user_palettes);
     // Clamp live params to loaded ranges
     if (app.params.brightness  < app.ranges.bright_min)   app.params.brightness  = app.ranges.bright_min;
@@ -440,7 +444,7 @@ int main(void) {
                          &do_edit_enter_or_place);
 
             if (do_edit_enter_or_place)
-                edit_enter_or_place(&edit);
+                edit_enter_or_place(&edit, &shoot.pipeline);
 
             if (do_gallery_toggle) {
                 gallery_toggle(&gal, &app, &edit, camReceiveEvent, &captureInterrupted);

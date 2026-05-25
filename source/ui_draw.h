@@ -45,7 +45,12 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                       int gallery_count, const char gallery_paths[][64],
                       int gallery_sel, int gallery_scroll);
 void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
-                           int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+                           const PaletteDef *user_palettes,
+                           const FilterRanges *ranges,
+                           const EffectPipeline *pipeline,
+                           int edit_tab, int fx_stage,
+                           bool fx_stage_open, bool fx_tune_open,
+                           int sticker_cat, int sticker_sel, int sticker_scroll,
                            int gallery_frame,
                            float sticker_cursor_x, float sticker_cursor_y,
                            float sticker_pending_scale, float sticker_pending_angle,
@@ -61,7 +66,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     bool lomo_enabled, int lomo_preset, int lomo_strength,
                     bool bend_enabled, int bend_preset, int bend_strength,
                     const PipelinePreset *presets, int preset_selected,
-                    bool settings_flash);
+                    bool settings_flash, bool show_presets, bool allow_tune);
 void draw_more_tab(C2D_TextBuf staticBuf,
                    const FilterParams *p, int save_scale,
                    int shutter_button, bool settings_flash);

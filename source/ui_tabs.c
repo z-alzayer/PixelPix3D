@@ -1435,8 +1435,158 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
 // Gallery edit tab (replaces gallery when gallery_edit_mode is true)
 // ---------------------------------------------------------------------------
 
+static void draw_looks_gb_palette_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                        const PaletteDef *user_palettes,
+                                        const FilterParams *p,
+                                        bool gb_enabled);
+static void draw_looks_lomo_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  bool lomo_enabled, int lomo_preset,
+                                  int lomo_strength);
+static void draw_looks_bend_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                  bool bend_enabled, int bend_preset,
+                                  int bend_strength);
+static void draw_looks_style_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                   bool remap_enabled, int remap_style,
+                                   int remap_cell_size, int remap_strength);
+static void draw_looks_fx_panel(C2D_TextBuf staticBuf, C2D_Text *t,
+                                const FilterParams *p, float cy);
+
+static void draw_edit_looks_panel(C2D_TextBuf staticBuf,
+                                  const PaletteDef *user_palettes,
+                                  const FilterRanges *ranges,
+                                  const EffectPipeline *pipe,
+                                  int fx_stage,
+                                  bool fx_stage_open,
+                                  bool fx_tune_open) {
+    (void)ranges;
+    (void)fx_tune_open;
+
+    FilterParams p = pipe ? pipe->gb.params : (FilterParams)FILTER_DEFAULTS;
+    if (pipe) {
+        p.fx_mode = pipe->post.enabled ? pipe->post.fx_mode : FX_NONE;
+        p.fx_intensity = pipe->post.fx_intensity;
+    }
+
+    C2D_Text t;
+    float tw = 0, th = 0;
+
+    if (!fx_stage_open) {
+        static const char *stage_labels[LOOKS_STAGE_COUNT] = {
+            "Look", "GB", "Style", "Bend", "FX"
+        };
+        static const char *style_names[REMAP_STYLE_COUNT] = {
+            "ASCII", "Color", "Matrix", "Toon", "Pink", "CCD"
+        };
+        static const int style_vals[REMAP_STYLE_COUNT] = {
+            REMAP_STYLE_ASCII, REMAP_STYLE_COLOR, REMAP_STYLE_MATRIX,
+            REMAP_STYLE_TOON, REMAP_STYLE_PINK_WASH, REMAP_STYLE_CCD_TINT
+        };
+        static const char *fx_short[7] = {
+            "Off", "Scan-H", "Scan-V", "LCD", "Vign", "Chroma", "Grain"
+        };
+
+        for (int i = 0; i < LOOKS_STAGE_COUNT; i++) {
+            int row = i / LOOKS_HOME_COLS;
+            int col = i % LOOKS_HOME_COLS;
+            float bx = LOOKS_HOME_GAP + col * (LOOKS_HOME_BTN_W + LOOKS_HOME_GAP);
+            float by = LOOKS_HOME_Y + row * (LOOKS_HOME_BTN_H + LOOKS_HOME_GAP);
+            bool active = false;
+            char sub[24];
+
+            if (i == LOOKS_STAGE_LOOK) {
+                active = pipe && pipe->base.enabled;
+                snprintf(sub, sizeof(sub), "%s",
+                         active ? lomo_presets[pipe->base.preset].name : "off");
+            } else if (i == LOOKS_STAGE_GB) {
+                active = pipe && pipe->gb.enabled;
+                if (active && p.palette >= 0 && p.palette < PALETTE_COUNT) {
+                    const PaletteDef *pal = user_palettes ? &user_palettes[p.palette]
+                                                           : &palettes[p.palette];
+                    snprintf(sub, sizeof(sub), "%s", pal->name);
+                } else {
+                    snprintf(sub, sizeof(sub), "off");
+                }
+            } else if (i == LOOKS_STAGE_STYLE) {
+                active = pipe && pipe->remap.enabled;
+                const char *name = "custom";
+                for (int s = 0; s < REMAP_STYLE_COUNT; s++) {
+                    if (pipe && pipe->remap.style == style_vals[s]) {
+                        name = style_names[s];
+                        break;
+                    }
+                }
+                snprintf(sub, sizeof(sub), "%s", active ? name : "off");
+            } else if (i == LOOKS_STAGE_BEND) {
+                active = pipe && pipe->bend.enabled;
+                snprintf(sub, sizeof(sub), "%s",
+                         active ? bend_presets[pipe->bend.preset].name : "off");
+            } else {
+                active = pipe && pipe->post.enabled;
+                int fx = active ? pipe->post.fx_mode : FX_NONE;
+                if (fx < 0) fx = 0;
+                if (fx > 6) fx = 6;
+                snprintf(sub, sizeof(sub), "%s", fx_short[fx]);
+            }
+
+            draw_pill(bx, by, LOOKS_HOME_BTN_W, LOOKS_HOME_BTN_H,
+                      active ? CLR_ACCENT : CLR_BTN);
+            C2D_TextParse(&t, staticBuf, stage_labels[i]);
+            C2D_TextGetDimensions(&t, 0.42f, 0.42f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((float)LOOKS_HOME_BTN_W - tw) * 0.5f,
+                         by + 18.0f,
+                         0.5f, 0.42f, 0.42f, active ? CLR_WHITE : CLR_TEXT);
+            C2D_TextParse(&t, staticBuf, sub);
+            C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         bx + ((float)LOOKS_HOME_BTN_W - tw) * 0.5f,
+                         by + 42.0f,
+                         0.5f, 0.34f, 0.34f,
+                         active ? C2D_Color32(230, 240, 255, 255) : CLR_DIM);
+        }
+        return;
+    }
+
+    draw_pill((float)LOOKS_BACK_X, (float)GEDIT_LOOKS_HEADER_Y,
+              (float)LOOKS_BACK_W, (float)GEDIT_LOOKS_HEADER_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "< Looks");
+    C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 LOOKS_BACK_X + ((float)LOOKS_BACK_W - tw) * 0.5f,
+                 GEDIT_LOOKS_HEADER_Y + ((float)GEDIT_LOOKS_HEADER_H - th) * 0.5f,
+                 0.5f, 0.30f, 0.30f, CLR_TEXT);
+
+    if (fx_stage == LOOKS_STAGE_LOOK) {
+        draw_looks_lomo_panel(staticBuf, &t,
+                              pipe ? pipe->base.enabled : false,
+                              pipe ? pipe->base.preset : 0,
+                              pipe ? pipe->base.strength : 10);
+    } else if (fx_stage == LOOKS_STAGE_GB) {
+        draw_looks_gb_palette_panel(staticBuf, &t, user_palettes, &p,
+                                    pipe ? pipe->gb.enabled : false);
+    } else if (fx_stage == LOOKS_STAGE_STYLE) {
+        draw_looks_style_panel(staticBuf, &t,
+                               pipe ? pipe->remap.enabled : false,
+                               pipe ? pipe->remap.style : REMAP_STYLE_ASCII,
+                               pipe ? pipe->remap.cell_size : 8,
+                               pipe ? pipe->remap.strength : 10);
+    } else if (fx_stage == LOOKS_STAGE_BEND) {
+        draw_looks_bend_panel(staticBuf, &t,
+                              pipe ? pipe->bend.enabled : false,
+                              pipe ? pipe->bend.preset : 0,
+                              pipe ? pipe->bend.strength : 10);
+    } else {
+        draw_looks_fx_panel(staticBuf, &t, &p, (float)LOOKS_PANEL_Y);
+    }
+}
+
 void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
-                           int edit_tab, int sticker_cat, int sticker_sel, int sticker_scroll,
+                           const PaletteDef *user_palettes,
+                           const FilterRanges *ranges,
+                           const EffectPipeline *pipeline,
+                           int edit_tab, int fx_stage,
+                           bool fx_stage_open, bool fx_tune_open,
+                           int sticker_cat, int sticker_sel, int sticker_scroll,
                            int gallery_frame,
                            float sticker_cursor_x, float sticker_cursor_y,
                            float sticker_pending_scale, float sticker_pending_angle,
@@ -1448,16 +1598,18 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
     // divided at x=160 with a 1px divider.
     #define GEDIT_SPLIT_X  160
 
-    // --- Tab bar across full width: [Stickers] [Frames] ---
-    for (int i = 0; i < 2; i++) {
+    // --- Tab bar across full width: [Looks] [Stickers] [Frames] ---
+    static const char *tab_labels[GEDIT_TAB_COUNT] = {"Looks", "Stickers", "Frames"};
+    for (int i = 0; i < GEDIT_TAB_COUNT; i++) {
+        float bx = (float)(i * GEDIT_TAB_W);
+        float bw = (i == GEDIT_TAB_COUNT - 1) ? (BOT_W - bx) : (float)GEDIT_TAB_W;
         bool sel = (edit_tab == i);
-        draw_pill((float)(i * GEDIT_TAB_W), (float)GEDIT_TAB_Y,
-                  (float)GEDIT_TAB_W, (float)GEDIT_TAB_H,
+        draw_pill(bx, (float)GEDIT_TAB_Y, bw, (float)GEDIT_TAB_H,
                   sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, i == 0 ? "Stickers" : "Frames");
+        C2D_TextParse(&t, staticBuf, tab_labels[i]);
         C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
         C2D_DrawText(&t, C2D_WithColor,
-                     i * GEDIT_TAB_W + (GEDIT_TAB_W - tw) * 0.5f,
+                     bx + (bw - tw) * 0.5f,
                      GEDIT_TAB_Y + (GEDIT_TAB_H - th) * 0.5f,
                      0.5f, 0.44f, 0.44f,
                      sel ? CLR_WHITE : CLR_TEXT);
@@ -1466,12 +1618,18 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
     // Divider below tab bar
     C2D_DrawRectSolid(0, (float)GEDIT_TAB_H, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
+    if (edit_tab == GEDIT_TAB_LOOKS) {
+        draw_edit_looks_panel(staticBuf, user_palettes, ranges, pipeline,
+                              fx_stage, fx_stage_open, fx_tune_open);
+        goto draw_edit_action_bar;
+    }
+
     // Vertical divider between left picker and right preview
     C2D_DrawRectSolid((float)GEDIT_SPLIT_X, (float)GEDIT_TAB_H, 0.5f,
                       1.0f, (float)(GEDIT_ACT_Y - GEDIT_TAB_H), CLR_DIVIDER);
 
     // ===== LEFT PANEL: picker (x=0..159) =====
-    if (edit_tab == 0) {
+    if (edit_tab == GEDIT_TAB_STICKERS) {
         // Category strip — small pill per category, across left panel
         #define CAT_STRIP_H  18
         #define CAT_STRIP_Y  (GEDIT_TAB_H + 2)
@@ -1528,12 +1686,13 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
 
     } else {
         // Frame picker — all items auto-sized to fit picker area
-        for (int i = 0; i < FRAME_COUNT; i++) {
+        for (int i = 0; i < FRAME_PICKER_COUNT; i++) {
+            int frame_idx = i - 1;
             float fy = GEDIT_PICKER_Y + i * FRAME_ROW_H;
-            bool sel = (gallery_frame == i);
+            bool sel = (gallery_frame == frame_idx);
             draw_pill(2.0f, fy, (float)(GEDIT_SPLIT_X - 4), (float)FRAME_PILL_H,
                       sel ? CLR_ACCENT : CLR_BTN);
-            C2D_TextParse(&t, staticBuf, frame_names[i]);
+            C2D_TextParse(&t, staticBuf, frame_idx < 0 ? "None" : frame_names[frame_idx]);
             C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
             C2D_DrawText(&t, C2D_WithColor,
                          2.0f + ((GEDIT_SPLIT_X - 4) - tw) * 0.5f,
@@ -1544,7 +1703,7 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
     }
 
     // ===== RIGHT PANEL: sticker preview + scroll controls (x=161..319) =====
-    if (edit_tab == 0) {
+    if (edit_tab == GEDIT_TAB_STICKERS) {
         sticker_cat_load(sticker_cat);
         int _cat_count = sticker_cats[sticker_cat].count;
         int _total_rows = (_cat_count + GEDIT_STICKER_COLS - 1) / GEDIT_STICKER_COLS;
@@ -1650,6 +1809,7 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                      0.5f, 0.36f, 0.36f, CLR_DIM);
     }
 
+draw_edit_action_bar:
     // Divider above action bar
     C2D_DrawRectSolid(0, (float)GEDIT_PICKER_BOT, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
@@ -1870,7 +2030,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                     bool lomo_enabled, int lomo_preset, int lomo_strength,
                     bool bend_enabled, int bend_preset, int bend_strength,
                     const PipelinePreset *presets, int preset_selected,
-                    bool settings_flash) {
+                    bool settings_flash, bool show_presets, bool allow_tune) {
     C2D_Text t;
     (void)dynBuf;
     (void)settings_flash;
@@ -1893,7 +2053,8 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
         C2D_TextParse(&t, staticBuf, "Looks");
         C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)STYLE_LABEL_Y,
                      0.5f, 0.50f, 0.50f, CLR_ACCENT);
-        for (int i = 0; i < LOOKS_HOME_BTN_COUNT; i++) {
+        int home_count = show_presets ? LOOKS_HOME_BTN_COUNT : LOOKS_STAGE_COUNT;
+        for (int i = 0; i < home_count; i++) {
             int row = i / LOOKS_HOME_COLS;
             int col = i % LOOKS_HOME_COLS;
             float bx = LOOKS_HOME_GAP + col * (LOOKS_HOME_BTN_W + LOOKS_HOME_GAP);
@@ -2041,6 +2202,7 @@ void draw_style_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
     } else {
         has_tune = true;
     }
+    if (!allow_tune) has_tune = false;
 
     C2D_TextParse(&t, staticBuf, title);
     C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);

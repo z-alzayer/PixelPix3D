@@ -5,6 +5,7 @@
 #include "image_load.h"
 #include "settings.h"
 #include "ui.h"
+#include "pipeline.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,20 +14,36 @@
 // edit_enter_or_place — enter edit mode or pick up sticker
 // ---------------------------------------------------------------------------
 
-void edit_enter_or_place(EditState *edit) {
+static void edit_reset_overlays(EditState *edit) {
+    edit->placing = false;
+    for (int i = 0; i < STICKER_MAX; i++) edit->placed[i].active = false;
+    edit->gallery_frame = -1;
+}
+
+void edit_enter_or_place(EditState *edit, const EffectPipeline *live_pipeline) {
     if (!edit->active) {
         // Reset cursor to centre when entering edit mode
+        edit->tab           = GEDIT_TAB_LOOKS;
+        edit->fx_stage      = LOOKS_STAGE_LOOK;
+        edit->fx_stage_open = false;
+        edit->fx_tune_open  = false;
         edit->cursor_x      = (float)CAMERA_WIDTH  / 2.0f;
         edit->cursor_y      = (float)CAMERA_HEIGHT / 2.0f;
         edit->pending_scale = 2.0f;
         edit->pending_angle = 0.0f;
-        edit->placing       = false;
         edit->sticker_cat   = 0;
         edit->sticker_sel   = 0;
         edit->sticker_scroll = 0;
+        if (live_pipeline) {
+            edit->pipeline = *live_pipeline;
+        } else {
+            FilterParams defaults = FILTER_DEFAULTS;
+            pipeline_state_init(&edit->pipeline, &defaults);
+        }
+        edit_reset_overlays(edit);
         sticker_cat_load(0);
         edit->active = true;
-    } else if (edit->tab == 0) {
+    } else if (edit->tab == GEDIT_TAB_STICKERS) {
         // Info area tap = pick up sticker (enter placement mode), reset cursor to centre
         edit->cursor_x = (float)CAMERA_WIDTH  / 2.0f;
         edit->cursor_y = (float)CAMERA_HEIGHT / 2.0f;
@@ -40,9 +57,9 @@ void edit_enter_or_place(EditState *edit) {
 
 void edit_cancel(EditState *edit) {
     edit->active = false;
-    edit->placing = false;
-    for (int i = 0; i < STICKER_MAX; i++) edit->placed[i].active = false;
-    edit->gallery_frame = -1;
+    edit->fx_stage_open = false;
+    edit->fx_tune_open = false;
+    edit_reset_overlays(edit);
 }
 
 // ---------------------------------------------------------------------------
@@ -52,8 +69,11 @@ void edit_cancel(EditState *edit) {
 typedef struct {
     PlacedSticker *stickers;
     int            n_stickers;
-    int            frame_idx;
+    int            overlay_frame_idx;
     const char    *frame_path;
+    EffectRecipe   recipe;
+    bool           apply_pipeline;
+    int            pipeline_frame;
 } EditCompositeCtx;
 
 typedef enum {
@@ -63,6 +83,10 @@ typedef enum {
 
 static void edit_composite_cb(uint8_t *rgb888, int w, int h, void *ud) {
     EditCompositeCtx *ctx = (EditCompositeCtx *)ud;
+    if (ctx->apply_pipeline) {
+        pipeline_apply(rgb888, w, h, &ctx->recipe, ctx->pipeline_frame);
+        ctx->pipeline_frame++;
+    }
     for (int si = 0; si < ctx->n_stickers; si++) {
         if (!ctx->stickers[si].active) continue;
         const unsigned char *px = get_sticker_pixels(ctx->stickers[si].cat_idx,
@@ -72,7 +96,7 @@ static void edit_composite_cb(uint8_t *rgb888, int w, int h, void *ud) {
                                      ctx->stickers[si].x, ctx->stickers[si].y,
                                      ctx->stickers[si].scale, ctx->stickers[si].angle_deg);
     }
-    if (ctx->frame_idx >= 0 && ctx->frame_path)
+    if (ctx->overlay_frame_idx >= 0 && ctx->frame_path)
         composite_frame_rgb888(rgb888, w, h, ctx->frame_path);
 }
 
@@ -158,13 +182,18 @@ void edit_save(EditState *edit, GalleryState *gal,
     const char *src_path = gal->paths[gal->sel];
     const char *src_ext = strrchr(src_path, '.');
     bool src_is_png = ext_is_ci(src_ext, ".png");
+    EffectRecipe recipe;
+    pipeline_build_recipe(&recipe, &edit->pipeline);
 
     PlacedSticker remapped[STICKER_MAX];
     EditCompositeCtx ctx = {
         remapped, STICKER_MAX,
         edit->gallery_frame,
         (edit->gallery_frame >= 0 && edit->gallery_frame < FRAME_COUNT)
-            ? s_frame_paths_save[edit->gallery_frame] : NULL
+            ? s_frame_paths_save[edit->gallery_frame] : NULL,
+        recipe,
+        pipeline_recipe_has_effects(&recipe),
+        0
     };
     bool saved = false;
 
@@ -242,10 +271,63 @@ cleanup_wiggle:
     gal->count  = list_saved_photos(SAVE_DIR, gal->paths, GALLERY_MAX);
     gal->loaded = -1;
     edit->active = false;
-    edit->placing = false;
-    for (int i = 0; i < STICKER_MAX; i++) edit->placed[i].active = false;
-    edit->gallery_frame = -1;
+    edit_reset_overlays(edit);
     edit->save_flash = 60;
+}
+
+static void edit_set_stage_strength(EditState *edit, int delta) {
+    int *value = NULL;
+    int min_v = 0, max_v = 10;
+
+    switch (edit->fx_stage) {
+    case LOOKS_STAGE_LOOK:
+        value = &edit->pipeline.base.strength;
+        edit->pipeline.base.enabled = true;
+        break;
+    case LOOKS_STAGE_STYLE:
+        value = &edit->pipeline.remap.strength;
+        edit->pipeline.remap.enabled = true;
+        if (edit->pipeline.remap.style == REMAP_STYLE_TOON) {
+            min_v = 2;
+            max_v = 15;
+        }
+        break;
+    case LOOKS_STAGE_BEND:
+        value = &edit->pipeline.bend.strength;
+        edit->pipeline.bend.enabled = true;
+        break;
+    case LOOKS_STAGE_FX:
+        value = &edit->pipeline.post.fx_intensity;
+        edit->pipeline.post.enabled = true;
+        if (edit->pipeline.post.fx_mode == FX_NONE) edit->pipeline.post.fx_mode = FX_SCAN_H;
+        break;
+    default:
+        return;
+    }
+
+    *value += delta;
+    if (*value < min_v) *value = min_v;
+    if (*value > max_v) *value = max_v;
+}
+
+static void edit_toggle_current_stage(EditState *edit) {
+    switch (edit->fx_stage) {
+    case LOOKS_STAGE_LOOK:
+        edit->pipeline.base.enabled = !edit->pipeline.base.enabled;
+        break;
+    case LOOKS_STAGE_GB:
+        edit->pipeline.gb.enabled = !edit->pipeline.gb.enabled;
+        break;
+    case LOOKS_STAGE_STYLE:
+        edit->pipeline.remap.enabled = !edit->pipeline.remap.enabled;
+        break;
+    case LOOKS_STAGE_BEND:
+        edit->pipeline.bend.enabled = !edit->pipeline.bend.enabled;
+        break;
+    case LOOKS_STAGE_FX:
+        edit->pipeline.post.enabled = !edit->pipeline.post.enabled;
+        break;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +335,25 @@ cleanup_wiggle:
 // ---------------------------------------------------------------------------
 
 void edit_handle_input(EditState *edit, u32 kDown, u32 kHeld) {
-    if (edit->tab != 0) return;
+    if (edit->tab == GEDIT_TAB_LOOKS) {
+        if (!edit->fx_stage_open) {
+            if (kDown & KEY_DLEFT)  { if (edit->fx_stage > 0) edit->fx_stage--; }
+            if (kDown & KEY_DRIGHT) { if (edit->fx_stage < LOOKS_STAGE_COUNT - 1) edit->fx_stage++; }
+            if (kDown & KEY_A) edit->fx_stage_open = true;
+            return;
+        }
+        if (kDown & KEY_B) {
+            edit->fx_stage_open = false;
+            edit->fx_tune_open = false;
+            return;
+        }
+        if (kDown & KEY_A) edit_toggle_current_stage(edit);
+        if (kDown & KEY_DUP) edit_set_stage_strength(edit, 1);
+        if (kDown & KEY_DDOWN) edit_set_stage_strength(edit, -1);
+        return;
+    }
+
+    if (edit->tab != GEDIT_TAB_STICKERS) return;
 
     if (edit->placing) {
         // ---- Placement mode: sticker is "picked up" ----
@@ -333,11 +433,16 @@ void edit_handle_input(EditState *edit, u32 kDown, u32 kHeld) {
 void edit_render_top(const EditState *edit, const GalleryState *gal,
                      uint8_t *rgb888_buf) {
     static const char *s_frame_paths[FRAME_COUNT] = FRAME_PATHS_INIT;
+    EffectRecipe recipe;
+    pipeline_build_recipe(&recipe, &edit->pipeline);
 
     // Base photo
     rgb565_to_rgb888(rgb888_buf,
                      (const uint16_t *)gallery_thumbs[gal->anim_frame],
                      CAMERA_WIDTH * CAMERA_HEIGHT);
+    if (pipeline_recipe_has_effects(&recipe))
+        pipeline_apply(rgb888_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
+                       &recipe, gal->anim_frame);
     // Stickers
     for (int si = 0; si < STICKER_MAX; si++) {
         if (!edit->placed[si].active) continue;
@@ -358,7 +463,7 @@ void edit_render_top(const EditState *edit, const GalleryState *gal,
                                CAMERA_WIDTH, CAMERA_HEIGHT,
                                s_frame_paths[edit->gallery_frame]);
     // Cursor crosshair: visible when placing
-    if (edit->placing && edit->tab == 0) {
+    if (edit->placing && edit->tab == GEDIT_TAB_STICKERS) {
         int cx = (int)edit->cursor_x;
         int cy = (int)edit->cursor_y;
         for (int d = -12; d <= 12; d++) {

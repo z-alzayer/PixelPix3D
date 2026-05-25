@@ -381,16 +381,22 @@
 // Gallery edit mode geometry (bottom screen editor — full 240px, no nav bar)
 // ---------------------------------------------------------------------------
 
-// Edit tab bar (Stickers / Frames)
+// Edit tab bar (Looks / Stickers / Frames)
+#define GEDIT_TAB_LOOKS     0
+#define GEDIT_TAB_STICKERS  1
+#define GEDIT_TAB_FRAMES    2
+#define GEDIT_TAB_COUNT     3
 #define GEDIT_TAB_Y       0
 #define GEDIT_TAB_H      28
-#define GEDIT_TAB_W     160   // half of BOT_W
+#define GEDIT_TAB_W     (BOT_W / GEDIT_TAB_COUNT)
+#define GEDIT_LOOKS_HEADER_Y (GEDIT_TAB_H + 2)
+#define GEDIT_LOOKS_HEADER_H 12
 
-// Sticker/frame picker area  y=29..194 (h=166)
-// cat strip 20px at y=29 + 3 rows*41px + 2px gap + 20px arrows = 165px fits
+// Sticker/frame picker area  y=29..199 (h=170)
+// cat strip 20px at y=29 + 3 rows*41px + 2px gap + 20px arrows fits.
 #define GEDIT_PICKER_Y   29
-#define GEDIT_PICKER_H  166
-#define GEDIT_PICKER_BOT 195
+#define GEDIT_PICKER_H  170
+#define GEDIT_PICKER_BOT 200
 
 // Sticker grid: 3 columns, 36px cells, 5px gaps
 #define GEDIT_STICKER_COLS    3
@@ -399,8 +405,8 @@
 #define GEDIT_STICKER_ROW_H  (GEDIT_STICKER_CELL + GEDIT_STICKER_GAP)
 #define GEDIT_STICKER_ROWS    3
 
-// Action bar  y=196..239 (h=43) — tall enough for readable button text
-#define GEDIT_ACT_Y     196
+// Action bar  y=200..239 (h=40), matching the main bottom-nav band.
+#define GEDIT_ACT_Y     200
 #define GEDIT_ACT_H      40
 // Three equal-width buttons across 320px with 2px gaps
 #define GEDIT_BTN_CANCEL_X    2
@@ -416,8 +422,9 @@
 #define GEDIT_EDIT_BTN_W    56
 #define GEDIT_EDIT_BTN_H    34
 
-// Frame picker row sizing — auto-fits FRAME_COUNT items into picker area
-#define FRAME_ROW_H       (GEDIT_PICKER_H / FRAME_COUNT)
+// Frame picker row sizing — includes a clear/no-frame option.
+#define FRAME_PICKER_COUNT (FRAME_COUNT + 1)
+#define FRAME_ROW_H       (GEDIT_PICKER_H / FRAME_PICKER_COUNT)
 #define FRAME_PILL_H      (FRAME_ROW_H - 2)
 
 // Sticker credit line
