@@ -3,6 +3,7 @@
 #include "bend.h"
 #include "settings.h"
 #include "anaglyph.h"
+#include "editor.h"
 
 bool hit(int px, int py, int rx, int ry, int rw, int rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
@@ -539,7 +540,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
     bool touched = (kHeld & KEY_TOUCH) != 0;
     bool tapped  = (kDown & KEY_TOUCH) != 0;
-    if (!touched) return false;
+    if (!touched &&
+        !(edit && edit->active && edit->tab == GEDIT_TAB_WIGGLE &&
+          edit->wiggle_align_dragging))
+        return false;
 
     int tx = touch.px, ty = touch.py;
 
@@ -563,14 +567,20 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
             return false;
         }
 
-        if (!tapped && edit->tab != GEDIT_TAB_LOOKS)
+        if (!tapped && edit->tab != GEDIT_TAB_LOOKS &&
+            edit->tab != GEDIT_TAB_WIGGLE)
             return false;
 
         // Tab bar
         if (tapped && ty < GEDIT_TAB_H) {
-            edit->tab = tx / GEDIT_TAB_W;
-            if (edit->tab < 0) edit->tab = 0;
-            if (edit->tab >= GEDIT_TAB_COUNT) edit->tab = GEDIT_TAB_COUNT - 1;
+            int tab_count = edit->wiggle_source ? GEDIT_TAB_COUNT : (GEDIT_TAB_COUNT - 1);
+            int visual_tab = (tx * tab_count) / BOT_W;
+            if (visual_tab < 0) visual_tab = 0;
+            if (visual_tab >= tab_count) visual_tab = tab_count - 1;
+            if (!edit->wiggle_source && visual_tab >= GEDIT_TAB_WIGGLE)
+                edit->tab = visual_tab + 1;
+            else
+                edit->tab = visual_tab;
             if (edit->tab != GEDIT_TAB_STICKERS) edit->placing = false;
             if (edit->tab != GEDIT_TAB_LOOKS) {
                 edit->fx_stage_open = false;
@@ -581,6 +591,10 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
 
         if (edit->tab == GEDIT_TAB_LOOKS) {
             return edit_handle_looks_touch(edit, tx, ty, tapped, touched);
+        }
+
+        if (edit->tab == GEDIT_TAB_WIGGLE) {
+            return edit_handle_wiggle_touch(edit, tx, ty, tapped, touched);
         }
 
         if (edit->tab == GEDIT_TAB_FRAMES) {

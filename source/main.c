@@ -278,6 +278,7 @@ int main(void) {
     // Edit state
     EditState edit = {
         .active         = false,
+        .wiggle_source  = false,
         .tab            = GEDIT_TAB_LOOKS,
         .fx_stage       = LOOKS_STAGE_LOOK,
         .fx_stage_open  = false,
@@ -287,6 +288,9 @@ int main(void) {
         .sticker_scroll = 0,
         .gallery_frame  = -1,
         .save_flash     = 0,
+        .wiggle_n_frames = 4,
+        .wiggle_delay_ms = WIGGLE_DEFAULT_DELAY_MS,
+        .wiggle_preview_count = 1,
         .cursor_x       = (float)CAMERA_WIDTH  / 2.0f,
         .cursor_y       = (float)CAMERA_HEIGHT / 2.0f,
         .pending_scale  = 2.0f,
@@ -444,7 +448,7 @@ int main(void) {
                          &do_edit_enter_or_place);
 
             if (do_edit_enter_or_place)
-                edit_enter_or_place(&edit, &shoot.pipeline);
+                edit_enter_or_place(&edit, &gal, &shoot.pipeline);
 
             if (do_gallery_toggle) {
                 gallery_toggle(&gal, &app, &edit, camReceiveEvent, &captureInterrupted);
@@ -455,7 +459,7 @@ int main(void) {
             }
 
             if (do_edit_cancel)
-                edit_cancel(&edit);
+                edit_cancel(&edit, &gal);
 
             if (do_edit_savenew)
                 edit_save(&edit, &gal, false);
@@ -639,6 +643,7 @@ int main(void) {
         }
 
         gallery_tick(&gal);
+        edit_tick(&edit);
 
         // Blit camera frame to top screen raw framebuffer
         render_top_screen(use3d, shoot.timer_open,

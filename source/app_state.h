@@ -105,6 +105,7 @@ typedef struct {
 
 typedef struct {
     bool  active;            // edit mode on
+    bool  wiggle_source;     // selected gallery item is an editable wiggle
     int   tab;               // GEDIT_TAB_* selected on the edit screen
     int   fx_stage;          // LOOKS_STAGE_* selected in the edit Looks tab
     bool  fx_stage_open;     // edit Looks home vs selected stage panel
@@ -116,6 +117,21 @@ typedef struct {
     int   gallery_frame;     // active frame overlay index (-1 = none)
     PlacedSticker placed[STICKER_MAX];
     int   save_flash;
+
+    int   wiggle_n_frames;   // one-way strip count, matching capture mode
+    int   wiggle_delay_ms;
+    int   wiggle_offset_dx;
+    int   wiggle_offset_dy;
+    int   wiggle_preview_count;
+    int   wiggle_preview_frame;
+    u64   wiggle_preview_tick;
+    bool  wiggle_manual_align;
+    bool  wiggle_align_dragging;
+    bool  wiggle_align_changed;
+    int   wiggle_align_touch_start_x;
+    int   wiggle_align_touch_start_y;
+    int   wiggle_align_start_dx;
+    int   wiggle_align_start_dy;
 
     // placement cursor
     float cursor_x;

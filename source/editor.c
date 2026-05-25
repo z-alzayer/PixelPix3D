@@ -10,6 +10,67 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static uint16_t s_edit_wiggle_left[CAMERA_WIDTH * CAMERA_HEIGHT];
+static uint16_t s_edit_wiggle_right[CAMERA_WIDTH * CAMERA_HEIGHT];
+static uint16_t s_edit_wiggle_preview[WIGGLE_PREVIEW_MAX][CAMERA_WIDTH * CAMERA_HEIGHT];
+
+static int edit_wiggle_strip_count_from_sequence(int sequence_frames) {
+    int strip = (sequence_frames + 2) / 2;
+    if (strip < 2) strip = 2;
+    if (strip > WIGGLE_FRAME_MAX) strip = WIGGLE_FRAME_MAX;
+    return strip;
+}
+
+static int edit_wiggle_endpoint_index(int sequence_frames) {
+    if (sequence_frames <= 1) return 0;
+    int idx = edit_wiggle_strip_count_from_sequence(sequence_frames) - 1;
+    if (idx >= sequence_frames) idx = sequence_frames - 1;
+    return idx;
+}
+
+static int edit_clamp_wiggle_delay_ms(int delay_ms) {
+    if (delay_ms < 50) return 50;
+    if (delay_ms > 1000) return 1000;
+    return (delay_ms + 5) / 10 * 10;
+}
+
+static int edit_wiggle_delay_from_slider_x(int tx, float track_x, float track_w) {
+    static const int anchors[] = {50, 100, 250, 500, 750, 1000};
+    int count = (int)(sizeof(anchors) / sizeof(anchors[0]));
+    float t = ((float)tx - track_x) / track_w;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    float pos = t * (float)(count - 1);
+    int seg = (int)pos;
+    if (seg >= count - 1)
+        return anchors[count - 1];
+    float local = pos - (float)seg;
+    int a = anchors[seg];
+    int b = anchors[seg + 1];
+    return edit_clamp_wiggle_delay_ms(a + (int)((float)(b - a) * local + 0.5f));
+}
+
+static void edit_reset_wiggle_phase(EditState *edit) {
+    edit->wiggle_preview_frame = 0;
+    edit->wiggle_preview_tick = svcGetSystemTick();
+}
+
+static void edit_rebuild_wiggle_preview(EditState *edit) {
+    if (!edit->wiggle_source) return;
+    edit->wiggle_preview_count =
+        build_wiggle_preview_frames(s_edit_wiggle_preview,
+                                    (const uint8_t *)s_edit_wiggle_left,
+                                    (const uint8_t *)s_edit_wiggle_right,
+                                    CAMERA_WIDTH, CAMERA_HEIGHT,
+                                    edit->wiggle_n_frames,
+                                    edit->wiggle_offset_dx,
+                                    edit->wiggle_offset_dy,
+                                    NULL, NULL);
+    if (edit->wiggle_preview_count < 1) edit->wiggle_preview_count = 1;
+    if (edit->wiggle_preview_frame >= edit->wiggle_preview_count)
+        edit->wiggle_preview_frame = 0;
+}
+
 // ---------------------------------------------------------------------------
 // edit_enter_or_place — enter edit mode or pick up sticker
 // ---------------------------------------------------------------------------
@@ -20,9 +81,11 @@ static void edit_reset_overlays(EditState *edit) {
     edit->gallery_frame = -1;
 }
 
-void edit_enter_or_place(EditState *edit, const EffectPipeline *live_pipeline) {
+void edit_enter_or_place(EditState *edit, const GalleryState *gal,
+                         const EffectPipeline *live_pipeline) {
     if (!edit->active) {
         // Reset cursor to centre when entering edit mode
+        edit->wiggle_source = false;
         edit->tab           = GEDIT_TAB_LOOKS;
         edit->fx_stage      = LOOKS_STAGE_LOOK;
         edit->fx_stage_open = false;
@@ -42,6 +105,22 @@ void edit_enter_or_place(EditState *edit, const EffectPipeline *live_pipeline) {
         }
         edit_reset_overlays(edit);
         sticker_cat_load(0);
+        int gallery_frames = gal ? gal->n_frames : 1;
+        if (gallery_frames > 1) {
+            int endpoint = edit_wiggle_endpoint_index(gallery_frames);
+            memcpy(s_edit_wiggle_left, gallery_thumbs[0], sizeof(s_edit_wiggle_left));
+            memcpy(s_edit_wiggle_right, gallery_thumbs[endpoint], sizeof(s_edit_wiggle_right));
+            edit->wiggle_source = true;
+            edit->wiggle_n_frames = edit_wiggle_strip_count_from_sequence(gallery_frames);
+            edit->wiggle_delay_ms = edit_clamp_wiggle_delay_ms(gal ? gal->delay_ms : WIGGLE_DEFAULT_DELAY_MS);
+            edit->wiggle_offset_dx = 0;
+            edit->wiggle_offset_dy = 0;
+            edit->wiggle_manual_align = false;
+            edit->wiggle_align_dragging = false;
+            edit->wiggle_align_changed = false;
+            edit_reset_wiggle_phase(edit);
+            edit_rebuild_wiggle_preview(edit);
+        }
         edit->active = true;
     } else if (edit->tab == GEDIT_TAB_STICKERS) {
         // Info area tap = pick up sticker (enter placement mode), reset cursor to centre
@@ -51,15 +130,25 @@ void edit_enter_or_place(EditState *edit, const EffectPipeline *live_pipeline) {
     }
 }
 
+const u8 *edit_wiggle_left_pixels(void) {
+    return (const u8 *)s_edit_wiggle_left;
+}
+
+const u8 *edit_wiggle_right_pixels(void) {
+    return (const u8 *)s_edit_wiggle_right;
+}
+
 // ---------------------------------------------------------------------------
 // edit_cancel — discard all edits and exit edit mode
 // ---------------------------------------------------------------------------
 
-void edit_cancel(EditState *edit) {
+void edit_cancel(EditState *edit, GalleryState *gal) {
     edit->active = false;
+    edit->wiggle_source = false;
     edit->fx_stage_open = false;
     edit->fx_tune_open = false;
     edit_reset_overlays(edit);
+    if (gal) gal->loaded = -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,27 +287,52 @@ void edit_save(EditState *edit, GalleryState *gal,
     bool saved = false;
 
     if (gal->n_frames > 1) {
-        // Wiggle: reload native-size frames, map preview-space edits back onto
-        // the full overlap image, then save in the original animation format.
+        // Wiggle: reload native-size frames, take the endpoint pair, regenerate
+        // the loop from the current alignment/timing, then run the edit stack.
         uint16_t *native_frames[GALLERY_WIGGLE_MAX_FRAMES] = {0};
-        const uint16_t *fptrs[GALLERY_WIGGLE_MAX_FRAMES];
+        uint16_t *generated_frames[WIGGLE_PREVIEW_MAX] = {0};
+        const uint16_t *fptrs[WIGGLE_PREVIEW_MAX];
         int src_w = 0, src_h = 0;
-        int n_frames = 0, delay_ms = WIGGLE_DEFAULT_DELAY_MS;
+        int n_frames = 0, delay_ms_unused = WIGGLE_DEFAULT_DELAY_MS;
+        int out_w = 0, out_h = 0;
+        int out_frames = 0;
 
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++) {
             native_frames[i] = malloc(VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
             if (!native_frames[i]) goto cleanup_wiggle;
-            fptrs[i] = native_frames[i];
+        }
+        for (int i = 0; i < WIGGLE_PREVIEW_MAX; i++) {
+            generated_frames[i] = malloc(VGA_WIDTH * VGA_HEIGHT * sizeof(uint16_t));
+            if (!generated_frames[i]) goto cleanup_wiggle;
+            fptrs[i] = generated_frames[i];
         }
 
         if (!load_animation_rgb565_native(src_path, native_frames,
                                           GALLERY_WIGGLE_MAX_FRAMES,
-                                          &n_frames, &delay_ms,
+                                          &n_frames, &delay_ms_unused,
                                           &src_w, &src_h)) {
             goto cleanup_wiggle;
         }
 
-        remap_stickers_for_save(remapped, edit->placed, src_w, src_h,
+        int endpoint = edit_wiggle_endpoint_index(n_frames);
+        int save_dx = edit->wiggle_offset_dx;
+        int save_dy = edit->wiggle_offset_dy;
+        if (src_w != CAMERA_WIDTH)
+            save_dx = round_to_int((float)save_dx * (float)src_w / (float)CAMERA_WIDTH);
+        if (src_h != CAMERA_HEIGHT)
+            save_dy = round_to_int((float)save_dy * (float)src_h / (float)CAMERA_HEIGHT);
+
+        out_frames = build_wiggle_native_frames(generated_frames,
+                                                (const uint8_t *)native_frames[0],
+                                                (const uint8_t *)native_frames[endpoint],
+                                                src_w, src_h,
+                                                edit->wiggle_n_frames,
+                                                save_dx, save_dy,
+                                                &out_w, &out_h);
+        if (out_frames < 1 || out_w < 1 || out_h < 1)
+            goto cleanup_wiggle;
+
+        remap_stickers_for_save(remapped, edit->placed, out_w, out_h,
                                 EDIT_SOURCE_WIGGLE);
 
         if (overwrite) {
@@ -229,12 +343,15 @@ void edit_save(EditState *edit, GalleryState *gal,
             settings_save_file_counter(file_counter_next());
         }
         saved = save_edited_apng(out_path, fptrs,
-                                 n_frames, delay_ms,
-                                 src_w, src_h,
+                                 out_frames,
+                                 edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms),
+                                 out_w, out_h,
                                  edit_composite_cb, &ctx);
 cleanup_wiggle:
         for (int i = 0; i < GALLERY_WIGGLE_MAX_FRAMES; i++)
             free(native_frames[i]);
+        for (int i = 0; i < WIGGLE_PREVIEW_MAX; i++)
+            free(generated_frames[i]);
     } else {
         // Still image: reload native-size source, map preview-space edits back
         // onto it, then save at the original resolution.
@@ -271,6 +388,7 @@ cleanup_wiggle:
     gal->count  = list_saved_photos(SAVE_DIR, gal->paths, GALLERY_MAX);
     gal->loaded = -1;
     edit->active = false;
+    edit->wiggle_source = false;
     edit_reset_overlays(edit);
     edit->save_flash = 60;
 }
@@ -330,6 +448,20 @@ static void edit_toggle_current_stage(EditState *edit) {
     }
 }
 
+static void edit_wiggle_changed(EditState *edit) {
+    edit_rebuild_wiggle_preview(edit);
+    edit_reset_wiggle_phase(edit);
+}
+
+static void edit_wiggle_adjust(EditState *edit, int *value, int delta, int lo, int hi) {
+    int next = *value + delta;
+    if (next < lo) next = lo;
+    if (next > hi) next = hi;
+    if (next == *value) return;
+    *value = next;
+    edit_wiggle_changed(edit);
+}
+
 // ---------------------------------------------------------------------------
 // edit_handle_input — physical button input for sticker placement / picker
 // ---------------------------------------------------------------------------
@@ -350,6 +482,65 @@ void edit_handle_input(EditState *edit, u32 kDown, u32 kHeld) {
         if (kDown & KEY_A) edit_toggle_current_stage(edit);
         if (kDown & KEY_DUP) edit_set_stage_strength(edit, 1);
         if (kDown & KEY_DDOWN) edit_set_stage_strength(edit, -1);
+        return;
+    }
+
+    if (edit->tab == GEDIT_TAB_WIGGLE && edit->wiggle_source) {
+        if (edit->wiggle_manual_align) {
+            bool changed = false;
+            if (kDown & KEY_DLEFT)  { edit->wiggle_offset_dx--; changed = true; }
+            if (kDown & KEY_DRIGHT) { edit->wiggle_offset_dx++; changed = true; }
+            if (kDown & KEY_DUP)    { edit->wiggle_offset_dy++; changed = true; }
+            if (kDown & KEY_DDOWN)  { edit->wiggle_offset_dy--; changed = true; }
+            if (edit->wiggle_offset_dx < -WIGGLE_OFFSET_X_MAX) edit->wiggle_offset_dx = -WIGGLE_OFFSET_X_MAX;
+            if (edit->wiggle_offset_dx >  WIGGLE_OFFSET_X_MAX) edit->wiggle_offset_dx =  WIGGLE_OFFSET_X_MAX;
+            if (edit->wiggle_offset_dy < -WIGGLE_OFFSET_Y_MAX) edit->wiggle_offset_dy = -WIGGLE_OFFSET_Y_MAX;
+            if (edit->wiggle_offset_dy >  WIGGLE_OFFSET_Y_MAX) edit->wiggle_offset_dy =  WIGGLE_OFFSET_Y_MAX;
+            if (changed) {
+                edit->wiggle_align_changed = false;
+                edit_wiggle_changed(edit);
+            }
+            if (kDown & (KEY_A | KEY_B)) {
+                if (edit->wiggle_align_changed)
+                    edit_wiggle_changed(edit);
+                edit->wiggle_manual_align = false;
+                edit->wiggle_align_dragging = false;
+                edit->wiggle_align_changed = false;
+            }
+            return;
+        }
+
+        if (kDown & KEY_DLEFT)
+            edit_wiggle_adjust(edit, &edit->wiggle_offset_dx, -1,
+                               -WIGGLE_OFFSET_X_MAX, WIGGLE_OFFSET_X_MAX);
+        if (kDown & KEY_DRIGHT)
+            edit_wiggle_adjust(edit, &edit->wiggle_offset_dx, 1,
+                               -WIGGLE_OFFSET_X_MAX, WIGGLE_OFFSET_X_MAX);
+        if (kDown & KEY_DUP)
+            edit_wiggle_adjust(edit, &edit->wiggle_offset_dy, 1,
+                               -WIGGLE_OFFSET_Y_MAX, WIGGLE_OFFSET_Y_MAX);
+        if (kDown & KEY_DDOWN)
+            edit_wiggle_adjust(edit, &edit->wiggle_offset_dy, -1,
+                               -WIGGLE_OFFSET_Y_MAX, WIGGLE_OFFSET_Y_MAX);
+        if (kDown & KEY_A) {
+            edit->wiggle_manual_align = true;
+            edit->wiggle_align_dragging = false;
+            edit->wiggle_align_changed = false;
+        }
+        if (kDown & KEY_L) {
+            int next = edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms - 10);
+            if (next != edit->wiggle_delay_ms) {
+                edit->wiggle_delay_ms = next;
+                edit_reset_wiggle_phase(edit);
+            }
+        }
+        if (kDown & KEY_R) {
+            int next = edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms + 10);
+            if (next != edit->wiggle_delay_ms) {
+                edit->wiggle_delay_ms = next;
+                edit_reset_wiggle_phase(edit);
+            }
+        }
         return;
     }
 
@@ -426,6 +617,191 @@ void edit_handle_input(EditState *edit, u32 kDown, u32 kHeld) {
     }
 }
 
+bool edit_handle_wiggle_touch(EditState *edit, int tx, int ty,
+                              bool tapped, bool touched) {
+    if (!edit->wiggle_source)
+        return false;
+
+    #define ALIGN_BOX_X WIGGLE_ALIGN_BOX_X
+    #define ALIGN_BOX_Y WIGGLE_ALIGN_BOX_Y
+    #define ALIGN_BOX_W (WIGGLE_ALIGN_THUMB_W * 2)
+    #define ALIGN_BOX_H (WIGGLE_ALIGN_THUMB_H * 2)
+
+    if (edit->wiggle_manual_align) {
+        if (tapped && tx >= ALIGN_BOX_X && tx < ALIGN_BOX_X + ALIGN_BOX_W &&
+            ty >= ALIGN_BOX_Y && ty < ALIGN_BOX_Y + ALIGN_BOX_H) {
+            edit->wiggle_align_dragging = true;
+            edit->wiggle_align_touch_start_x = tx;
+            edit->wiggle_align_touch_start_y = ty;
+            edit->wiggle_align_start_dx = edit->wiggle_offset_dx;
+            edit->wiggle_align_start_dy = edit->wiggle_offset_dy;
+            return true;
+        }
+        if (touched && edit->wiggle_align_dragging) {
+            int dx = ((tx - edit->wiggle_align_touch_start_x) * CAMERA_WIDTH) /
+                     (ALIGN_BOX_W * WIGGLE_ALIGN_DRAG_DAMPING);
+            int dy = ((ty - edit->wiggle_align_touch_start_y) * CAMERA_HEIGHT) /
+                     (ALIGN_BOX_H * WIGGLE_ALIGN_DRAG_DAMPING);
+            int new_dx = edit->wiggle_align_start_dx + dx;
+            int new_dy = edit->wiggle_align_start_dy + dy;
+            if (new_dx < -WIGGLE_OFFSET_X_MAX) new_dx = -WIGGLE_OFFSET_X_MAX;
+            if (new_dx >  WIGGLE_OFFSET_X_MAX) new_dx =  WIGGLE_OFFSET_X_MAX;
+            if (new_dy < -WIGGLE_OFFSET_Y_MAX) new_dy = -WIGGLE_OFFSET_Y_MAX;
+            if (new_dy >  WIGGLE_OFFSET_Y_MAX) new_dy =  WIGGLE_OFFSET_Y_MAX;
+            if (new_dx != edit->wiggle_offset_dx || new_dy != edit->wiggle_offset_dy) {
+                edit->wiggle_offset_dx = new_dx;
+                edit->wiggle_offset_dy = new_dy;
+                edit->wiggle_align_changed = true;
+                edit_wiggle_changed(edit);
+            }
+            return true;
+        }
+        if (!touched && edit->wiggle_align_dragging) {
+            edit->wiggle_align_dragging = false;
+            if (edit->wiggle_align_changed) {
+                edit_wiggle_changed(edit);
+                edit->wiggle_align_changed = false;
+            }
+            return true;
+        }
+        if (tapped && tx >= SHOOT_CANCEL_X &&
+            tx < SHOOT_CANCEL_X + SHOOT_CANCEL_W &&
+            ty >= SHOOT_CLEAR_Y &&
+            ty < SHOOT_CLEAR_Y + SHOOT_CLEAR_H) {
+            edit->wiggle_manual_align = false;
+            edit->wiggle_align_dragging = false;
+            edit->wiggle_align_changed = false;
+            return true;
+        }
+        if (tapped && tx >= SHOOT_PREVIEW_PRIMARY_X &&
+            tx < SHOOT_PREVIEW_PRIMARY_X + SHOOT_PREVIEW_PRIMARY_W &&
+            ty >= SHOOT_SAVE_Y &&
+            ty < SHOOT_SAVE_Y + SHOOT_SAVE_H) {
+            if (edit->wiggle_align_changed)
+                edit_wiggle_changed(edit);
+            edit->wiggle_manual_align = false;
+            edit->wiggle_align_dragging = false;
+            edit->wiggle_align_changed = false;
+            return true;
+        }
+        return true;
+    }
+
+    if (!tapped && !touched)
+        return false;
+
+    #define WIG_BTN_W   28
+    #define WIG_BTN_H   22
+    #define WIG_VAL_W   42
+    #define WIG_MINUS_X 18
+    #define WIG_VAL_X   (WIG_MINUS_X + WIG_BTN_W + 2)
+    #define WIG_PLUS_X  (WIG_VAL_X + WIG_VAL_W + 2)
+    #define WIG_RST_X   (WIG_PLUS_X + WIG_BTN_W + 2)
+    int row_x_y = SHOOT_CONTENT_Y + 4;
+    int row_y_y = SHOOT_CONTENT_Y + 32;
+    int row_frames_y = SHOOT_CONTENT_Y + 66;
+    int *val = NULL;
+    int lo = 0, hi = 0;
+    if (tapped && tx < 158 && ty >= row_x_y && ty < row_x_y + WIG_BTN_H) {
+        val = &edit->wiggle_offset_dx;
+        lo = -WIGGLE_OFFSET_X_MAX;
+        hi = WIGGLE_OFFSET_X_MAX;
+    } else if (tapped && tx < 158 && ty >= row_y_y && ty < row_y_y + WIG_BTN_H) {
+        val = &edit->wiggle_offset_dy;
+        lo = -WIGGLE_OFFSET_Y_MAX;
+        hi = WIGGLE_OFFSET_Y_MAX;
+    } else if (tapped && tx < 158 && ty >= row_frames_y && ty < row_frames_y + WIG_BTN_H) {
+        val = &edit->wiggle_n_frames;
+        lo = 2;
+        hi = WIGGLE_FRAME_MAX;
+    }
+    if (val) {
+        if (tx >= WIG_MINUS_X && tx < WIG_MINUS_X + WIG_BTN_W)
+            edit_wiggle_adjust(edit, val, -1, lo, hi);
+        else if (tx >= WIG_PLUS_X && tx < WIG_PLUS_X + WIG_BTN_W)
+            edit_wiggle_adjust(edit, val, 1, lo, hi);
+        else if (val != &edit->wiggle_n_frames &&
+                 tx >= WIG_RST_X && tx < WIG_RST_X + 22) {
+            if (*val != 0) {
+                *val = 0;
+                edit_wiggle_changed(edit);
+            }
+        }
+        return true;
+    }
+
+    if (tapped && tx >= SHOOT_MANUAL_ALIGN_X &&
+        tx < SHOOT_MANUAL_ALIGN_X + SHOOT_MANUAL_ALIGN_W &&
+        ty >= SHOOT_MANUAL_ALIGN_Y &&
+        ty < SHOOT_MANUAL_ALIGN_Y + SHOOT_MANUAL_ALIGN_H) {
+        edit->wiggle_manual_align = true;
+        edit->wiggle_align_dragging = false;
+        edit->wiggle_align_changed = false;
+        return true;
+    }
+
+    if (tx >= 160) {
+        if (tapped && tx >= 164 && tx < 186 &&
+            ty >= SHOOT_CONTENT_Y + 24 && ty < SHOOT_CONTENT_Y + 46) {
+            int next = edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms - 10);
+            if (next != edit->wiggle_delay_ms) {
+                edit->wiggle_delay_ms = next;
+                edit_reset_wiggle_phase(edit);
+            }
+            return true;
+        }
+        if (tapped && tx >= 294 && tx < 316 &&
+            ty >= SHOOT_CONTENT_Y + 24 && ty < SHOOT_CONTENT_Y + 46) {
+            int next = edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms + 10);
+            if (next != edit->wiggle_delay_ms) {
+                edit->wiggle_delay_ms = next;
+                edit_reset_wiggle_phase(edit);
+            }
+            return true;
+        }
+        if (ty >= SHOOT_CONTENT_Y + 20 && ty < SHOOT_CONTENT_Y + 50 &&
+            tx >= 192 && tx < 288) {
+            int next = edit_wiggle_delay_from_slider_x(tx, 192.0f, 96.0f);
+            if (next != edit->wiggle_delay_ms) {
+                edit->wiggle_delay_ms = next;
+                edit_reset_wiggle_phase(edit);
+            }
+            return true;
+        }
+    }
+
+    #undef WIG_BTN_W
+    #undef WIG_BTN_H
+    #undef WIG_VAL_W
+    #undef WIG_MINUS_X
+    #undef WIG_VAL_X
+    #undef WIG_PLUS_X
+    #undef WIG_RST_X
+    #undef ALIGN_BOX_X
+    #undef ALIGN_BOX_Y
+    #undef ALIGN_BOX_W
+    #undef ALIGN_BOX_H
+
+    return false;
+}
+
+void edit_tick(EditState *edit) {
+    if (!edit->active || !edit->wiggle_source || edit->wiggle_preview_count <= 1)
+        return;
+    u64 now = svcGetSystemTick();
+    u64 period = (u64)edit_clamp_wiggle_delay_ms(edit->wiggle_delay_ms) *
+                 SYSCLOCK_ARM11 / 1000;
+    if (period == 0) period = 1;
+    u64 elapsed = now - edit->wiggle_preview_tick;
+    if (elapsed >= period) {
+        u64 steps = elapsed / period;
+        edit->wiggle_preview_frame =
+            (edit->wiggle_preview_frame + (int)(steps % edit->wiggle_preview_count)) %
+            edit->wiggle_preview_count;
+        edit->wiggle_preview_tick += steps * period;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // edit_render_top — composited edit preview on top screen
 // ---------------------------------------------------------------------------
@@ -436,13 +812,22 @@ void edit_render_top(const EditState *edit, const GalleryState *gal,
     EffectRecipe recipe;
     pipeline_build_recipe(&recipe, &edit->pipeline);
 
+    int base_frame = gal->anim_frame;
+    const uint16_t *base_pixels = (const uint16_t *)gallery_thumbs[base_frame];
+    if (edit->wiggle_source && edit->wiggle_preview_count > 0) {
+        base_frame = edit->wiggle_preview_frame;
+        if (base_frame < 0 || base_frame >= edit->wiggle_preview_count)
+            base_frame = 0;
+        base_pixels = s_edit_wiggle_preview[base_frame];
+    }
+
     // Base photo
     rgb565_to_rgb888(rgb888_buf,
-                     (const uint16_t *)gallery_thumbs[gal->anim_frame],
+                     base_pixels,
                      CAMERA_WIDTH * CAMERA_HEIGHT);
     if (pipeline_recipe_has_effects(&recipe))
         pipeline_apply(rgb888_buf, CAMERA_WIDTH, CAMERA_HEIGHT,
-                       &recipe, gal->anim_frame);
+                       &recipe, base_frame);
     // Stickers
     for (int si = 0; si < STICKER_MAX; si++) {
         if (!edit->placed[si].active) continue;

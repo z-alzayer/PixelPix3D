@@ -35,6 +35,16 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
                                 int offset_dx, int offset_dy,
                                 int *out_w, int *out_h);
 
+// Build a native-resolution wiggle loop from two RGB565 endpoint frames.
+// dst[f] must each point to a buffer large enough for src_w * src_h pixels.
+// Returns the mirrored loop frame count and writes the cropped output size.
+int build_wiggle_native_frames(uint16_t **dst,
+                               const uint8_t *left_rgb565,
+                               const uint8_t *right_rgb565,
+                               int src_w, int src_h, int nf,
+                               int offset_dx, int offset_dy,
+                               int *out_w, int *out_h);
+
 // ---------------------------------------------------------------------------
 // Per-frame helpers extracted from the main loop
 // ---------------------------------------------------------------------------

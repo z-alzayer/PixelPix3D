@@ -3,6 +3,7 @@
 #include "lomo.h"
 #include "bend.h"
 #include "sticker.h"
+#include "editor.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -1580,14 +1581,144 @@ static void draw_edit_looks_panel(C2D_TextBuf staticBuf,
     }
 }
 
+static void draw_edit_wiggle_panel(C2D_TextBuf staticBuf,
+                                   int wiggle_frames, int wiggle_delay_ms,
+                                   int wiggle_offset_dx, int wiggle_offset_dy,
+                                   bool wiggle_manual_align,
+                                   bool wiggle_align_dragging) {
+    C2D_Text t;
+    float tw = 0, th = 0;
+
+    if (wiggle_manual_align) {
+        draw_wiggle_align_panel(staticBuf, wiggle_offset_dx, wiggle_offset_dy,
+                                STEREO_OUTPUT_WIGGLE, wiggle_delay_ms,
+                                CAMERA_WIDTH, CAMERA_HEIGHT,
+                                edit_wiggle_left_pixels(),
+                                edit_wiggle_right_pixels(),
+                                wiggle_align_dragging);
+        draw_pill((float)SHOOT_CANCEL_X, (float)SHOOT_CLEAR_Y,
+                  (float)SHOOT_CANCEL_W, (float)SHOOT_CLEAR_H,
+                  C2D_Color32(205, 55, 60, 255));
+        C2D_TextParse(&t, staticBuf, "Cancel");
+        C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     SHOOT_CANCEL_X + (SHOOT_CANCEL_W - tw) * 0.5f,
+                     SHOOT_CLEAR_Y + (SHOOT_CLEAR_H - th) * 0.5f - 1.0f,
+                     0.5f, 0.32f, 0.32f, CLR_WHITE);
+        draw_pill((float)SHOOT_PREVIEW_PRIMARY_X, (float)SHOOT_SAVE_Y + 3.0f,
+                  (float)SHOOT_PREVIEW_PRIMARY_W, (float)SHOOT_SAVE_H - 6.0f,
+                  CLR_CONFIRM);
+        C2D_TextParse(&t, staticBuf, "Done");
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     SHOOT_PREVIEW_PRIMARY_X + (SHOOT_PREVIEW_PRIMARY_W - tw) * 0.5f,
+                     SHOOT_SAVE_Y + (SHOOT_SAVE_H - th) * 0.5f,
+                     0.5f, 0.40f, 0.40f, CLR_WHITE);
+        return;
+    }
+
+    C2D_TextParse(&t, staticBuf, "Wiggle");
+    C2D_TextGetDimensions(&t, 0.46f, 0.46f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 8.0f, GEDIT_LOOKS_HEADER_Y + 1.0f,
+                 0.5f, 0.46f, 0.46f, CLR_ACCENT);
+    C2D_DrawRectSolid(0, GEDIT_LOOKS_HEADER_Y + GEDIT_LOOKS_HEADER_H + 4,
+                      0.5f, BOT_W, 1, CLR_DIVIDER);
+
+    #define WIG_BTN_W   28.0f
+    #define WIG_BTN_H   22.0f
+    #define WIG_VAL_W   42.0f
+    #define WIG_RST_W   22.0f
+    #define WIG_MINUS_X 18.0f
+    #define WIG_VAL_X   (WIG_MINUS_X + WIG_BTN_W + 2.0f)
+    #define WIG_PLUS_X  (WIG_VAL_X + WIG_VAL_W + 2.0f)
+    #define WIG_RST_X   (WIG_PLUS_X + WIG_BTN_W + 2.0f)
+
+    float cy = (float)SHOOT_CONTENT_Y;
+    const char *labels[3] = {"X", "Y", "Frames"};
+    int vals[3] = {wiggle_offset_dx, wiggle_offset_dy, wiggle_frames};
+    for (int i = 0; i < 3; i++) {
+        float ry = cy + (i == 0 ? 4.0f : (i == 1 ? 32.0f : 66.0f));
+        C2D_TextParse(&t, staticBuf, labels[i]);
+        C2D_TextGetDimensions(&t, 0.32f, 0.32f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     4.0f + (16.0f - tw) * 0.5f,
+                     ry + (WIG_BTN_H - th) * 0.5f,
+                     0.5f, 0.32f, 0.32f, CLR_DIM);
+        draw_pill(WIG_MINUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "-");
+        C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     WIG_MINUS_X + (WIG_BTN_W - tw) * 0.5f,
+                     ry + (WIG_BTN_H - th) * 0.5f,
+                     0.5f, 0.44f, 0.44f, CLR_TEXT);
+        draw_rounded_rect(WIG_VAL_X, ry, WIG_VAL_W, WIG_BTN_H, 3.0f, CLR_TRACK);
+        char buf[12];
+        snprintf(buf, sizeof(buf), "%d", vals[i]);
+        C2D_TextParse(&t, staticBuf, buf);
+        C2D_TextGetDimensions(&t, 0.33f, 0.33f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     WIG_VAL_X + (WIG_VAL_W - tw) * 0.5f,
+                     ry + (WIG_BTN_H - th) * 0.5f,
+                     0.5f, 0.33f, 0.33f, CLR_TEXT);
+        draw_pill(WIG_PLUS_X, ry, WIG_BTN_W, WIG_BTN_H, CLR_BTN);
+        C2D_TextParse(&t, staticBuf, "+");
+        C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+        C2D_DrawText(&t, C2D_WithColor,
+                     WIG_PLUS_X + (WIG_BTN_W - tw) * 0.5f,
+                     ry + (WIG_BTN_H - th) * 0.5f,
+                     0.5f, 0.44f, 0.44f, CLR_TEXT);
+        if (i < 2) {
+            draw_pill(WIG_RST_X, ry, WIG_RST_W, WIG_BTN_H, CLR_BTN);
+            C2D_TextParse(&t, staticBuf, "R");
+            C2D_TextGetDimensions(&t, 0.30f, 0.30f, &tw, &th);
+            C2D_DrawText(&t, C2D_WithColor,
+                         WIG_RST_X + (WIG_RST_W - tw) * 0.5f,
+                         ry + (WIG_BTN_H - th) * 0.5f,
+                         0.5f, 0.30f, 0.30f, CLR_TEXT);
+        }
+    }
+
+    C2D_DrawRectSolid(158.0f, cy, 0.5f, 1.0f,
+                      (float)SHOOT_SAVE_Y - cy, CLR_DIVIDER);
+    draw_pill((float)SHOOT_MANUAL_ALIGN_X,
+              (float)SHOOT_MANUAL_ALIGN_Y,
+              (float)SHOOT_MANUAL_ALIGN_W,
+              (float)SHOOT_MANUAL_ALIGN_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Manual Align");
+    C2D_TextGetDimensions(&t, 0.34f, 0.34f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 SHOOT_MANUAL_ALIGN_X + (SHOOT_MANUAL_ALIGN_W - tw) * 0.5f,
+                 SHOOT_MANUAL_ALIGN_Y + (SHOOT_MANUAL_ALIGN_H - th) * 0.5f,
+                 0.5f, 0.34f, 0.34f, CLR_TEXT);
+
+    draw_wiggle_delay_control(staticBuf, wiggle_delay_ms,
+                              240.0f, cy + 8.0f, cy + 24.0f,
+                              164.0f, 192.0f, 96.0f, 294.0f);
+
+    #undef WIG_BTN_W
+    #undef WIG_BTN_H
+    #undef WIG_VAL_W
+    #undef WIG_RST_W
+    #undef WIG_MINUS_X
+    #undef WIG_VAL_X
+    #undef WIG_PLUS_X
+    #undef WIG_RST_X
+}
+
 void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
                            const PaletteDef *user_palettes,
                            const FilterRanges *ranges,
                            const EffectPipeline *pipeline,
+                           bool wiggle_source,
                            int edit_tab, int fx_stage,
                            bool fx_stage_open, bool fx_tune_open,
                            int sticker_cat, int sticker_sel, int sticker_scroll,
                            int gallery_frame,
+                           int wiggle_frames, int wiggle_delay_ms,
+                           int wiggle_offset_dx, int wiggle_offset_dy,
+                           bool wiggle_manual_align,
+                           bool wiggle_align_dragging,
                            float sticker_cursor_x, float sticker_cursor_y,
                            float sticker_pending_scale, float sticker_pending_angle,
                            bool sticker_placing) {
@@ -1598,20 +1729,27 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
     // divided at x=160 with a 1px divider.
     #define GEDIT_SPLIT_X  160
 
-    // --- Tab bar across full width: [Looks] [Stickers] [Frames] ---
-    static const char *tab_labels[GEDIT_TAB_COUNT] = {"Looks", "Stickers", "Frames"};
-    for (int i = 0; i < GEDIT_TAB_COUNT; i++) {
-        float bx = (float)(i * GEDIT_TAB_W);
-        float bw = (i == GEDIT_TAB_COUNT - 1) ? (BOT_W - bx) : (float)GEDIT_TAB_W;
-        bool sel = (edit_tab == i);
+    // --- Tab bar across full width ---
+    static const char *all_tab_labels[GEDIT_TAB_COUNT] = {
+        "Looks", "Wiggle", "Stickers", "Frames"
+    };
+    const int still_tabs[3] = {
+        GEDIT_TAB_LOOKS, GEDIT_TAB_STICKERS, GEDIT_TAB_FRAMES
+    };
+    int tab_count = wiggle_source ? GEDIT_TAB_COUNT : 3;
+    for (int i = 0; i < tab_count; i++) {
+        int tab_id = wiggle_source ? i : still_tabs[i];
+        float bx = ((float)i * (float)BOT_W) / (float)tab_count;
+        float bw = ((float)(i + 1) * (float)BOT_W) / (float)tab_count - bx;
+        bool sel = (edit_tab == tab_id);
         draw_pill(bx, (float)GEDIT_TAB_Y, bw, (float)GEDIT_TAB_H,
                   sel ? CLR_ACCENT : CLR_BTN);
-        C2D_TextParse(&t, staticBuf, tab_labels[i]);
-        C2D_TextGetDimensions(&t, 0.44f, 0.44f, &tw, &th);
+        C2D_TextParse(&t, staticBuf, all_tab_labels[tab_id]);
+        C2D_TextGetDimensions(&t, 0.40f, 0.40f, &tw, &th);
         C2D_DrawText(&t, C2D_WithColor,
                      bx + (bw - tw) * 0.5f,
                      GEDIT_TAB_Y + (GEDIT_TAB_H - th) * 0.5f,
-                     0.5f, 0.44f, 0.44f,
+                     0.5f, 0.40f, 0.40f,
                      sel ? CLR_WHITE : CLR_TEXT);
     }
 
@@ -1621,6 +1759,14 @@ void draw_gallery_edit_tab(C2D_TextBuf staticBuf,
     if (edit_tab == GEDIT_TAB_LOOKS) {
         draw_edit_looks_panel(staticBuf, user_palettes, ranges, pipeline,
                               fx_stage, fx_stage_open, fx_tune_open);
+        goto draw_edit_action_bar;
+    }
+
+    if (edit_tab == GEDIT_TAB_WIGGLE && wiggle_source) {
+        draw_edit_wiggle_panel(staticBuf, wiggle_frames, wiggle_delay_ms,
+                               wiggle_offset_dx, wiggle_offset_dy,
+                               wiggle_manual_align,
+                               wiggle_align_dragging);
         goto draw_edit_action_bar;
     }
 

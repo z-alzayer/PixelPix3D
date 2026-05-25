@@ -381,14 +381,15 @@
 // Gallery edit mode geometry (bottom screen editor — full 240px, no nav bar)
 // ---------------------------------------------------------------------------
 
-// Edit tab bar (Looks / Stickers / Frames)
+// Edit tab bar (Looks / Wiggle / Stickers / Frames)
 #define GEDIT_TAB_LOOKS     0
-#define GEDIT_TAB_STICKERS  1
-#define GEDIT_TAB_FRAMES    2
-#define GEDIT_TAB_COUNT     3
+#define GEDIT_TAB_WIGGLE    1
+#define GEDIT_TAB_STICKERS  2
+#define GEDIT_TAB_FRAMES    3
+#define GEDIT_TAB_COUNT     4
 #define GEDIT_TAB_Y       0
 #define GEDIT_TAB_H      28
-#define GEDIT_TAB_W     (BOT_W / GEDIT_TAB_COUNT)
+#define GEDIT_TAB_W     (BOT_W / 3)
 #define GEDIT_LOOKS_HEADER_Y (GEDIT_TAB_H + 2)
 #define GEDIT_LOOKS_HEADER_H 12
 

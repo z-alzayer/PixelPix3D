@@ -124,6 +124,10 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
 
     int fdx = offset_dx;
     int fdy = offset_dy;
+    if (fdx <= -src_w) fdx = 1 - src_w;
+    if (fdx >=  src_w) fdx = src_w - 1;
+    if (fdy <= -src_h) fdy = 1 - src_h;
+    if (fdy >=  src_h) fdy = src_h - 1;
 
     // Overlap dimensions at full capture resolution
     int ow = src_w - (fdx < 0 ? -fdx : fdx);
@@ -182,6 +186,64 @@ int build_wiggle_preview_frames(uint16_t dst[][CAMERA_WIDTH * CAMERA_HEIGHT],
 
     if (out_w) *out_w = dw;
     if (out_h) *out_h = dh;
+    return sequence_frames;
+}
+
+int build_wiggle_native_frames(uint16_t **dst,
+                               const uint8_t *left_rgb565,
+                               const uint8_t *right_rgb565,
+                               int src_w, int src_h, int nf,
+                               int offset_dx, int offset_dy,
+                               int *out_w, int *out_h)
+{
+    if (!dst || !left_rgb565 || !right_rgb565 || src_w <= 0 || src_h <= 0)
+        return 0;
+
+    const uint16_t *L = (const uint16_t *)left_rgb565;
+    const uint16_t *R = (const uint16_t *)right_rgb565;
+    int strip_frames = wiggle_normalize_frame_count(nf);
+    int sequence_frames = wiggle_sequence_frame_count(strip_frames);
+
+    int fdx = offset_dx;
+    int fdy = offset_dy;
+    if (fdx <= -src_w) fdx = 1 - src_w;
+    if (fdx >=  src_w) fdx = src_w - 1;
+    if (fdy <= -src_h) fdy = 1 - src_h;
+    if (fdy >=  src_h) fdy = src_h - 1;
+    int ow = src_w - (fdx < 0 ? -fdx : fdx);
+    int oh = src_h - (fdy < 0 ? -fdy : fdy);
+    if (ow <= 0) ow = 1;
+    if (oh <= 0) oh = 1;
+
+    int lx = fdx > 0 ? fdx : 0;
+    int ly = fdy > 0 ? fdy : 0;
+    int rx = fdx < 0 ? -fdx : 0;
+    int ry = fdy < 0 ? -fdy : 0;
+
+    for (int f = 0; f < sequence_frames; f++) {
+        if (!dst[f]) return 0;
+        int weight = wiggle_interp_weight_for_frame(f, strip_frames);
+        int inv = 256 - weight;
+        for (int py = 0; py < oh; py++) {
+            for (int px = 0; px < ow; px++) {
+                uint16_t lp = L[(ly + py) * src_w + (lx + px)];
+                uint16_t rp = R[(ry + py) * src_w + (rx + px)];
+                uint16_t lr = (lp >> 11) & 0x1f;
+                uint16_t lg = (lp >>  5) & 0x3f;
+                uint16_t lb =  lp        & 0x1f;
+                uint16_t rr = (rp >> 11) & 0x1f;
+                uint16_t rg = (rp >>  5) & 0x3f;
+                uint16_t rb =  rp        & 0x1f;
+                uint16_t r = (lr * inv + rr * weight) >> 8;
+                uint16_t g = (lg * inv + rg * weight) >> 8;
+                uint16_t b = (lb * inv + rb * weight) >> 8;
+                dst[f][py * ow + px] = (r << 11) | (g << 5) | b;
+            }
+        }
+    }
+
+    if (out_w) *out_w = ow;
+    if (out_h) *out_h = oh;
     return sequence_frames;
 }
 

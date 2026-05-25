@@ -6,10 +6,11 @@
 #include "camera.h"
 
 // Enter edit mode or pick up sticker (from gallery Edit button / info tap).
-void edit_enter_or_place(EditState *edit, const EffectPipeline *live_pipeline);
+void edit_enter_or_place(EditState *edit, const GalleryState *gal,
+                         const EffectPipeline *live_pipeline);
 
 // Cancel edit mode — clear all placed stickers and frame overlay.
-void edit_cancel(EditState *edit);
+void edit_cancel(EditState *edit, GalleryState *gal);
 
 // Save edited photo (with post effects + stickers + frame) as JPEG or APNG.
 // Refreshes gallery list and exits edit mode on success.
@@ -19,6 +20,16 @@ void edit_save(EditState *edit, GalleryState *gal,
 // Handle physical button input in edit mode (sticker placement / picker).
 // Called when edit.active && active_tab == TAB_SHOOT.
 void edit_handle_input(EditState *edit, u32 kDown, u32 kHeld);
+
+// Handle touch input for the edit-mode wiggle adjustment tab.
+bool edit_handle_wiggle_touch(EditState *edit, int tx, int ty,
+                              bool tapped, bool touched);
+
+const u8 *edit_wiggle_left_pixels(void);
+const u8 *edit_wiggle_right_pixels(void);
+
+// Advance animated edit previews while the camera is paused.
+void edit_tick(EditState *edit);
 
 // Render the edit-mode composited preview to the top screen.
 // Writes into the provided rgb888 scratch buffer, converts to RGB565, and blits.
