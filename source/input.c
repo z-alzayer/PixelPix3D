@@ -524,7 +524,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   GalleryState *gal, EditState *edit,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   bool *do_defaults_reset, bool *do_clear_look,
-                  bool *do_gallery_toggle,
+                  bool *do_gallery_toggle, bool *do_gallery_upload,
                   bool *do_edit_cancel, bool *do_edit_savenew,
                   bool *do_edit_overwrite, bool *do_edit_enter) {
     *do_cam_toggle    = false;
@@ -533,6 +533,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     *do_defaults_reset = false;
     *do_clear_look    = false;
     *do_gallery_toggle = false;
+    *do_gallery_upload = false;
     *do_edit_cancel   = false;
     *do_edit_savenew  = false;
     *do_edit_overwrite = false;
@@ -726,6 +727,12 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
         // Close button (header, left)
         if (hit(tx, ty, 4, 3, 50, 24)) {
             *do_gallery_toggle = true;
+            return true;
+        }
+        // Upload to 3DS Gallery button (header)
+        if (hit(tx, ty, GAL_UPLOAD_BTN_X, GAL_UPLOAD_BTN_Y,
+                GAL_UPLOAD_BTN_W, GAL_UPLOAD_BTN_H)) {
+            *do_gallery_upload = true;
             return true;
         }
         // Edit button (header, right)

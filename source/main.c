@@ -25,6 +25,7 @@
 
 #define CONFIG_3D_SLIDERSTATE (*(volatile float*)0x1FF81080)
 #define WAIT_TIMEOUT 1000000000ULL
+#define GALLERY_UPLOAD_URL "https://3dsgallery.azurewebsites.net/AddPicture"
 static jmp_buf exitJmp;
 
 // ---------------------------------------------------------------------------
@@ -65,6 +66,13 @@ static void clear_processing_stack(ShootState *shoot, WiggleState *wig,
     shoot->tune_open = false;
 }
 
+static void open_gallery_upload(void) {
+    static char url_param[0x400];
+    memset(url_param, 0, sizeof(url_param));
+    strncpy(url_param, GALLERY_UPLOAD_URL, sizeof(url_param) - 1);
+    aptLaunchSystemApplet(APPID_WEB, url_param, strlen(url_param) + 1, 0);
+}
+
 static void render_bottom_ui(C3D_RenderTarget *bot,
                              C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                              const AppState *app, const ShootState *shoot,
@@ -79,6 +87,37 @@ static void render_bottom_ui(C3D_RenderTarget *bot,
             false, comparing,
             shoot->timer_active ? (shoot->timer_remaining_ms + 999) / 1000 : -1);
     C3D_FrameEnd(0);
+}
+
+static void gallery_refresh_after_save(GalleryState *gal, const char *saved_path) {
+    if (!gal || !gal->mode) return;
+
+    gal->count = list_saved_photos(SAVE_DIR, gal->paths, GALLERY_MAX);
+    if (gal->count <= 0) {
+        gal->sel = 0;
+        gal->scroll = 0;
+        gal->loaded = -1;
+        return;
+    }
+
+    int sel = -1;
+    if (saved_path) {
+        for (int i = 0; i < gal->count; i++) {
+            if (strcmp(gal->paths[i], saved_path) == 0) {
+                sel = i;
+                break;
+            }
+        }
+    }
+    if (sel < 0) {
+        sel = gal->sel;
+        if (sel < 0) sel = 0;
+        if (sel >= gal->count) sel = gal->count - 1;
+    }
+
+    gal->sel = sel;
+    gal->scroll = gal->sel / 4;
+    gal->loaded = -1;
 }
 
 static void cycle_palette_backward(AppState *app) {
@@ -439,18 +478,24 @@ int main(void) {
             bool do_cam = false, do_defaults_save = false, do_defaults_reset = false;
             bool do_clear_look = false;
             bool do_gallery_toggle = false;
+            bool do_gallery_upload = false;
             bool do_edit_cancel = false, do_edit_savenew = false, do_edit_overwrite = false;
             bool do_edit_enter_or_place = false;
             handle_touch(touch, kDown, kHeld,
                          &app, &shoot, &wig, &gal, &edit,
                          &do_cam, &do_save, &do_defaults_save,
                          &do_defaults_reset, &do_clear_look,
-                         &do_gallery_toggle,
+                         &do_gallery_toggle, &do_gallery_upload,
                          &do_edit_cancel, &do_edit_savenew, &do_edit_overwrite,
                          &do_edit_enter_or_place);
 
             if (do_edit_enter_or_place)
                 edit_enter_or_place(&edit, &gal, &shoot.pipeline);
+
+            if (do_gallery_upload) {
+                open_gallery_upload();
+                break;
+            }
 
             if (do_gallery_toggle) {
                 gallery_toggle(&gal, &app, &edit, camReceiveEvent, &captureInterrupted);
@@ -535,7 +580,11 @@ int main(void) {
         }
 
         if (s_save.busy) app.save_flash = 20;  // pin high while thread is working
-        else if (app.save_flash > 0) app.save_flash--;
+        else {
+            if (LightEvent_TryWait(&s_save.done_event))
+                gallery_refresh_after_save(&gal, s_save.save_path);
+            if (app.save_flash > 0) app.save_flash--;
+        }
         if (app.settings_flash > 0) app.settings_flash--;
 
         bool use3d = CONFIG_3D_SLIDERSTATE > 0.0f;

@@ -1326,6 +1326,16 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
                  4.0f + (50.0f - tw) * 0.5f, 3.0f + (24.0f - th) * 0.5f,
                  0.5f, 0.38f, 0.38f, CLR_TEXT);
 
+    // Upload to 3DS Gallery button
+    draw_pill((float)GAL_UPLOAD_BTN_X, (float)GAL_UPLOAD_BTN_Y,
+              (float)GAL_UPLOAD_BTN_W, (float)GAL_UPLOAD_BTN_H, CLR_BTN);
+    C2D_TextParse(&t, staticBuf, "Upload");
+    C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw, &th);
+    C2D_DrawText(&t, C2D_WithColor,
+                 (float)GAL_UPLOAD_BTN_X + ((float)GAL_UPLOAD_BTN_W - tw) * 0.5f,
+                 (float)GAL_UPLOAD_BTN_Y + ((float)GAL_UPLOAD_BTN_H - th) * 0.5f,
+                 0.5f, 0.38f, 0.38f, CLR_TEXT);
+
     // Edit button (right, only when something selected)
     if (gallery_count > 0) {
         draw_pill(BOT_W - 54.0f, 3.0f, 50.0f, 24.0f, CLR_ACCENT);

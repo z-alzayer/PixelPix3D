@@ -81,9 +81,12 @@ static void edit_reset_overlays(EditState *edit) {
     edit->gallery_frame = -1;
 }
 
-void edit_enter_or_place(EditState *edit, const GalleryState *gal,
+void edit_enter_or_place(EditState *edit, GalleryState *gal,
                          const EffectPipeline *live_pipeline) {
     if (!edit->active) {
+        if (gal && gal->mode && gal->loaded != gal->sel)
+            gallery_load_selected(gal);
+
         // Reset cursor to centre when entering edit mode
         edit->wiggle_source = false;
         edit->tab           = GEDIT_TAB_LOOKS;
@@ -407,6 +410,25 @@ cleanup_wiggle:
 
     // Refresh gallery list and exit edit mode
     gal->count  = list_saved_photos(SAVE_DIR, gal->paths, GALLERY_MAX);
+    if (gal->count > 0) {
+        int saved_sel = -1;
+        for (int i = 0; i < gal->count; i++) {
+            if (strcmp(gal->paths[i], out_path) == 0) {
+                saved_sel = i;
+                break;
+            }
+        }
+        if (saved_sel < 0) {
+            if (gal->sel < 0) gal->sel = 0;
+            if (gal->sel >= gal->count) gal->sel = gal->count - 1;
+        } else {
+            gal->sel = saved_sel;
+        }
+        gal->scroll = gal->sel / 4;
+    } else {
+        gal->sel = 0;
+        gal->scroll = 0;
+    }
     gal->loaded = -1;
     edit->active = false;
     edit->wiggle_source = false;

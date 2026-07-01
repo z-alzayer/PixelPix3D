@@ -6,7 +6,7 @@
 #include "camera.h"
 
 // Enter edit mode or pick up sticker (from gallery Edit button / info tap).
-void edit_enter_or_place(EditState *edit, const GalleryState *gal,
+void edit_enter_or_place(EditState *edit, GalleryState *gal,
                          const EffectPipeline *live_pipeline);
 
 // Cancel edit mode — clear all placed stickers and frame overlay.

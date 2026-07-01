@@ -447,6 +447,11 @@
 // Gallery tab geometry (toggled from SHOOT tab)
 // ---------------------------------------------------------------------------
 
+#define GAL_UPLOAD_BTN_X   58
+#define GAL_UPLOAD_BTN_Y    3
+#define GAL_UPLOAD_BTN_W   58
+#define GAL_UPLOAD_BTN_H   24
+
 #define GALLERY_COLS      4
 #define GALLERY_CELL_W   74
 #define GALLERY_CELL_H   44

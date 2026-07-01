@@ -17,7 +17,7 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
                   GalleryState *gal, EditState *edit,
                   bool *do_cam_toggle, bool *do_save, bool *do_defaults_save,
                   bool *do_defaults_reset, bool *do_clear_look,
-                  bool *do_gallery_toggle,
+                  bool *do_gallery_toggle, bool *do_gallery_upload,
                   bool *do_edit_cancel, bool *do_edit_savenew,
                   bool *do_edit_overwrite, bool *do_edit_enter);
 
