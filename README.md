@@ -2,6 +2,8 @@
 
 A Game Boy inspired camera app for the Nintendo 3DS. Point it at stuff and take pictures.
 
+
+
 | | | | |
 |:---:|:---:|:---:|:---:|
 | ![GB_0124](example_image/GB_0124.JPG) | ![GB_0128](example_image/GB_0128.JPG) | ![GB_0132](example_image/GB_0132.JPG) | ![GB_0143](example_image/GB_0143.JPG) |
@@ -148,6 +150,15 @@ Delete `sdmc:/3ds/pixelpix3d/settings.ini` to reset everything. The app recreate
 **Emoji Comic Pack** by [Notokapixel / narehop](https://narehop.itch.io/emoji-comic-pack) — Licensed under [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
 
 ---
+
+## Share your photos
+
+Want to show off your PixelPix3D shots? Check out **[3DS Gallery](https://3dsgallery.azurewebsites.net)** — a community gallery for Nintendo 3DS stereoscopic photos. Browse hundreds of user-submitted 3D galleries and view them in-browser, no 3DS needed.
+
+> ⚠️ Direct integration with PixelPix3D is in progress — stay tuned.
+
+---
+
 
 ## Notes
 
