@@ -164,7 +164,7 @@ Delete `sdmc:/3ds/pixelpix3d/settings.ini` to reset everything. The app recreate
 
 Want to show off your PixelPix3D shots? Check out **[3DS Gallery](https://3dsgallery.azurewebsites.net)** — a community gallery for Nintendo 3DS stereoscopic photos. Browse hundreds of user-submitted 3D galleries and view them in-browser, no 3DS needed.
 
-> ⚠️ Direct integration with PixelPix3D is in progress — stay tuned.
+> ⚠️ Direct integration with PixelPix3D is in beta but passes preliminary testing.
 
 ---
 
