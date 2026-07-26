@@ -10,6 +10,7 @@
 #include "wigglegram.h"
 #include "apng_enc.h"
 #include "gif_enc.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -813,7 +814,7 @@ int save_png(const char *path, const uint8_t *rgb888, int width, int height) {
 }
 
 // Single shared counter for all saved files (GB_ and GW_).
-// Seeded by file_counter_init(); incremented on each save.
+// Seeded by file_counter_init() from a disk scan; incremented on each save.
 static int s_next_n = -1;  // -1 = not yet initialised
 
 static int ascii_lower(int c) {
@@ -834,9 +835,11 @@ static int parse_saved_photo_name(const char *name, int *out_n, int *out_type) {
     if (!name[0] || !name[1] || !name[2]) return 0;
     char p0 = (char)ascii_lower((unsigned char)name[0]);
     char p1 = (char)ascii_lower((unsigned char)name[1]);
-    if (name[2] != '_') return 0;
+    char p2 = (char)ascii_lower((unsigned char)name[2]);
+    int hni = (p0 == 'h' && p1 == 'n' && p2 == 'i' && name[3] == '_');
+    if (!hni && name[2] != '_') return 0;
 
-    int i = 3;
+    int i = hni ? 4 : 3;
     int n = 0;
     int digits = 0;
     while (name[i] >= '0' && name[i] <= '9') {
@@ -847,6 +850,11 @@ static int parse_saved_photo_name(const char *name, int *out_n, int *out_type) {
     if (digits < 1 || name[i] != '.') return 0;
     const char *ext = name + i + 1;
 
+    if (hni) {
+        if (ext_eq_ci(ext, "jpg")) { *out_n = n; *out_type = 4; return 1; }
+        if (ext_eq_ci(ext, "mpo")) { *out_n = n; *out_type = 5; return 1; }
+        return 0;
+    }
     if (p0 == 'g' && p1 == 'b' &&
         (ext_eq_ci(ext, "jpg") || ext_eq_ci(ext, "jpeg"))) {
         *out_n = n;
@@ -871,13 +879,49 @@ static int parse_saved_photo_name(const char *name, int *out_n, int *out_type) {
     return 0;
 }
 
-// Call once at startup. ini_val is the persisted next_file_n from settings
-// (pass 0 if not present). We take max(ini_val, dir_scan+1) so we never
-// reuse a number even if the INI was deleted or is stale.
-void file_counter_init(const char *dir, int ini_val) {
-    mkdir("sdmc:/DCIM", 0777);
-    mkdir(dir, 0777);
+// ---------------------------------------------------------------------------
+// Nintendo DCIM folder (DCIM/xxxNINxx) — where the official camera app and
+// the system photo picker look for HNI_XXXX photos.
+// ---------------------------------------------------------------------------
 
+static char s_nintendo_dir[40];
+
+static int is_nintendo_folder_name(const char *n) {
+    for (int i = 0; i < 3; i++)
+        if (n[i] < '0' || n[i] > '9') return 0;
+    if (ascii_lower((unsigned char)n[3]) != 'n' ||
+        ascii_lower((unsigned char)n[4]) != 'i' ||
+        ascii_lower((unsigned char)n[5]) != 'n') return 0;
+    for (int i = 6; i < 8; i++)
+        if (n[i] < '0' || n[i] > '9') return 0;
+    return n[8] == '\0';
+}
+
+const char *nintendo_dir(void) {
+    if (s_nintendo_dir[0]) return s_nintendo_dir;
+
+    mkdir("sdmc:/DCIM", 0777);
+    char best[16] = "";
+    DIR *d = opendir("sdmc:/DCIM");
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            if (strlen(e->d_name) == 8 && is_nintendo_folder_name(e->d_name)) {
+                // Highest folder = the one the official app writes to next.
+                if (strcmp(e->d_name, best) > 0)
+                    snprintf(best, sizeof(best), "%s", e->d_name);
+            }
+        }
+        closedir(d);
+    }
+    if (!best[0])
+        snprintf(best, sizeof(best), "100NIN03");
+    snprintf(s_nintendo_dir, sizeof(s_nintendo_dir), "sdmc:/DCIM/%s", best);
+    mkdir(s_nintendo_dir, 0777);
+    return s_nintendo_dir;
+}
+
+static int scan_dir_max_n(const char *dir) {
     int max_n = 0;
     DIR *d = opendir(dir);
     if (d) {
@@ -890,67 +934,117 @@ void file_counter_init(const char *dir, int ini_val) {
         }
         closedir(d);
     }
-    int from_scan = max_n + 1;
-    s_next_n = (ini_val > from_scan) ? ini_val : from_scan;
+    return max_n;
 }
 
-// Returns the current value of the shared counter (the next number that will
-// be used). Call after file_counter_init to persist it in settings.
-int file_counter_next(void) { return s_next_n; }
+void file_counter_init(const char *dir) {
+    mkdir("sdmc:/DCIM", 0777);
+    mkdir(dir, 0777);
+
+    // Continue from the highest number actually on the card, scanning the
+    // Nintendo DCIM folder too so HNI numbering never collides with photos
+    // taken by the official camera app. Deleting photos frees their numbers.
+    int max_n = scan_dir_max_n(dir);
+    int nin_n = scan_dir_max_n(nintendo_dir());
+    if (nin_n > max_n) max_n = nin_n;
+
+    s_next_n = max_n + 1;
+}
+
 
 int next_save_path(const char *dir, char *out_path, int out_len) {
-    if (s_next_n < 0) file_counter_init(dir, 0);
+    if (s_next_n < 0) file_counter_init(dir);
     if (s_next_n > 9999) return 0;
     snprintf(out_path, out_len, "%s/GB_%04d.JPG", dir, s_next_n);
     s_next_n++;
     return 1;
 }
 
-// Scan dir for saved still/stereo files, fill paths[] sorted descending by number.
-// All save types share the same 4-digit counter space so they interleave naturally.
-int list_saved_photos(const char *dir, char paths[][64], int max) {
-    int nums[256];
-    int types[256];  // 0=JPG, 1=GIF, 2=GW PNG, 3=GA PNG
-    int count = 0;
+int next_still_paths(char *jpg_path, char *mpo_path, int out_len) {
+    if (s_next_n < 0) file_counter_init(SAVE_DIR);
+    if (s_next_n > 9999) return 0;
+    snprintf(jpg_path, out_len, "%s/HNI_%04d.JPG", nintendo_dir(), s_next_n);
+    snprintf(mpo_path, out_len, "%s/HNI_%04d.MPO", nintendo_dir(), s_next_n);
+    s_next_n++;
+    return 1;
+}
 
+// A real Nintendo SD card can hold far more photos than the gallery shows
+// (each 3D shot is two files). Scan everything, sort, dedupe pairs, and only
+// then keep the newest `max` — otherwise FAT's oldest-first readdir order
+// would silently drop the most recent photos once the cap is hit.
+#define PHOTO_SCAN_MAX 2048
+
+typedef struct {
+    int16_t n;
+    int8_t  type;  // 0=GB JPG, 1=GW GIF, 2=GW PNG, 3=GA PNG, 4=HNI JPG, 5=HNI MPO
+} PhotoEntry;
+
+static PhotoEntry s_scan[PHOTO_SCAN_MAX];
+
+static void scan_dir_photos(const char *dir, int *count, bool want_hni) {
     DIR *d = opendir(dir);
-    if (!d) return 0;
+    if (!d) return;
     struct dirent *e;
-    while ((e = readdir(d)) != NULL && count < max) {
+    while ((e = readdir(d)) != NULL && *count < PHOTO_SCAN_MAX) {
         int n = 0;
         int type = 0;
-        if (parse_saved_photo_name(e->d_name, &n, &type)) {
-            nums[count]  = n;
-            types[count] = type;
-            count++;
+        if (parse_saved_photo_name(e->d_name, &n, &type) &&
+            (type >= 4) == want_hni) {
+            s_scan[*count].n    = (int16_t)n;
+            s_scan[*count].type = (int8_t)type;
+            (*count)++;
         }
     }
     closedir(d);
+}
 
-    // Insertion sort descending by number
-    for (int i = 1; i < count; i++) {
-        int kn = nums[i], kt = types[i], j = i - 1;
-        while (j >= 0 && nums[j] < kn) {
-            nums[j+1]  = nums[j];
-            types[j+1] = types[j];
-            j--;
+// Descending by number; JPG before MPO within a number so pair dedupe can
+// look backwards within the same-number group.
+static int photo_entry_cmp(const void *a, const void *b) {
+    const PhotoEntry *pa = (const PhotoEntry *)a;
+    const PhotoEntry *pb = (const PhotoEntry *)b;
+    if (pa->n != pb->n) return pb->n - pa->n;
+    return pa->type - pb->type;
+}
+
+// Scan the app and Nintendo dirs for saved photos, fill paths[] sorted
+// descending by number. All save types share the same 4-digit counter space
+// so they interleave naturally.
+int list_saved_photos(const char *dir, char paths[][64], int max) {
+    int count = 0;
+    scan_dir_photos(dir, &count, false);
+    scan_dir_photos(nintendo_dir(), &count, true);
+
+    qsort(s_scan, count, sizeof(PhotoEntry), photo_entry_cmp);
+
+    int out = 0;
+    for (int i = 0; i < count && out < max; i++) {
+        int n = s_scan[i].n;
+        int type = s_scan[i].type;
+        // A JPG+MPO pair is one photo: drop the MPO when its JPG exists.
+        if (type == 5) {
+            bool has_jpg = false;
+            for (int j = i - 1; j >= 0 && s_scan[j].n == n; j--)
+                if (s_scan[j].type == 4) has_jpg = true;
+            if (has_jpg) continue;
         }
-        nums[j+1]  = kn;
-        types[j+1] = kt;
-    }
-
-    for (int i = 0; i < count; i++) {
-        if (types[i] == 0)
-            snprintf(paths[i], 64, "%s/GB_%04d.JPG", dir, nums[i]);
-        else if (types[i] == 1)
-            snprintf(paths[i], 64, "%s/GW_%04d.gif", dir, nums[i]);
-        else if (types[i] == 2)
-            snprintf(paths[i], 64, "%s/GW_%04d.png", dir, nums[i]);
+        if (type == 0)
+            snprintf(paths[out], 64, "%s/GB_%04d.JPG", dir, n);
+        else if (type == 1)
+            snprintf(paths[out], 64, "%s/GW_%04d.gif", dir, n);
+        else if (type == 2)
+            snprintf(paths[out], 64, "%s/GW_%04d.png", dir, n);
+        else if (type == 3)
+            snprintf(paths[out], 64, "%s/GA_%04d.png", dir, n);
+        else if (type == 4)
+            snprintf(paths[out], 64, "%s/HNI_%04d.JPG", nintendo_dir(), n);
         else
-            snprintf(paths[i], 64, "%s/GA_%04d.png", dir, nums[i]);
+            snprintf(paths[out], 64, "%s/HNI_%04d.MPO", nintendo_dir(), n);
+        out++;
     }
 
-    return count;
+    return out;
 }
 
 int next_wiggle_path(const char *dir, char *out_path, int out_len) {
@@ -959,7 +1053,7 @@ int next_wiggle_path(const char *dir, char *out_path, int out_len) {
 
 int next_wiggle_path_ext(const char *dir, const char *ext,
                          char *out_path, int out_len) {
-    if (s_next_n < 0) file_counter_init(dir, 0);
+    if (s_next_n < 0) file_counter_init(dir);
     if (s_next_n > 9999) return 0;
     const char *suffix = (ext && strcmp(ext, ".png") == 0) ? ".png" : ".gif";
     snprintf(out_path, out_len, "%s/GW_%04d%s", dir, s_next_n, suffix);
@@ -968,7 +1062,7 @@ int next_wiggle_path_ext(const char *dir, const char *ext,
 }
 
 int next_anaglyph_path(const char *dir, char *out_path, int out_len) {
-    if (s_next_n < 0) file_counter_init(dir, 0);
+    if (s_next_n < 0) file_counter_init(dir);
     if (s_next_n > 9999) return 0;
     snprintf(out_path, out_len, "%s/GA_%04d.png", dir, s_next_n);
     s_next_n++;

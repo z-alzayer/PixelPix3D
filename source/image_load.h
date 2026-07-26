@@ -56,18 +56,22 @@ int save_jpeg(const char *path, const uint8_t *rgb888, int width, int height);
 // Returns 1 on success, 0 on failure.
 int save_png(const char *path, const uint8_t *rgb888, int width, int height);
 
-// Seed the shared file counter from the INI value and a dir scan.
-// ini_val: value loaded from settings (0 if not present).
-// Both GB_ and GW_ files draw from the same counter so numbers never collide.
-void file_counter_init(const char *dir, int ini_val);
-
-// Return the current counter value (the next number to be used).
-// Persist this with settings_save_file_counter after each save.
-int  file_counter_next(void);
+// Seed the shared file counter from a scan of dir and the Nintendo DCIM
+// folder: numbering continues after the highest photo on the card, so all
+// save types share one counter space and deleted numbers become reusable.
+void file_counter_init(const char *dir);
 
 // Return the next free GB_XXXX.JPG path (O(1) after file_counter_init).
 // Returns 1 if a slot was found, 0 if not.
 int next_save_path(const char *dir, char *out_path, int out_len);
+
+// The Nintendo DCIM folder (sdmc:/DCIM/xxxNINxx) used by the official camera
+// app; detected on first call, created as 100NIN03 if the card has none.
+const char *nintendo_dir(void);
+
+// Fill the next free HNI_XXXX.JPG/.MPO path pair inside nintendo_dir().
+// Both buffers must hold out_len bytes. Returns 1 on success.
+int next_still_paths(char *jpg_path, char *mpo_path, int out_len);
 
 // Scan dir for GB_XXXX.JPG files, fill paths[] with full paths sorted descending by number.
 // Returns count of photos found (capped at max).

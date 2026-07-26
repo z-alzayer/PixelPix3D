@@ -1401,14 +1401,6 @@ bool handle_touch(touchPosition touch, u32 kDown, u32 kHeld,
     // MORE tab inputs
     // -----------------------------------------------------------------------
     if (app->active_tab == TAB_MORE && tapped && ty < NAV_Y) {
-        // Save Scale: native / 2x
-        for (int sc = 0; sc < MAX_SAVE_SCALE; sc++) {
-            int bx = MORE_STOG_X0 + sc * (MORE_SCALE_BTN_W + MORE_SCALE_BTN_GAP);
-            if (hit(tx, ty, bx, MORE_SCALE_Y - MORE_STOG_H / 2, MORE_SCALE_BTN_W, MORE_STOG_H)) {
-                app->save_scale = sc + 1;
-                return true;
-            }
-        }
         // Dither buttons
         for (int dm = 0; dm < 4; dm++) {
             int bx = MORE_SDITH_X0 + dm * (MORE_SDITH_W + MORE_SDITH_GAP);

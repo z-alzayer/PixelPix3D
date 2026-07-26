@@ -3,6 +3,7 @@
 #include "gallery.h"
 #include "sticker.h"
 #include "image_load.h"
+#include "nintendo_photo.h"
 #include "settings.h"
 #include "ui.h"
 #include "pipeline.h"
@@ -364,7 +365,6 @@ void edit_save(EditState *edit, GalleryState *gal,
         } else {
             if (!next_wiggle_path_ext(SAVE_DIR, src_ext, out_path, sizeof(out_path)))
                 goto cleanup_wiggle;
-            settings_save_file_counter(file_counter_next());
         }
         saved = save_edited_apng(out_path, fptrs,
                                  out_frames,
@@ -388,21 +388,71 @@ cleanup_wiggle:
                                 EDIT_SOURCE_STILL);
         edit_composite_cb(save_rgb888, src_w, src_h, &ctx);
 
-        if (overwrite) {
-            snprintf(out_path, sizeof(out_path), "%s", src_path);
-        } else {
-            bool got_path = src_is_png
-                          ? next_anaglyph_path(SAVE_DIR, out_path, sizeof(out_path))
-                          : next_save_path(SAVE_DIR, out_path, sizeof(out_path));
-            if (!got_path) {
+        const char *base = strrchr(src_path, '/');
+        base = base ? base + 1 : src_path;
+        bool src_is_hni = ext_is_ci(src_ext, ".jpg") || ext_is_ci(src_ext, ".mpo");
+        src_is_hni = src_is_hni &&
+                     (base[0] == 'H' || base[0] == 'h') &&
+                     (base[1] == 'N' || base[1] == 'n') &&
+                     (base[2] == 'I' || base[2] == 'i') && base[3] == '_';
+
+        if (src_is_hni) {
+            // Nintendo-format still: re-apply the edit to the right eye from
+            // the paired MPO (when present) and rewrite the JPG+MPO pair.
+            char mpo_src[80];
+            snprintf(mpo_src, sizeof(mpo_src), "%.*s.MPO",
+                     (int)(src_ext - src_path), src_path);
+            uint8_t *right_rgb888 = NULL;
+            int right_w = 0, right_h = 0;
+            bool has_right = load_mpo_second_rgb888(mpo_src, &right_rgb888,
+                                                    &right_w, &right_h);
+            if (has_right) {
+                ctx.pipeline_frame = 0;   // same effect phase as the left eye
+                edit_composite_cb(right_rgb888, right_w, right_h, &ctx);
+            }
+
+            char mpo_out[80];
+            if (overwrite) {
+                snprintf(out_path, sizeof(out_path), "%.*s.JPG",
+                         (int)(src_ext - src_path), src_path);
+                snprintf(mpo_out, sizeof(mpo_out), "%s", mpo_src);
+            } else if (!next_still_paths(out_path, mpo_out, sizeof(out_path))) {
                 free_loaded_image(save_rgb888);
+                if (right_rgb888) free_loaded_image(right_rgb888);
                 return;
             }
-            settings_save_file_counter(file_counter_next());
+
+            uint8_t *canvas_l = malloc(HNI_WIDTH * HNI_HEIGHT * 3);
+            uint8_t *canvas_r = has_right
+                              ? malloc(HNI_WIDTH * HNI_HEIGHT * 3)
+                              : NULL;
+            if (canvas_l && (!has_right || canvas_r)) {
+                hni_fit_canvas(canvas_l, save_rgb888, src_w, src_h);
+                if (canvas_r)
+                    hni_fit_canvas(canvas_r, right_rgb888, right_w, right_h);
+                saved = write_hni_photo(out_path,
+                                        canvas_r ? mpo_out : NULL,
+                                        canvas_l, canvas_r);
+            }
+            free(canvas_l);
+            free(canvas_r);
+            if (right_rgb888) free_loaded_image(right_rgb888);
+        } else {
+            if (overwrite) {
+                snprintf(out_path, sizeof(out_path), "%s", src_path);
+            } else {
+                bool got_path = src_is_png
+                              ? next_anaglyph_path(SAVE_DIR, out_path, sizeof(out_path))
+                              : next_save_path(SAVE_DIR, out_path, sizeof(out_path));
+                if (!got_path) {
+                    free_loaded_image(save_rgb888);
+                    return;
+                }
+            }
+            saved = src_is_png
+                  ? save_png(out_path, save_rgb888, src_w, src_h)
+                  : save_jpeg(out_path, save_rgb888, src_w, src_h);
         }
-        saved = src_is_png
-              ? save_png(out_path, save_rgb888, src_w, src_h)
-              : save_jpeg(out_path, save_rgb888, src_w, src_h);
         free_loaded_image(save_rgb888);
     }
 

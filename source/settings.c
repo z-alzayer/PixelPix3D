@@ -273,25 +273,6 @@ void settings_load_anaglyph_colors(uint8_t colors[2][3]) {
     fclose(f);
 }
 
-int settings_load_file_counter(void) {
-    FILE *f = fopen(SETTINGS_PATH, "r");
-    if (!f) return 0;
-    char line[64];
-    int result = 0;
-    while (fgets(line, sizeof(line), f)) {
-        int n = 0;
-        if (sscanf(line, "next_file_n=%d", &n) == 1) { result = n; break; }
-    }
-    fclose(f);
-    return result;
-}
-
-void settings_save_file_counter(int n) {
-    char val[16];
-    snprintf(val, sizeof(val), "%d", n);
-    ini_set_key("next_file_n", val);
-}
-
 void settings_save_ranges(const FilterRanges *r) {
     char val[16];
     snprintf(val, sizeof(val), "%.2f", (double)r->bright_min);   ini_set_key("bright_min", val);

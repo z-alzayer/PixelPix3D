@@ -11,6 +11,7 @@
 #include "sound.h"
 #include "pipeline.h"
 #include "anaglyph.h"
+#include "nintendo_photo.h"
 
 // ---------------------------------------------------------------------------
 // Global save thread state
@@ -121,51 +122,53 @@ static void save_thread_func(void *arg) {
                               &st->anaglyph_recipe,
                               st->anaglyph_colors);
         } else {
+            // Stills are always written in Nintendo 3DS Camera format:
+            // 640x480 HNI_XXXX.JPG plus, for stereo shots, the .MPO pair.
             int cap_w = st->still_cap_w > 0 ? st->still_cap_w : CAMERA_WIDTH;
             int cap_h = st->still_cap_h > 0 ? st->still_cap_h : CAMERA_HEIGHT;
-            int scale = st->save_scale;
-            if (scale < 1) scale = 1;
-            if (scale > MAX_SAVE_SCALE) scale = MAX_SAVE_SCALE;
+            int eyes = st->still_stereo ? 2 : 1;
 
-            uint8_t *rgb_priv = malloc(cap_w * cap_h * 3);
-            uint8_t *upscale_priv = (scale > 1)
-                                  ? malloc(scale * cap_w * scale * cap_h * 3)
-                                  : NULL;
-            uint8_t *rotate_priv = NULL;
-            if (st->rotate_quadrants != 0)
-                rotate_priv = malloc(scale * cap_w * scale * cap_h * 3);
+            uint8_t *work = malloc(cap_w * cap_h * 3);
+            uint8_t *rot = (st->rotate_quadrants != 0)
+                         ? malloc(cap_w * cap_h * 3)
+                         : NULL;
+            uint8_t *canvas[2] = {
+                malloc(HNI_WIDTH * HNI_HEIGHT * 3),
+                (eyes == 2) ? malloc(HNI_WIDTH * HNI_HEIGHT * 3) : NULL,
+            };
 
-            if (rgb_priv && (scale == 1 || upscale_priv) &&
-                (st->rotate_quadrants == 0 || rotate_priv)) {
-                rgb565_to_rgb888(rgb_priv, (const uint16_t *)st->snapshot_buf,
-                                 cap_w * cap_h);
-                pipeline_apply(rgb_priv, cap_w, cap_h, &st->still_recipe, 0);
+            if (work && canvas[0] && (eyes == 1 || canvas[1]) &&
+                (st->rotate_quadrants == 0 || rot)) {
+                for (int eye = 0; eye < eyes; eye++) {
+                    const uint16_t *src = (const uint16_t *)
+                        (eye ? st->snapshot_buf2 : st->snapshot_buf);
+                    rgb565_to_rgb888(work, src, cap_w * cap_h);
+                    pipeline_apply(work, cap_w, cap_h, &st->still_recipe, 0);
 
-                int out_w = cap_w * scale;
-                int out_h = cap_h * scale;
-                const uint8_t *save_buf = rgb_priv;
-                if (scale > 1) {
-                    nn_upscale(upscale_priv, rgb_priv, cap_w, cap_h, scale);
-                    save_buf = upscale_priv;
+                    const uint8_t *img = work;
+                    int img_w = cap_w;
+                    int img_h = cap_h;
+                    if (st->rotate_quadrants != 0) {
+                        rotate_rgb888_quadrants(rot, work, cap_w, cap_h,
+                                                st->rotate_quadrants);
+                        img = rot;
+                        img_w = cap_h;
+                        img_h = cap_w;
+                    }
+                    hni_fit_canvas(canvas[eye], img, img_w, img_h);
                 }
-                if (st->rotate_quadrants != 0) {
-                    rotate_rgb888_quadrants(rotate_priv, save_buf, out_w, out_h,
-                                            st->rotate_quadrants);
-                    save_buf = rotate_priv;
-                    int tmp = out_w;
-                    out_w = out_h;
-                    out_h = tmp;
-                }
-                save_jpeg(path, save_buf, out_w, out_h);
+                write_hni_photo(path,
+                                (eyes == 2) ? st->save_path2 : NULL,
+                                canvas[0], canvas[1]);
             }
-            free(rgb_priv);
-            free(upscale_priv);
-            free(rotate_priv);
+            free(work);
+            free(rot);
+            free(canvas[0]);
+            free(canvas[1]);
         }
 
         st->busy = false;
         LightEvent_Signal(&st->done_event);
-        settings_save_file_counter(file_counter_next());
     }
     threadExit(0);
 }
@@ -265,20 +268,26 @@ static void begin_anaglyph_capture(WiggleState *wig,
 // ---------------------------------------------------------------------------
 
 static void begin_jpeg_save(AppState *app, u8 *buf, const EffectRecipe *recipe) {
-    char save_path[64];
-    if (next_save_path(SAVE_DIR, save_path, sizeof(save_path))) {
+    char jpg_path[64];
+    char mpo_path[64];
+    if (next_still_paths(jpg_path, mpo_path, sizeof(jpg_path))) {
         int cap_size = app->cam_w * app->cam_h * 2;
+        int rotate = capture_portrait_rotation(app);
+        // 3D pair needs the two synchronized outer cameras in landscape;
+        // selfie (inner cam) and portrait shots save the JPG only.
+        bool stereo = !app->selfie && rotate == 0;
         memcpy(s_save.snapshot_buf, buf, cap_size);
-        memcpy(s_save.save_path, save_path, sizeof(save_path));
+        if (stereo)
+            memcpy(s_save.snapshot_buf2, buf + cap_size, cap_size);
+        memcpy(s_save.save_path, jpg_path, sizeof(jpg_path));
+        memcpy(s_save.save_path2, mpo_path, sizeof(mpo_path));
+        s_save.still_stereo = stereo;
         s_save.wiggle_mode = false;
         s_save.anaglyph_mode = false;
         s_save.still_cap_w = app->cam_w;
         s_save.still_cap_h = app->cam_h;
         s_save.still_recipe = recipe ? *recipe : (EffectRecipe){0};
-        s_save.save_scale = app->save_scale;
-        if (s_save.save_scale < 1) s_save.save_scale = 1;
-        if (s_save.save_scale > MAX_SAVE_SCALE) s_save.save_scale = MAX_SAVE_SCALE;
-        s_save.rotate_quadrants = capture_portrait_rotation(app);
+        s_save.rotate_quadrants = rotate;
         s_save.busy = true;
         app->save_flash = 20;
         play_shutter_click();

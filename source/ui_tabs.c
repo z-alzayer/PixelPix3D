@@ -1385,13 +1385,15 @@ void draw_gallery_tab(C2D_TextBuf staticBuf, C2D_TextBuf dynBuf,
             char label[10] = {0};
             int n = 0;
             bool is_wiggle = false;
-            if (sscanf(slash, "GB_%d.JPG", &n) == 1)
+            if (sscanf(slash, "GB_%d.JPG", &n) == 1 ||
+                sscanf(slash, "HNI_%d.JPG", &n) == 1 ||
+                sscanf(slash, "HNI_%d.MPO", &n) == 1 ||
+                sscanf(slash, "GA_%d.png", &n) == 1)
                 snprintf(label, sizeof(label), "%04d", n);
-            else if (sscanf(slash, "GW_%d.png", &n) == 1) {
+            else if (sscanf(slash, "GW_%d.png", &n) == 1 ||
+                     sscanf(slash, "GW_%d.gif", &n) == 1) {
                 snprintf(label, sizeof(label), "%04d", n);
                 is_wiggle = true;
-            } else if (sscanf(slash, "GA_%d.png", &n) == 1) {
-                snprintf(label, sizeof(label), "%04d", n);
             } else {
                 snprintf(label, sizeof(label), "?");
             }
@@ -2411,27 +2413,9 @@ void draw_more_tab(C2D_TextBuf staticBuf,
 
     C2D_DrawRectSolid(0, 26, 0.5f, BOT_W, 1, CLR_DIVIDER);
 
-    // --- Save Scale row: native / 2x ---
-    {
-        static const char *scale_labels[MAX_SAVE_SCALE] = { "1x", "2x" };
-        C2D_TextParse(&t, staticBuf, "Save Scale");
-        C2D_DrawText(&t, C2D_WithColor, 8.0f, (float)MORE_SCALE_Y - 8.0f, 0.5f, sc, sc, CLR_TEXT);
-        for (int si = 0; si < MAX_SAVE_SCALE; si++) {
-            float bx = (float)(MORE_STOG_X0 + si * (MORE_SCALE_BTN_W + MORE_SCALE_BTN_GAP));
-            bool sel = (save_scale == si + 1);
-            draw_pill(bx, MORE_SCALE_Y - MORE_STOG_H / 2,
-                      MORE_SCALE_BTN_W, MORE_STOG_H,
-                      sel ? CLR_ACCENT : CLR_BTN);
-            C2D_TextParse(&t, staticBuf, scale_labels[si]);
-            float tw2 = 0, th2 = 0;
-            C2D_TextGetDimensions(&t, 0.38f, 0.38f, &tw2, &th2);
-            C2D_DrawText(&t, C2D_WithColor,
-                         bx + ((float)MORE_SCALE_BTN_W - tw2) / 2.0f,
-                         (float)MORE_SCALE_Y - 8.0f,
-                         0.5f, 0.38f, 0.38f,
-                         sel ? CLR_WHITE : CLR_TEXT);
-        }
-    }
+    // Stills always save in Nintendo camera format (640x480), so the old
+    // Save Scale picker is gone.
+    (void)save_scale;
 
     // --- Dither row ---
     {

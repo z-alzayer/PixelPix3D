@@ -99,17 +99,18 @@ void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
 // Camera toggle (swap front ↔ rear)
 // ---------------------------------------------------------------------------
 
-void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
-                   Handle camReceiveEvent[4], bool *captureInterrupted,
-                   int cam_w, int cam_h) {
+void camera_release(Handle camReceiveEvent[4]) {
     CAMU_StopCapture(PORT_BOTH);
     for (int i = 0; i < 4; i++) {
         if (camReceiveEvent[i]) { svcCloseHandle(camReceiveEvent[i]); camReceiveEvent[i] = 0; }
     }
     CAMU_Activate(SELECT_NONE);
+}
 
-    *selfie    = !*selfie;
-    *camSelect = *selfie ? SELECT_IN1_OUT2 : SELECT_OUT1_OUT2;
+void camera_apply_config(bool selfie, u32 *camSelect, u32 *bufSize,
+                         Handle camReceiveEvent[4], bool *captureInterrupted,
+                         int cam_w, int cam_h, bool start_capture) {
+    *camSelect = selfie ? SELECT_IN1_OUT2 : SELECT_OUT1_OUT2;
 
     CAMU_Size size = (cam_w == VGA_WIDTH) ? SIZE_VGA : SIZE_CTR_TOP_LCD;
     CAMU_SetSize(*camSelect, size, CONTEXT_A);
@@ -128,7 +129,16 @@ void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[0], PORT_CAM1);
     CAMU_GetBufferErrorInterruptEvent(&camReceiveEvent[1], PORT_CAM2);
     CAMU_ClearBuffer(PORT_BOTH);
-    if (!*selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
-    CAMU_StartCapture(PORT_BOTH);
+    if (!selfie) CAMU_SynchronizeVsyncTiming(SELECT_OUT1, SELECT_OUT2);
+    if (start_capture) CAMU_StartCapture(PORT_BOTH);
     *captureInterrupted = false;
+}
+
+void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
+                   Handle camReceiveEvent[4], bool *captureInterrupted,
+                   int cam_w, int cam_h) {
+    camera_release(camReceiveEvent);
+    *selfie = !*selfie;
+    camera_apply_config(*selfie, camSelect, bufSize, camReceiveEvent,
+                        captureInterrupted, cam_w, cam_h, true);
 }

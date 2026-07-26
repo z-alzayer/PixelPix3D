@@ -47,9 +47,22 @@ void crop_fill_rgb565(uint16_t *dst, int dst_w, int dst_h,
                       const uint16_t *src, int src_w, int src_h);
 
 // ---------------------------------------------------------------------------
-// Camera toggle (swap front ↔ rear)
+// Camera driver setup / release
 // ---------------------------------------------------------------------------
 
+// Stop capture, close all capture/error event handles and deactivate the
+// cameras. Safe to call when capture is already stopped. Must be called
+// before the app is suspended (HOME menu / browser) or put to sleep.
+void camera_release(Handle camReceiveEvent[4]);
+
+// (Re)configure and activate the current camera selection, mirroring the
+// boot-time setup. Starts capture when start_capture is true (pass false
+// when the app is in a camera-paused state such as gallery/edit mode).
+void camera_apply_config(bool selfie, u32 *camSelect, u32 *bufSize,
+                         Handle camReceiveEvent[4], bool *captureInterrupted,
+                         int cam_w, int cam_h, bool start_capture);
+
+// Swap front <-> rear camera and restart capture.
 void camera_toggle(bool *selfie, u32 *camSelect, u32 *bufSize,
                    Handle camReceiveEvent[4], bool *captureInterrupted,
                    int cam_w, int cam_h);

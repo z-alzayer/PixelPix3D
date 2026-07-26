@@ -29,6 +29,52 @@
 static jmp_buf exitJmp;
 
 // ---------------------------------------------------------------------------
+// APT suspend/resume handling — the camera driver must be released while the
+// app is suspended (HOME menu, browser applet, lid closed) and brought back
+// up on return; resuming with it still active crashes the app.
+// ---------------------------------------------------------------------------
+
+typedef struct {
+    AppState *app;
+    u32      *camSelect;
+    u32      *bufSize;
+    Handle   *camReceiveEvent;
+    bool     *captureInterrupted;
+    bool      need_restore;
+} AptCamCtx;
+
+static AptCamCtx     s_apt_cam_ctx;
+static aptHookCookie s_apt_cam_cookie;
+
+static void apt_camera_hook(APT_HookType hook, void *param) {
+    AptCamCtx *c = (AptCamCtx *)param;
+    switch (hook) {
+    case APTHOOK_ONSUSPEND:
+    case APTHOOK_ONSLEEP:
+        if (!c->need_restore) {
+            c->need_restore = true;
+            camera_release(c->camReceiveEvent);
+        }
+        break;
+    case APTHOOK_ONRESTORE:
+    case APTHOOK_ONWAKEUP:
+        if (c->need_restore) {
+            c->need_restore = false;
+            // Don't restart capture when the app was in a camera-paused
+            // state (gallery / edit / wiggle preview); those code paths
+            // restart it themselves on exit.
+            camera_apply_config(c->app->selfie, c->camSelect, c->bufSize,
+                                c->camReceiveEvent, c->captureInterrupted,
+                                c->app->cam_w, c->app->cam_h,
+                                c->app->cam_active);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
@@ -378,11 +424,16 @@ int main(void) {
     if (app.params.gamma       > app.ranges.gamma_max)    app.params.gamma       = app.ranges.gamma_max;
 
     // Seed shared file counter — reads INI then cross-checks against dir scan
-    file_counter_init(SAVE_DIR, settings_load_file_counter());
+    file_counter_init(SAVE_DIR);
 
     // Initialize and launch the background save thread on core 1
     Thread save_thread = save_thread_start(snapshot_buf, snapshot_buf2);
     if (!save_thread) longjmp(exitJmp, 1);
+
+    // Release/reacquire the camera around HOME menu, browser and sleep
+    s_apt_cam_ctx = (AptCamCtx){ &app, &camSelect, &bufSize,
+                                 camReceiveEvent, &captureInterrupted, false };
+    aptHook(&s_apt_cam_cookie, apt_camera_hook, &s_apt_cam_ctx);
 
     while (aptMainLoop()) {
 
@@ -492,10 +543,11 @@ int main(void) {
             if (do_edit_enter_or_place)
                 edit_enter_or_place(&edit, &gal, &shoot.pipeline);
 
-            if (do_gallery_upload) {
+            // Jumps to the browser system applet; we stay suspended inside
+            // this call (the APT hook releases/reacquires the camera) and
+            // resume right here when the browser exits.
+            if (do_gallery_upload)
                 open_gallery_upload();
-                break;
-            }
 
             if (do_gallery_toggle) {
                 gallery_toggle(&gal, &app, &edit, camReceiveEvent, &captureInterrupted);
@@ -705,6 +757,7 @@ int main(void) {
         app.frame_count++;
     }
 
+    aptUnhook(&s_apt_cam_cookie);
     CAMU_StopCapture(PORT_BOTH);
     for (int i = 0; i < 4; i++)
         if (camReceiveEvent[i]) svcCloseHandle(camReceiveEvent[i]);

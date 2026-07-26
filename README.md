@@ -84,7 +84,6 @@ Set a countdown before the shutter fires — useful for selfies or group shots.
 
 | Setting | What it does |
 |---------|-------------|
-| Save Scale | **1×** saves at 400×240, **2×** saves at 800×480 (default) |
 | Dither Mode | **Bayer**, **Cluster**, **Atkinson**, or **Floyd-Steinberg** |
 | Invert | Flips all colours to their negative |
 
@@ -102,6 +101,16 @@ Tap **Save as Default** to persist your settings to the SD card.
 ![Gallery](example_image/gallery.png)
 
 Browse saved photos with the D-Pad. The selected photo shows full-screen on the top screen.
+
+### Where photos go
+
+Stills are saved in **Nintendo 3DS Camera format**: 640×480 `HNI_XXXX.JPG`
+files (plus an `HNI_XXXX.MPO` 3D pair when shot in landscape with the outer
+cameras) in the Nintendo `DCIM` folder on the SD card. That means they show
+up in the official Camera app — with a working 3D slider for MPO pairs — and
+in the system photo picker, so they can be uploaded from the 3DS browser
+(e.g. to 3DS Gallery). Selfie and portrait shots save as 2D JPG only.
+Wiggles stay GIF/APNG and anaglyphs stay PNG in `DCIM/GameboyCamera`.
 
 ---
 
