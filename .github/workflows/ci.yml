@@ -51,6 +51,19 @@ jobs:
       - name: Build CIA
         run: make cia
 
+      # Hotfixes are often pushed without bumping VERSION, so the release tag
+      # (e.g. v1.17) can already exist. action-gh-release then updates that
+      # release's assets but does not move the tag itself, leaving the tag
+      # pointing at the commit from the first build under that version while
+      # the downloadable binaries are newer. Move the tag to this commit so
+      # the source snapshot always matches the binaries it's paired with.
+      - name: Move version tag to this commit
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git tag -f "${{ steps.version.outputs.version }}"
+          git push -f origin "${{ steps.version.outputs.version }}"
+
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/master' && github.event_name == 'push'
