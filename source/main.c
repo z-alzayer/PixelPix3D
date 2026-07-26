@@ -40,7 +40,15 @@ typedef struct {
     u32      *bufSize;
     Handle   *camReceiveEvent;
     bool     *captureInterrupted;
-    bool      need_restore;
+    // ONSUSPEND/ONRESTORE (HOME menu, system applets) and ONSLEEP/ONWAKEUP
+    // (lid close) are independent and can nest — e.g. the console can
+    // auto-sleep while the app sits suspended at the HOME menu, then wake
+    // while still suspended. Track them separately: release the camera on
+    // the first transition into either state, restore only once BOTH have
+    // cleared, so an inner sleep/wake cycle can't consume the restore that
+    // belongs to the outer suspend/resume.
+    bool      suspended;
+    bool      asleep;
 } AptCamCtx;
 
 static AptCamCtx     s_apt_cam_ctx;
@@ -48,29 +56,26 @@ static aptHookCookie s_apt_cam_cookie;
 
 static void apt_camera_hook(APT_HookType hook, void *param) {
     AptCamCtx *c = (AptCamCtx *)param;
+    bool was_released = c->suspended || c->asleep;
     switch (hook) {
-    case APTHOOK_ONSUSPEND:
-    case APTHOOK_ONSLEEP:
-        if (!c->need_restore) {
-            c->need_restore = true;
-            camera_release(c->camReceiveEvent);
-        }
-        break;
-    case APTHOOK_ONRESTORE:
-    case APTHOOK_ONWAKEUP:
-        if (c->need_restore) {
-            c->need_restore = false;
-            // Don't restart capture when the app was in a camera-paused
-            // state (gallery / edit / wiggle preview); those code paths
-            // restart it themselves on exit.
-            camera_apply_config(c->app->selfie, c->camSelect, c->bufSize,
-                                c->camReceiveEvent, c->captureInterrupted,
-                                c->app->cam_w, c->app->cam_h,
-                                c->app->cam_active);
-        }
-        break;
-    default:
-        break;
+    case APTHOOK_ONSUSPEND: c->suspended = true;  break;
+    case APTHOOK_ONSLEEP:   c->asleep    = true;  break;
+    case APTHOOK_ONRESTORE: c->suspended = false; break;
+    case APTHOOK_ONWAKEUP:  c->asleep    = false; break;
+    default: return;
+    }
+    bool now_released = c->suspended || c->asleep;
+
+    if (!was_released && now_released) {
+        camera_release(c->camReceiveEvent);
+    } else if (was_released && !now_released) {
+        // Don't restart capture when the app was in a camera-paused state
+        // (gallery / edit / wiggle preview); those code paths restart it
+        // themselves on exit.
+        camera_apply_config(c->app->selfie, c->camSelect, c->bufSize,
+                            c->camReceiveEvent, c->captureInterrupted,
+                            c->app->cam_w, c->app->cam_h,
+                            c->app->cam_active);
     }
 }
 
@@ -432,7 +437,8 @@ int main(void) {
 
     // Release/reacquire the camera around HOME menu, browser and sleep
     s_apt_cam_ctx = (AptCamCtx){ &app, &camSelect, &bufSize,
-                                 camReceiveEvent, &captureInterrupted, false };
+                                 camReceiveEvent, &captureInterrupted,
+                                 false, false };
     aptHook(&s_apt_cam_cookie, apt_camera_hook, &s_apt_cam_ctx);
 
     while (aptMainLoop()) {
